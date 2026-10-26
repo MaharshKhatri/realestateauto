@@ -1,0 +1,266 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+<title>Sales Listing</title>
+
+
+
+
+
+</head>
+<body>
+<div>
+
+<main class="search-container">
+<table style="width:100%">
+<tr>
+<th>
+<h1>Union County, NJ - Foreclosure Sales Listing <span style="color:#595959; font-size:large;">(last updated: 10/26/2026 3:14:00 PM)</span></h1>
+<div>This site is provided as a public service by the Union County Sheriffs Office and is only intended to be general summary information to the public.  The Union County Sheriffs Office does not warrant the accuracy, completeness, or timeliness of this information.  For all listings click the search tab. To limit search fill in details and click search tab.</div>
+<span class="btn-danger" id="ErrorLabel" style="visibility:hidden"></span>
+</th>
+</tr>
+</table>
+<form action="/Sales/SalesSearch" class="form-horizontal" id="search_form" method="post" role="form"> <div class="hidden-print">
+<br/>
+<div class="form-group">
+<div class="col-sm-9 row">
+<div class="col-sm-2">
+<input class="btn btn-primary" type="submit" value="Search"/>
+</div>
+<div class="col-sm-2">
+<input class="btn btn-primary" onclick="doClearBtnClick()" type="button" value="Clear"/>
+</div>
+</div>
+<div class="row"> </div>
+<br/>
+<div class="col-sm-12" row="">
+<div class="col-sm-7">
+</div>
+<fieldset class="col-sm-5" row="">
+<legend>Status</legend>
+<div class="col-sm-6">
+<input checked="checked" id="open-radio" name="IsOpen" onclick="getSearchCriteria(true)" type="radio" value="true"/>
+<label for="open-radio">Open </label>
+</div>
+<div class="col-sm-6">
+<input id="sold-radio" name="IsOpen" onclick="getSearchCriteria(false)" type="radio" value="false"/>
+<label for="sold-radio">Sold\Cancelled </label>
+</div>
+</fieldset>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="SheriffNumber">Sheriff #:</label></div>
+<div class="col-sm-4"><input class="form-control" id="SheriffNumber" name="SheriffNumber" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap" for="PropertyStatusDate" style="font-weight: bold">Sales Date:</div>
+<div class="col-sm-5 row">
+<div class="col-sm-5">
+<label class="sr-only" for="PropertyStatusDate">Sales Date</label>
+<select class="form-control" id="PropertyStatusDate" name="PropertyStatusDate" onchange="dateChanged(this)"><option value=""></option>
+<option value="11/04/2026">11/04/2026</option>
+<option value="11/18/2026">11/18/2026</option>
+<option value="12/02/2026">12/02/2026</option>
+<option value="12/16/2026">12/16/2026</option>
+<option value="01/06/2027">01/06/2027</option>
+<option value="01/20/2027">01/20/2027</option>
+</select>
+</div>
+<div class="col-sm-1 control-label text-nowrap" style="font-weight: bold">or</div>
+<div class="col-sm-5">
+<label class="sr-only" for="MonthNumber">Sales Month</label>
+<select class="form-control" data-val="true" data-val-number="The field MonthNumber must be a number." data-val-required="The MonthNumber field is required." id="MonthNumber" name="MonthNumber" onchange="monthChanged()"><option selected="selected" value="0"></option>
+<option value="1">January</option>
+<option value="11">November</option>
+<option value="12">December</option>
+</select>
+</div>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="PlaintiffTitle">Plaintiff:</label></div>
+<div class="col-sm-4"><input class="form-control" id="PlaintiffTitle" name="PlaintiffTitle" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap"><label for="DefendantTitle">Defendant:</label></div>
+<div class="col-sm-4"><input class="form-control" id="DefendantTitle" name="DefendantTitle" type="text" value=""/></div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="Address">Address:</label></div>
+<div class="col-sm-4"><input class="form-control" id="Address" name="Address" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div><label class="col-sm-1 control-label text-nowrap" for="CityDesc">City:</label></div>
+<div class="col-sm-5">
+<select class="form-control" id="CityDesc" name="CityDesc"><option value=""></option>
+<option value="CLARK">CLARK</option>
+<option value="CRANFORD">CRANFORD</option>
+<option value="ELIZABETH">ELIZABETH</option>
+<option value="HILLSIDE">HILLSIDE</option>
+<option value="LINDEN">LINDEN</option>
+<option value="MOUNTAINSIDE">MOUNTAINSIDE</option>
+<option value="NEW PROVIDENCE">NEW PROVIDENCE</option>
+<option value="PLAINFIELD">PLAINFIELD</option>
+<option value="RAHWAY">RAHWAY</option>
+<option value="ROSELLE">ROSELLE</option>
+<option value="ROSELLE PARK">ROSELLE PARK</option>
+<option value="SCOTCH PLAINS">SCOTCH PLAINS</option>
+<option value="SPRINGFIELD">SPRINGFIELD</option>
+<option value="SUMMIT">SUMMIT</option>
+<option value="UNION">UNION</option>
+<option value="VAUXHALL">VAUXHALL</option>
+<option value="WESTFIELD">WESTFIELD</option>
+</select>
+</div>
+</div>
+<div>
+<br/>
+</div>
+<h2><span class="hidden-print" style="color:#595959; font-size: large;">Click the Details link next to the property to view additional information. (84 search results)</span></h2>
+</div>
+<div>
+<table class="table table-striped">
+<thead>
+<tr>
+<th aria-label="Property Link" class="hidden-print"></th>
+<th>Sheriff #</th>
+<th>Sales Date</th>
+<th>Plaintiff</th>
+<th>Defendant</th>
+<th>Address</th>
+</tr>
+</thead>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212075992" style="color: #255783;">View Details</a></td>
+<td>CH-25002697</td>
+<td>11/4/2026</td>
+<td>HSBC BANK USA, N.A., AS TRUSTEE FOR THE REGISTERED HOLDERS OF ACE SECURITIES CORP. HOME EQUITY LOAN TRUST, SERIES 2005-HE2, ASSET BACKED PASS-THROUGH CERTIFICATES</td>
+<td>CLARK REINHARD A/K/A CLARK REIHARD; NANCY REINHARD; UNITED STATES OF AMERICA; AMERICAN EXPRESS CENTURION BANK; CARDIOVASCULAR CONSULTANTS PA; AND STATE OF NEW JERSEY</td>
+<td>304 S. EUCLID AVENUE WESTFIELD NJ 07090</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212076025" style="color: #255783;">View Details</a></td>
+<td>CH-26000258</td>
+<td>11/4/2026</td>
+<td>SPENCER SAVINGS BANK, SLA</td>
+<td>JOHN GUNTER ERBRECHT AND JULIANA M. TOZZI- ERBRECHT, HIS WIFE</td>
+<td>23 FOURTH STREET MAILING ADDRESS : 23 WEST FOURTH STREET NEW PROVIDENCE NJ 07974</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212076057" style="color: #255783;">View Details</a></td>
+<td>CH-26000729</td>
+<td>11/4/2026</td>
+<td>U.S. BANK NATIONAL ASSOCIATION,  NOT IN ITS INDIVIDUAL CAPACITY BUT SOLELY AS TRUSTEE FOR THE RMAC TRUST, SERIES 2016-CTT</td>
+<td>ANGEL BERRIOS AND ANGELLIS BERRIOS A/K/A ARGELIS BERRIOS, HIS WIFE; SARAH DIAZ A/K/A SARA DIAZ; SPARTA MEDICAL ASSOCIATES; FIA CARD SERVICES; NATIONAL CITY BANK N/K/A PNC BANK, NATIONAL ASSOCIATION</td>
+<td>2038 CAROLINE AVENUE LINDEN NJ 07036</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212076059" style="color: #255783;">View Details</a></td>
+<td>CH-26000731</td>
+<td>11/4/2026</td>
+<td>PROVIDENT BANK F/K/A  THE PROVIDENT BANK,  SUCCESSOR BY MERGER TO LAKELAND BANK</td>
+<td>STEVON C. CAMPBELL</td>
+<td>1756 BURNET AVENUE UNION NJ</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212076066" style="color: #255783;">View Details</a></td>
+<td>CH-26000766</td>
+<td>11/4/2026</td>
+<td>DEUTSCHE BANK NATIONAL TRUST COMPANY, AS TRUSTEE FOR FREMONT HOME LOAN TRUST 2005-2, ASSET-BACKED CERTIFICATES, SERIES 2005-2</td>
+<td>EMIN MUHAMMAD A/K/A EMIN MUHAMMED; MRS. MUHAMMAD, SPOUSE OF EMIN MUHAMMAD A/K/A EMIN MUHAMMED; SONYA MUHAMMAD A/K/A SONYA MUHAMMED A/K/A SONYA TURNAGE</td>
+<td>237 WILDER ST   HILLSIDE NJ 07205</td>
+</tr>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</table>
+</div>
+</form>
+<div class="container-fluid footer">
+</div>
+</main>
+</div>
+
+
+</body>
+</html>

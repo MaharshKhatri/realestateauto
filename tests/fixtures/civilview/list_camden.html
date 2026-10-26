@@ -1,0 +1,383 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+<title>Sales Listing</title>
+
+
+
+
+
+</head>
+<body>
+<div>
+
+<main class="search-container">
+<table style="width:100%">
+<tr>
+<th>
+<h1>Camden County, NJ - Foreclosure Sales Listing <span style="color:#595959; font-size:large;">(last updated: 10/26/2026 3:10:00 PM)</span></h1>
+<div>Sales will resume December 4th, 2024.  CAMDEN CITY COUNCIL CHAMBERS, 520 MARKET STREET, 2ND FLOOR – CITY HALL, CAMDEN, NJ 08102</div>
+<span class="btn-danger" id="ErrorLabel" style="visibility:hidden"></span>
+</th>
+</tr>
+</table>
+<form action="/Sales/SalesSearch" class="form-horizontal" id="search_form" method="post" role="form"> <div class="hidden-print">
+<br/>
+<div class="form-group">
+<div class="col-sm-9 row">
+<div class="col-sm-2">
+<input class="btn btn-primary" type="submit" value="Search"/>
+</div>
+<div class="col-sm-2">
+<input class="btn btn-primary" onclick="doClearBtnClick()" type="button" value="Clear"/>
+</div>
+</div>
+<div class="row"> </div>
+<br/>
+<div class="col-sm-12" row="">
+<div class="col-sm-7">
+</div>
+<fieldset class="col-sm-5" row="">
+<legend>Status</legend>
+<div class="col-sm-6">
+<input checked="checked" id="open-radio" name="IsOpen" onclick="getSearchCriteria(true)" type="radio" value="true"/>
+<label for="open-radio">Open </label>
+</div>
+<div class="col-sm-6">
+<input id="sold-radio" name="IsOpen" onclick="getSearchCriteria(false)" type="radio" value="false"/>
+<label for="sold-radio">Sold\Cancelled </label>
+</div>
+</fieldset>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="SheriffNumber">Sheriff #:</label></div>
+<div class="col-sm-4"><input class="form-control" id="SheriffNumber" name="SheriffNumber" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap" for="PropertyStatusDate" style="font-weight: bold">Sales Date:</div>
+<div class="col-sm-5 row">
+<div class="col-sm-5">
+<label class="sr-only" for="PropertyStatusDate">Sales Date</label>
+<select class="form-control" id="PropertyStatusDate" name="PropertyStatusDate" onchange="dateChanged(this)"><option value=""></option>
+<option value="11/04/2026">11/04/2026</option>
+<option value="11/18/2026">11/18/2026</option>
+<option value="12/02/2026">12/02/2026</option>
+<option value="01/06/2027">01/06/2027</option>
+<option value="01/20/2027">01/20/2027</option>
+<option value="02/03/2027">02/03/2027</option>
+</select>
+</div>
+<div class="col-sm-1 control-label text-nowrap" style="font-weight: bold">or</div>
+<div class="col-sm-5">
+<label class="sr-only" for="MonthNumber">Sales Month</label>
+<select class="form-control" data-val="true" data-val-number="The field MonthNumber must be a number." data-val-required="The MonthNumber field is required." id="MonthNumber" name="MonthNumber" onchange="monthChanged()"><option selected="selected" value="0"></option>
+<option value="1">January</option>
+<option value="2">February</option>
+<option value="11">November</option>
+<option value="12">December</option>
+</select>
+</div>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="PlaintiffTitle">Plaintiff:</label></div>
+<div class="col-sm-4"><input class="form-control" id="PlaintiffTitle" name="PlaintiffTitle" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap"><label for="DefendantTitle">Defendant:</label></div>
+<div class="col-sm-4"><input class="form-control" id="DefendantTitle" name="DefendantTitle" type="text" value=""/></div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="Address">Address:</label></div>
+<div class="col-sm-4"><input class="form-control" id="Address" name="Address" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div><label class="col-sm-1 control-label text-nowrap" for="CityDesc">City:</label></div>
+<div class="col-sm-5">
+<select class="form-control" id="CityDesc" name="CityDesc"><option value=""></option>
+<option value="(WINSLOW TWP)">(WINSLOW TWP)</option>
+<option value="ATCO">ATCO</option>
+<option value="ATCO(WINSLOW TWP)">ATCO(WINSLOW TWP)</option>
+<option value="AUDUBON">AUDUBON</option>
+<option value="BARRINGTON">BARRINGTON</option>
+<option value="BELLMAWR">BELLMAWR</option>
+<option value="BERLIN">BERLIN</option>
+<option value="BLACKWOOD">BLACKWOOD</option>
+<option value="BOROUGH OF CLEMENTON">BOROUGH OF CLEMENTON</option>
+<option value="BOROUGH OF COLLINGSWOOD">BOROUGH OF COLLINGSWOOD</option>
+<option value="BOROUGH OF LAWNSIDE">BOROUGH OF LAWNSIDE</option>
+<option value="BOROUGH OF MOUNT EPHRAIM">BOROUGH OF MOUNT EPHRAIM</option>
+<option value="CAMDEN">CAMDEN</option>
+<option value="CHERRY HILL">CHERRY HILL</option>
+<option value="CHERRY HILL TOWNSHIP">CHERRY HILL TOWNSHIP</option>
+<option value="CHESILHURST">CHESILHURST</option>
+<option value="CITY OF GLOUCESTER">CITY OF GLOUCESTER</option>
+<option value="CLEMENTON">CLEMENTON</option>
+<option value="CLEMENTON BOROUGH">CLEMENTON BOROUGH</option>
+<option value="COLLINGSWOOD">COLLINGSWOOD</option>
+<option value="GLENDORA">GLENDORA</option>
+<option value="GLENDORA (GLOUCESTER TWP)">GLENDORA (GLOUCESTER TWP)</option>
+<option value="GLOUCESTER">GLOUCESTER</option>
+<option value="GLOUCESTER CITY">GLOUCESTER CITY</option>
+<option value="GLOUCESTER TOWNSHIP">GLOUCESTER TOWNSHIP</option>
+<option value="GLOUCESTER TWP">GLOUCESTER TWP</option>
+<option value="HADDON HEIGHTS">HADDON HEIGHTS</option>
+<option value="HADDON TOWNSHIP">HADDON TOWNSHIP</option>
+<option value="LAUREL SPRINGS">LAUREL SPRINGS</option>
+<option value="LAWNSIDE">LAWNSIDE</option>
+<option value="LINDENWOLD">LINDENWOLD</option>
+<option value="LINDENWOLD,">LINDENWOLD,</option>
+<option value="MAGNOLIA">MAGNOLIA</option>
+<option value="MERCHANTVILLE">MERCHANTVILLE</option>
+<option value="MOUNT EPHRAIM">MOUNT EPHRAIM</option>
+<option value="MOUNT EPHRAIM BOROUGH">MOUNT EPHRAIM BOROUGH</option>
+<option value="OAKLYN(WOODLYNNE BOROUGH)">OAKLYN(WOODLYNNE BOROUGH)</option>
+<option value="PENNSAUKEN">PENNSAUKEN</option>
+<option value="PINE HILL">PINE HILL</option>
+<option value="SICKLERVILLE">SICKLERVILLE</option>
+<option value="SICKLERVILLE (WINSLOW TOWNSHIP)">SICKLERVILLE (WINSLOW TOWNSHIP)</option>
+<option value="SOMERDALE">SOMERDALE</option>
+<option value="STRATFORD">STRATFORD</option>
+<option value="TOWNSHIP OF GLOUCESTER">TOWNSHIP OF GLOUCESTER</option>
+<option value="TOWNSHIP OF PENNSAUKEN">TOWNSHIP OF PENNSAUKEN</option>
+<option value="TOWNSHIP OF VOORHEES">TOWNSHIP OF VOORHEES</option>
+<option value="TOWNSHIP OF WINSLOW">TOWNSHIP OF WINSLOW</option>
+<option value="TOWNSHIP WINSLOW">TOWNSHIP WINSLOW</option>
+<option value="VOORHEES">VOORHEES</option>
+<option value="WATERFORD">WATERFORD</option>
+<option value="WATERFORD TWP.">WATERFORD TWP.</option>
+<option value="WATERFORD WORKS">WATERFORD WORKS</option>
+<option value="WEST BERLIN">WEST BERLIN</option>
+<option value="WINSLOW">WINSLOW</option>
+<option value="WINSLOW TOWNSHIP">WINSLOW TOWNSHIP</option>
+<option value="WOODLYNNE">WOODLYNNE</option>
+</select>
+</div>
+</div>
+<div>
+<br/>
+</div>
+<h2><span class="hidden-print" style="color:#595959; font-size: large;">Click the Details link next to the property to view additional information. (158 search results)</span></h2>
+</div>
+<div>
+<table class="table table-striped">
+<thead>
+<tr>
+<th aria-label="Property Link" class="hidden-print"></th>
+<th>Sheriff #</th>
+<th>Sales Date</th>
+<th>Plaintiff</th>
+<th>Defendant</th>
+<th>Address</th>
+</tr>
+</thead>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212072095" style="color: #255783;">View Details</a></td>
+<td>FR-25001985</td>
+<td>11/4/2026</td>
+<td>U.S. BANK TRUST NATIONAL ASSOCIATION, AS TRUSTEE FOR BMCF-EG SERIES II TRUST,</td>
+<td>PATRICIA M. MADDEN; MORTGAGE ELECTRONIC REGISTRATION SYSTEMS, 
+INC. ("MERS'), AS NOMINEE FOR NATIONPOINT A DIVISION OF NAT. CITY 
+BANK OF IN.; 17-ASSET MANAGEMENT HOLDINGS, LLC; STATE OF NEW JERSEY,</td>
+<td>128 OAK STREET WATERFORD NJ 08089</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212072168" style="color: #255783;">View Details</a></td>
+<td>FR-25002305</td>
+<td>11/4/2026</td>
+<td>U.S. BANK TRUST NATIONAL ASSOCIATION, NOT IN ITS INDIVIDUAL CAPACITY BUT 
+SOLELY AS OWNER TRUSTEE FOR LEGACY MORTGAGE ASSET TRUST 2021-GS2</td>
+<td>DENISE E. SALITA F/K/A DENISE E. MATTNER, ET AL.</td>
+<td>14 CHAPEL CIRCLE SICKLERVILLE NJ 08081</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212072270" style="color: #255783;">View Details</a></td>
+<td>FR-26000094</td>
+<td>11/4/2026</td>
+<td>FREEDOM MORTGAGE CORPORATION</td>
+<td>BRIAN J. SCHREINER, ET AL.</td>
+<td>17 WEST CLOVERDALE AVENUE PINE HILL NJ 08021</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212072344" style="color: #255783;">View Details</a></td>
+<td>FR-26000459</td>
+<td>11/4/2026</td>
+<td>NEW JERSEY HOUSING AND MORTGAGE FINANCE AGENCY</td>
+<td>BETTE G. ARTHUR, ET AL,</td>
+<td>256 BOYD STREET CAMDEN NJ 08105</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212072361" style="color: #255783;">View Details</a></td>
+<td>FR-26000572</td>
+<td>11/4/2026</td>
+<td>CITIZENS BANK, N.A.</td>
+<td>GLORIA FRAZIER, ET AL.</td>
+<td>1014 NORTH 20TH STREET CAMDEN NJ 08105</td>
+</tr>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</table>
+</div>
+</form>
+<div class="container-fluid footer">
+</div>
+</main>
+</div>
+
+
+</body>
+</html>

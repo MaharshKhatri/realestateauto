@@ -1,0 +1,243 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+<title>Sales Listing</title>
+
+
+
+
+
+</head>
+<body>
+<div>
+
+<main class="search-container">
+<table style="width:100%">
+<tr>
+<th>
+<h1>Hudson County, NJ - Foreclosure Sales Listing <span style="color:#595959; font-size:large;">(last updated: 10/26/2026 3:00:00 PM)</span></h1>
+<div>This site is provided as a public service by the Hudson County Sheriff's Office and is only intended to be general summary information to the public.  The Hudson County Sheriff's Office does not warrant the accuracy, completeness, or timeliness of this information.  For all listings click the search tab. To limit search fill in details and click search tab.</div>
+<span class="btn-danger" id="ErrorLabel" style="visibility:hidden"></span>
+</th>
+</tr>
+</table>
+<form action="/Sales/SalesSearch" class="form-horizontal" id="search_form" method="post" role="form"> <div class="hidden-print">
+<br/>
+<div class="form-group">
+<div class="col-sm-9 row">
+<div class="col-sm-2">
+<input class="btn btn-primary" type="submit" value="Search"/>
+</div>
+<div class="col-sm-2">
+<input class="btn btn-primary" onclick="doClearBtnClick()" type="button" value="Clear"/>
+</div>
+</div>
+<div class="row"> </div>
+<br/>
+<div class="col-sm-12" row="">
+<div class="col-sm-7">
+</div>
+<fieldset class="col-sm-5" row="">
+<legend>Status</legend>
+<div class="col-sm-6">
+<input checked="checked" id="open-radio" name="IsOpen" onclick="getSearchCriteria(true)" type="radio" value="true"/>
+<label for="open-radio">Open </label>
+</div>
+<div class="col-sm-6">
+<input id="sold-radio" name="IsOpen" onclick="getSearchCriteria(false)" type="radio" value="false"/>
+<label for="sold-radio">Sold\Cancelled </label>
+</div>
+</fieldset>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="SheriffNumber">Sheriff #:</label></div>
+<div class="col-sm-4"><input class="form-control" id="SheriffNumber" name="SheriffNumber" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap" for="PropertyStatusDate" style="font-weight: bold">Sales Date:</div>
+<div class="col-sm-5 row">
+<div class="col-sm-5">
+<label class="sr-only" for="PropertyStatusDate">Sales Date</label>
+<select class="form-control" id="PropertyStatusDate" name="PropertyStatusDate" onchange="dateChanged(this)"><option value=""></option>
+<option value="11/05/2026">11/05/2026</option>
+<option value="11/19/2026">11/19/2026</option>
+<option value="12/10/2026">12/10/2026</option>
+<option value="01/07/2027">01/07/2027</option>
+<option value="01/21/2027">01/21/2027</option>
+</select>
+</div>
+<div class="col-sm-1 control-label text-nowrap" style="font-weight: bold">or</div>
+<div class="col-sm-5">
+<label class="sr-only" for="MonthNumber">Sales Month</label>
+<select class="form-control" data-val="true" data-val-number="The field MonthNumber must be a number." data-val-required="The MonthNumber field is required." id="MonthNumber" name="MonthNumber" onchange="monthChanged()"><option selected="selected" value="0"></option>
+<option value="1">January</option>
+<option value="11">November</option>
+<option value="12">December</option>
+</select>
+</div>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="PlaintiffTitle">Plaintiff:</label></div>
+<div class="col-sm-4"><input class="form-control" id="PlaintiffTitle" name="PlaintiffTitle" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap"><label for="DefendantTitle">Defendant:</label></div>
+<div class="col-sm-4"><input class="form-control" id="DefendantTitle" name="DefendantTitle" type="text" value=""/></div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="Address">Address:</label></div>
+<div class="col-sm-4"><input class="form-control" id="Address" name="Address" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div><label class="col-sm-1 control-label text-nowrap" for="CityDesc">City:</label></div>
+<div class="col-sm-5">
+<select class="form-control" id="CityDesc" name="CityDesc"><option value=""></option>
+<option value="BAYONNE">BAYONNE</option>
+<option value="HOBOKEN">HOBOKEN</option>
+<option value="JERSEY CITY">JERSEY CITY</option>
+<option value="KEARNY">KEARNY</option>
+<option value="NORTH BERGEN">NORTH BERGEN</option>
+<option value="SECAUCUS">SECAUCUS</option>
+<option value="UNION CITY">UNION CITY</option>
+<option value="WEEHAWKEN">WEEHAWKEN</option>
+<option value="WEST NEW YORK">WEST NEW YORK</option>
+</select>
+</div>
+</div>
+<div>
+<br/>
+</div>
+<h2><span class="hidden-print" style="color:#595959; font-size: large;">Click the Details link next to the property to view additional information. (70 search results)</span></h2>
+</div>
+<div>
+<table class="table table-striped">
+<thead>
+<tr>
+<th aria-label="Property Link" class="hidden-print"></th>
+<th>Sheriff #</th>
+<th>Sales Date</th>
+<th>Address</th>
+<th>Plaintiff</th>
+<th>Defendant</th>
+</tr>
+</thead>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212058177" style="color: #255783;">View Details</a></td>
+<td>20050620</td>
+<td>11/5/2026</td>
+<td>75 HARMON STREET JERSEY CITY NJ 07304</td>
+<td>OCEANFIRST BANK</td>
+<td>DOROTHY GREEN; UNITED STATES OF AMERICA</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212058186" style="color: #255783;">View Details</a></td>
+<td>20052199</td>
+<td>11/5/2026</td>
+<td>504 AVE A BAYONNE NJ 07002</td>
+<td>WILMINGTON SAVINGS FUND SOCIETY, FSB, D/B/A CHRISTIANA TRUST, NOT INDIVIDUALLY BUT AS TRUSTEE FOR PRETIUM MORTGAGE ACQUISITION TRUST</td>
+<td>ODETTE MILLER, ET AL.</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212058276" style="color: #255783;">View Details</a></td>
+<td>20058170</td>
+<td>11/5/2026</td>
+<td>40 PARK STREET JERSEY CITY NJ 07304</td>
+<td>CITIGROUP MORTGAGE LOAN TRUST 2021-A</td>
+<td>DAWN M. ADAMS, ET AL.</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212058475" style="color: #255783;">View Details</a></td>
+<td>20062452</td>
+<td>11/5/2026</td>
+<td>251 WASHINGTON STREET JERSEY CITY NJ 07302</td>
+<td>U.S. BANK TRUST NATIONAL ASSOCIATION, AND ANY SUCCESSOR IN INTEREST, NOT IN ITS INDIVIDUAL CAPACITY, BUT SOLELY AS OWNER TRUSTEE FOR MILL CITY MORTGAGE LOAN TRUST 2019-GS2</td>
+<td>FELICIA PALMER; MRS. OR MR. PALMER; STATE OF NEW JERSEY</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212058562" style="color: #255783;">View Details</a></td>
+<td>20062849</td>
+<td>11/5/2026</td>
+<td>32 WADE STREET JERSEY CITY NJ 07305</td>
+<td>CARRINGTON MORTGAGE SERVICES, LLC</td>
+<td>SHARON LAW; MR. SHARON LAW, HUSBAND OF SHARON LAW; UNITED STATES OF AMERICA; AND NEW JERSEY HOUSING AND MORTGAGE FINANCE AGENCY</td>
+</tr>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</table>
+</div>
+</form>
+<div class="container-fluid footer">
+</div>
+</main>
+</div>
+
+
+</body>
+</html>

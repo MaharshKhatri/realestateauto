@@ -1,0 +1,426 @@
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<!-- Setting this as a variable as we use this in multiple areas, making it easier if it needs to be changed.-->
+<html lang="en">
+<head>
+<title>Camden - RealTaxLien - Results</title>
+<meta name="description" content="Realauction Online Taxliens" />
+<meta name="keywords" content="realauction online taxlien sites" />
+<meta name="robots" content="noindex,nofollow" />
+<meta name="info" content="ip-10-5-138-135.east-1.realauction.com">
+<link rel="stylesheet" type="text/css" href="/common/css/styles.css?v=1.003">
+<link rel="stylesheet" type="text/css" href="/common/css/userRefunds.css">
+<link rel="stylesheet" href="/common/css/popup.css" />
+<!--[if IE]>
+<link rel="stylesheet" type="text/css" href="/common/css/styles-IE.css" />
+<link rel="stylesheet" type="text/css" href="/common/css/userRefunds-IE.css">
+<![endif]-->
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/login.css" />
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/auctionResults.css" />
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/jquery-ui-1.8.2.custom.css" />
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/states/NJ/Camden/styles.css" />
+<!--[if IE]>
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/states/NJ/Camden/styles-IE.css" />
+<![endif]-->
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/contentBar.css" />
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/facebox.css" />
+<link rel="stylesheet" type="text/css" href="/common/css/jquery.qtip.css">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</head>
+<body >
+<div id="mainLayer" class="normal">
+<link rel="stylesheet" href="//prod25-taxlien.s3.amazonaws.com/css/pagination.css" />
+<div id="popMask">
+<div id="popSpinner">
+<img src="//prod25-taxlien.s3.amazonaws.com/images/loading-spinner.png" alt="Page loading" id="loading-spinner">
+</div>
+<div class="popup-box"></div>
+</div>
+<header>
+<div id="header" class="headerContent">
+<h1 id="logo" aria-label="Header" class="auction"><div style="visibility: hidden">Camden NJ - RealTaxLien</div></h1>
+<nav aria-label="Top Nav">
+<div id="topMenu" class="menuWrapper">
+<span>
+<a tabindex="0" href="index.cfm?folder=home">home</a> |
+<a tabindex="0" href="index.cfm?folder=showDocument&documentName=training">Training</a> |
+<a tabindex="0" href="index.cfm?folder=showDocument&documentName=FAQ">FAQ</a> |
+<a tabindex="0" href="index.cfm?folder=contactUs">contact us</a>
+</span>
+</div>
+</nav>
+</div>
+</header>
+<div id="mainLayoutContainer" class="colmask">
+<div class="clear-fix">
+<div style="float:left;width:100%" class="left-nav-bg">
+<div class="bglight">
+<main>
+<div class="colright">
+<h2 id="contentTitle" style="margin: 0;" class="bgLight">
+Results
+<div id="helpNav">
+<a href="javascript:void(0);" id="helpSlideDown">
+<img alt="" src="//prod25-taxlien.s3.amazonaws.com/images/general/help.png" />&nbsp;
+<span id="searchHelpText">Click for SEARCH CRITERIA</span>
+</a>
+</div>
+</h2>
+<div id="helpContent" class="searchContent">
+<div id="helpText">
+<div id="helpContentSubTitle">
+Enter your search criteria, then click "Search" to filter your results.
+</div>
+<br>
+<div id="searchForm" class="center search-form" style="display:none">
+<form id="searchFrm" name="searchFrm" method="post">
+<input type="hidden" id="loginID" name="loginID" value="00"/>
+<input type="hidden" id="folder" name="folder" value="auctionResults" />
+<input type="hidden" id="itemIDList" name="itemIDList" value="" />
+<input type="hidden" id="itemSetIDList" name="itemSetIDList" value="" />
+<input type="hidden" id="interest" name="interest" value="" />
+<input type="hidden" id="premium" name="premium" value="" />
+<input type="hidden" id="justFirstCertOnGroups" name="justFirstCertOnGroups" value="1" />
+<input type="hidden" id="doSearch" name="doSearch" value="true"/>
+<input type="hidden" id="pageNum" name="pageNum" value="1" />
+<input type="hidden" id="orderBy" name="orderBy" value="AdvNum" />
+<input type="hidden" id="orderDir" name="orderDir" value="asc" />
+<input type="hidden" id="task" name="task" value=""/>
+<input type="hidden" id="mode" name="mode" value="preview"/>
+</form>
+</div>
+Registration is required to access advanced features
+<span id="errors" class="msg" style="display:none;">
+<span>
+ERROR!<br/>
+Please correct the following errors and resubmit the form.<br/><br/>
+</span>
+<span id="errorList"></span>
+</span>
+</div>
+</div>
+<div id="fadeWhite"></div>
+<div id="searchCertWraper">
+<link rel="stylesheet" type="text/css" href="common/css/searchForm.css?v=1.001"/>
+<link rel="stylesheet" type="text/css" href="common/css/searchResult.css"/>
+<div id="resultContainer">
+<div id="generalRoundedHeader">
+</div>
+<div id="paginationToolbar" class="center bgdark">
+<span id="pagiPrev">
+&nbsp;
+</span>
+<label for='gotoPageNum'> Go to Page: </label><select style='margin-top: 3px; _margin-bottom: 2px; ' name='gotoPageNum' id='gotoPageNum' ONCHANGE='javascript:goToPage(this.options[this.selectedIndex].value)'><option value='1' selected>1</option><option value='2'>2</option><option value='3'>3</option><option value='4'>4</option><option value='5'>5</option><option value='6'>6</option><option value='7'>7</option><option value='8'>8</option><option value='9'>9</option><option value='10'>10</option><option value='11'>11</option><option value='12'>12</option><option value='13'>13</option><option value='14'>14</option><option value='15'>15</option><option value='16'>16</option><option value='17'>17</option><option value='18'>18</option><option value='19'>19</option><option value='20'>20</option><option value='21'>21</option><option value='22'>22</option><option value='23'>23</option><option value='24'>24</option><option value='25'>25</option><option value='26'>26</option><option value='27'>27</option><option value='28'>28</option><option value='29'>29</option><option value='30'>30</option><option value='31'>31</option><option value='32'>32</option><option value='33'>33</option><option value='34'>34</option><option value='35'>35</option><option value='36'>36</option><option value='37'>37</option><option value='38'>38</option><option value='39'>39</option><option value='40'>40</option><option value='41'>41</option><option value='42'>42</option><option value='43'>43</option><option value='44'>44</option><option value='45'>45</option><option value='46'>46</option><option value='47'>47</option></select> of 47 (Displaying 50 of 2,309 records)
+<span id="pagiNext">
+<a href="javascript:goToPage(2)"> Next <img alt="" src="//prod25-taxlien.s3.amazonaws.com/images/general/next.png"></a>
+</span>
+</div>
+<table id="searchResults" cellspacing="1" class="center">
+<tbody>
+<tr class="searchResultHeader bglight">
+<td colspan=5 align="center" style="font-weight:bold;color:white;">Parcel Information</td>
+<td colspan=2 align="center" style="font-weight:bold;color:white;">Results</td>
+</tr>
+<tr class="searchResultHeader bglight">
+<td class="sortingCell">
+<div>
+<span style="font-weight:bold;color:white;">ADV<br>NUM</span>
+<span>
+<a href="javascript:sortByColumn('ItemDID','asc');">
+<img alt="Sort Ascending" src="//prod25-taxlien.s3.amazonaws.com/images/general/arrow_up_white.gif" />
+</a>
+<br class='smallBR' />
+<a href="javascript:sortByColumn('ItemDID','desc');">
+<img alt="Sort Descending" src="//prod25-taxlien.s3.amazonaws.com/images/general/arrow_down_white.gif" />
+</a>
+</span>
+</div>
+</td>
+<td align="center" style="padding:3px; width: 120px;">Tax Year</td>
+<td align="center">Notices</td>
+<td class="sortingCell" >
+<div>
+<span style="font-weight:bold;color:white">Block - Lot - Qualifier</span>
+<span>
+<a href="javascript:sortByColumn('Parcel','asc');">
+<img alt="Sort Ascending" src="//prod25-taxlien.s3.amazonaws.com/images/general/arrow_up_white.gif" />
+</a>
+<br class='smallBR' />
+<a href="javascript:sortByColumn('Parcel','desc');">
+<img alt="Sort Descending" src="//prod25-taxlien.s3.amazonaws.com/images/general/arrow_down_white.gif" />
+</a>
+</span>
+</div>
+</td>
+<td class="sortingCell">
+<div>
+<span style="font-weight:bold;color:white;">
+Face Amount
+</span>
+<span>
+<a href="javascript:sortByColumn('FaceValue','asc');">
+<img alt="Sort Ascending" src="//prod25-taxlien.s3.amazonaws.com/images/general/arrow_up_white.gif" />
+</a>
+<br class='smallBR' />
+<a href="javascript:sortByColumn('FaceValue','desc');">
+<img alt="Sort Descending" src="//prod25-taxlien.s3.amazonaws.com/images/general/arrow_down_white.gif" />
+</a>
+</span>
+</div>
+</td>
+<td id="bidPercentageHeader" align="center" style="font-weight:bold;color:white;">Winning<br>Bid</td>
+<td id="bidPercentageHeader" style="font-weight:bold;color:white; " align="center">Sold<br>To</td>
+</tr>
+<tr class="highlightRow" id="cert5546281">
+<td class="advNum" >
+000001
+</td>
+<td style="text-align:center;padding:10px">
+2025
+</td>
+<td class="icons" style="padding: 0px 2px 0px 2px;width: 100px;">
+<div style='white-space: nowrap;margin: 0px auto 0px auto;position: relative;height:20px;width:80px;_left:3px'>
+<a href='http://maps.google.com/maps?q=315 BYRON ST Camden NJ ' target='_blank' style='position:absolute'><img alt='Map Location' src='//prod25-taxlien.s3.amazonaws.com/images/general/btn_map_White.gif' ></a>
+</div>
+</td>
+<td class="parcel">
+<a href="https://www.taxdatahub.com/60d088c3d3501df3b0e45ddb/Camden%20County" target="_blank">8 - 52</a>
+</td>
+<td class="faceValue">
+$946.91
+</td>
+<td class="winningBid" align="right">
+$2,100.00
+</td>
+<td class="previewStatus" style="padding-left: 0px;text-align:center;">
+40712
+</td>
+</tr>
+<tr class="evenRow" id="cert5546282">
+<td class="advNum" >
+000002
+</td>
+<td style="text-align:center;padding:10px">
+2025
+</td>
+<td class="icons" style="padding: 0px 2px 0px 2px;width: 100px;">
+<div style='white-space: nowrap;margin: 0px auto 0px auto;position: relative;height:20px;width:80px;_left:3px'>
+<a href='http://maps.google.com/maps?q=317 BYRON ST Camden NJ ' target='_blank' style='position:absolute'><img alt='Map Location' src='//prod25-taxlien.s3.amazonaws.com/images/general/btn_map_White.gif' ></a>
+</div>
+</td>
+<td class="parcel">
+<a href="https://www.taxdatahub.com/60d088c3d3501df3b0e45ddb/Camden%20County" target="_blank">8 - 53</a>
+</td>
+<td class="faceValue">
+$585.28
+</td>
+<td class="winningBid" align="right">
+$7,100.00
+</td>
+<td class="previewStatus" style="padding-left: 0px;text-align:center;">
+40887
+</td>
+</tr>
+<tr class="highlightRow" id="cert5546283">
+<td class="advNum" >
+000003
+</td>
+<td style="text-align:center;padding:10px">
+2025
+</td>
+<td class="icons" style="padding: 0px 2px 0px 2px;width: 100px;">
+<div style='white-space: nowrap;margin: 0px auto 0px auto;position: relative;height:20px;width:80px;_left:3px'>
+<a href='http://maps.google.com/maps?q=331 BYRON ST Camden NJ ' target='_blank' style='position:absolute'><img alt='Map Location' src='//prod25-taxlien.s3.amazonaws.com/images/general/btn_map_White.gif' ></a>
+</div>
+</td>
+<td class="parcel">
+<a href="https://www.taxdatahub.com/60d088c3d3501df3b0e45ddb/Camden%20County" target="_blank">8 - 64</a>
+</td>
+<td class="faceValue">
+$784.99
+</td>
+<td class="winningBid" align="right">
+$5,200.00
+</td>
+<td class="previewStatus" style="padding-left: 0px;text-align:center;">
+40712
+</td>
+</tr>
+
+</tbody>
+</table>
+<div class="reportManagerInfo"></div>
+<div class="propWrapper"><div id="propInfo"></div></div>
+</div>
+<div class="helpMsgTooltip"><div id="bid_Help"></div></div>
+</div>
+</div>
+</main>
+</div>
+</div>
+<nav aria-label="Left Nav">
+<div class="col2 leftmenu clear-fix hidecontent" style="margin-left:-100%;">
+<div id="loginLeftNav" class="menuBox1">
+<form role="form" name="loginFrm1" onSubmit="validatePassword(this,true);" action="index.cfm?folder=home" method="post">
+<table>
+<tbody>
+<tr>
+<td class="loginMessage" colspan="2">&nbsp;</td>
+</tr>
+<tr>
+<td class="loginLabelText" width="33%"><label for="loginName">Username:</label></td>
+<td class="inputText">
+<input id="loginName"
+name="loginName"
+type="text"
+style="width:130px;"
+value=""
+onChange="validateLoginName(this);" />
+</td>
+</tr>
+<tr>
+<td class="loginLabelText"><label for="password">Password: </label></td>
+<td class="inputText">
+<input id="password"
+type="password"
+name="password"
+style="width:130px;" />
+</td>
+</tr>
+<tr>
+<td class="labelText">&nbsp;</td>
+<td class="inputText">
+<a href="javascript:goToLink('index.cfm?folder=forgotPassword');" class="forgotPassword">Forgot&nbsp;your&nbsp;password?</a>
+</td>
+</tr>
+<tr><td colspan="2"></td></tr>
+<tr>
+<td width="60px">&nbsp;</td>
+<td align="left">
+<input type="hidden" name="vendorID" value="3410000">
+<input type="hidden" name="loginFormAction" value="index.cfm?folder=home" >
+<input type="hidden" name="loginAction" value="login">
+<input type="hidden" name="folder" value="login">
+<input type="button" value="&nbsp;&nbsp;Login&nbsp;&nbsp;" onClick="submitLoginActionForm('login',document.loginFrm1.password.value,document.loginFrm1.loginName.value);">
+</td>
+</tr>
+</tbody>
+</table>
+</form>
+</div>
+<nav role="navigation" aria-label="Left Nav">
+<div id="cat1" class="menuBox">
+<div class="menuCat">General</div>
+<ul>
+<li class="leftMenuLinks">
+<a href="index.cfm?folder=showDocument&documentName=biddingRules" tabindex="0" >Bidding Rules</a>
+</li>
+<li class="leftMenuLinks">
+<a href="index.cfm?folder=auctionResults&mode=preview" tabindex="0" >Results</a>
+</li>
+</ul>
+</div>
+<div id="cat2" class="menuBox">
+<div class="menuCat">Training</div>
+<ul>
+<li class="leftMenuLinks">
+<a href="index.cfm?folder=showDocument&documentName=training" tabindex="0" >Training General Information</a>
+</li>
+<li class="leftMenuLinks">
+<a href="index.cfm?folder=showDocument&documentName=taxCertificateProcess" tabindex="0" >Tax Certificate Process</a>
+</li>
+</ul>
+</div>
+<div id="cat3" class="menuBox">
+<div class="menuCat">External Links</div>
+<ul>
+<li class="leftMenuLinks">
+<a href="http://www.ci.camden.nj.us/revenue-collections/" tabindex="0" target="_blank">Tax Assessor</a>
+</li>
+<li class="leftMenuLinks">
+<a href="https://www.taxdatahub.com/60d088c3d3501df3b0e45ddb/Camden%20County" tabindex="0" target="_blank">Assessment Records Search</a>
+</li>
+<li class="leftMenuLinks">
+<a href="http://www.camdencounty.com/" tabindex="0" target="_blank">Camden County</a>
+</li>
+<li class="leftMenuLinks">
+<a href="https://www.realauction.com/clients/index" tabindex="0" target="_blank">Other Realauctions</a>
+</li>
+</ul>
+</div>
+</nav>
+<link rel="stylesheet" href="/common/css/jumpmenu.css" />
+<style>
+</style>
+<div id="jumpMenuBox" class="leftMenuFlyout jumpmenu-box hide">
+</div>
+<div class="menuBox jumpto">
+<div class="menuCat">Jump To</div>
+<ul>
+<li class="leftMenuLinks" data-state="AZ">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in Arizona">Arizona</a>
+</li>
+<li class="leftMenuLinks" data-state="CO">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in Colorado">Colorado</a>
+</li>
+<li class="leftMenuLinks" data-state="LA">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in Louisiana">Louisiana</a>
+</li>
+<li class="leftMenuLinks" data-state="MD">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in Maryland">Maryland</a>
+</li>
+<li class="leftMenuLinks" data-state="NE">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in Nebraska">Nebraska</a>
+</li>
+<li class="leftMenuLinks" data-state="NJ">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in New Jersey">New Jersey</a>
+</li>
+<li class="leftMenuLinks" data-state="NY">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in New York">New York</a>
+</li>
+</ul>
+</div>
+
+<br /><br />
+</div>
+</nav>
+</div>
+</div>
+<footer>
+<div id="footer" style="text-align:center;">
+<span style="float:left;padding-left:10px">&copy; Copyright 2026 Realauction.com</span>
+<a href="javascript:goToLink('index.cfm?folder=showDocument&documentName=userLicenseAgreement');" class="footerLink">Terms&nbsp;and&nbsp;Conditions</a>
+&nbsp;&nbsp;&nbsp;&nbsp;
+<a href="javascript:goToLink('index.cfm?folder=showDocument&documentName=privacyPolicy');" class="footerLink">Privacy&nbsp;Policy</a>
+</div>
+</footer>
+</div>
+<div id="ajaxCallAuxDiv" style="visibility:hidden; height:0;"></div>
+
+</body>
+</html>

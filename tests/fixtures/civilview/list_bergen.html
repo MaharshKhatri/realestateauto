@@ -1,0 +1,327 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+<title>Sales Listing</title>
+
+
+
+
+
+</head>
+<body>
+<div>
+
+<main class="search-container">
+<table style="width:100%">
+<tr>
+<th>
+<h1>Bergen County, NJ - Foreclosure Sales Listing <span style="color:#595959; font-size:large;">(last updated: 10/26/2026 3:00:00 PM)</span></h1>
+<div>This site is provided as a public service by the Bergen County Sheriff's Office and is only intended to be general summary information to the public. The Bergen County Sheriff's Office does not warrant the accuracy, completeness, or timeliness of this information. For all listings click the search tab. To limit search fill in details and click search tab.</div>
+<div>
+<font size="+1">EFFECTIVE IMMEDIATELY</font><br/>All payments for deeds must be made at the Sheriff’s Office located on the 2nd floor of 2 Bergen County Plaza. Payments for deeds shall not be accepted in the conference room where the sheriff’s sales are being held. Only cashier’s checks or certified checks shall be accepted as payment for deeds. Please note that the Sheriff’s Office staff will not be disbursing deeds on Friday. Furthermore, the staff is not available to disburse deeds after 4:00 P.M, Monday through Thursday.<p></p></div>
+<span class="btn-danger" id="ErrorLabel" style="visibility:hidden"></span>
+</th>
+</tr>
+</table>
+<form action="/Sales/SalesSearch" class="form-horizontal" id="search_form" method="post" role="form"> <div class="hidden-print">
+<br/>
+<div class="form-group">
+<div class="col-sm-9 row">
+<div class="col-sm-2">
+<input class="btn btn-primary" type="submit" value="Search"/>
+</div>
+<div class="col-sm-2">
+<input class="btn btn-primary" onclick="doClearBtnClick()" type="button" value="Clear"/>
+</div>
+</div>
+<div class="row"> </div>
+<br/>
+<div class="col-sm-12" row="">
+<div class="col-sm-7">
+</div>
+<fieldset class="col-sm-5" row="">
+<legend>Status</legend>
+<div class="col-sm-6">
+<input checked="checked" id="open-radio" name="IsOpen" onclick="getSearchCriteria(true)" type="radio" value="true"/>
+<label for="open-radio">Open </label>
+</div>
+<div class="col-sm-6">
+<input id="sold-radio" name="IsOpen" onclick="getSearchCriteria(false)" type="radio" value="false"/>
+<label for="sold-radio">Sold\Cancelled </label>
+</div>
+</fieldset>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="SheriffNumber">Sheriff #:</label></div>
+<div class="col-sm-4"><input class="form-control" id="SheriffNumber" name="SheriffNumber" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap" for="PropertyStatusDate" style="font-weight: bold">Sales Date:</div>
+<div class="col-sm-5 row">
+<div class="col-sm-5">
+<label class="sr-only" for="PropertyStatusDate">Sales Date</label>
+<select class="form-control" id="PropertyStatusDate" name="PropertyStatusDate" onchange="dateChanged(this)"><option value=""></option>
+<option value="11/06/2026">11/06/2026</option>
+<option value="11/13/2026">11/13/2026</option>
+<option value="11/20/2026">11/20/2026</option>
+<option value="12/04/2026">12/04/2026</option>
+<option value="12/11/2026">12/11/2026</option>
+<option value="12/18/2026">12/18/2026</option>
+<option value="01/08/2027">01/08/2027</option>
+</select>
+</div>
+<div class="col-sm-1 control-label text-nowrap" style="font-weight: bold">or</div>
+<div class="col-sm-5">
+<label class="sr-only" for="MonthNumber">Sales Month</label>
+<select class="form-control" data-val="true" data-val-number="The field MonthNumber must be a number." data-val-required="The MonthNumber field is required." id="MonthNumber" name="MonthNumber" onchange="monthChanged()"><option selected="selected" value="0"></option>
+<option value="1">January</option>
+<option value="11">November</option>
+<option value="12">December</option>
+</select>
+</div>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="PlaintiffTitle">Plaintiff:</label></div>
+<div class="col-sm-4"><input class="form-control" id="PlaintiffTitle" name="PlaintiffTitle" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap"><label for="DefendantTitle">Defendant:</label></div>
+<div class="col-sm-4"><input class="form-control" id="DefendantTitle" name="DefendantTitle" type="text" value=""/></div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="Address">Address:</label></div>
+<div class="col-sm-4"><input class="form-control" id="Address" name="Address" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div><label class="col-sm-1 control-label text-nowrap" for="CityDesc">City:</label></div>
+<div class="col-sm-5">
+<select class="form-control" id="CityDesc" name="CityDesc"><option value=""></option>
+<option value="BERGENFIELD">BERGENFIELD</option>
+<option value="BOGOTA">BOGOTA</option>
+<option value="CLIFFSIDE PARK">CLIFFSIDE PARK</option>
+<option value="CLOSTER">CLOSTER</option>
+<option value="CRESSKILL">CRESSKILL</option>
+<option value="DUMONT">DUMONT</option>
+<option value="EDGEWATER">EDGEWATER</option>
+<option value="ELMWOOD PARK">ELMWOOD PARK</option>
+<option value="EMERSON">EMERSON</option>
+<option value="ENGLEWOOD">ENGLEWOOD</option>
+<option value="ENGLEWOOD CLIFFS">ENGLEWOOD CLIFFS</option>
+<option value="FAIR LAWN">FAIR LAWN</option>
+<option value="FAIRVIEW">FAIRVIEW</option>
+<option value="FORT LEE">FORT LEE</option>
+<option value="GARFIELD">GARFIELD</option>
+<option value="HACKENSACK">HACKENSACK</option>
+<option value="HARRINGTON PARK">HARRINGTON PARK</option>
+<option value="HASBROUCK HEIGHTS">HASBROUCK HEIGHTS</option>
+<option value="HILLSDALE">HILLSDALE</option>
+<option value="LITTLE FERRY">LITTLE FERRY</option>
+<option value="LODI">LODI</option>
+<option value="LYNDHURST">LYNDHURST</option>
+<option value="MAHWAH">MAHWAH</option>
+<option value="MAYWOOD">MAYWOOD</option>
+<option value="MIDLAND PARK">MIDLAND PARK</option>
+<option value="MONTVALE">MONTVALE</option>
+<option value="MOONACHIE">MOONACHIE</option>
+<option value="NEW MILFORD">NEW MILFORD</option>
+<option value="NORTH ARLINGTON">NORTH ARLINGTON</option>
+<option value="NORWOOD">NORWOOD</option>
+<option value="OAKLAND">OAKLAND</option>
+<option value="PALISADES PARK">PALISADES PARK</option>
+<option value="PARAMUS">PARAMUS</option>
+<option value="RAMSEY">RAMSEY</option>
+<option value="RIDGEFIELD">RIDGEFIELD</option>
+<option value="RIDGEFIELD PARK">RIDGEFIELD PARK</option>
+<option value="RIDGEWOOD">RIDGEWOOD</option>
+<option value="RIVER EDGE">RIVER EDGE</option>
+<option value="RIVER VALE">RIVER VALE</option>
+<option value="ROCHELLE PARK">ROCHELLE PARK</option>
+<option value="RUTHERFORD">RUTHERFORD</option>
+<option value="SADDLE BROOK">SADDLE BROOK</option>
+<option value="SADDLE RIVER">SADDLE RIVER</option>
+<option value="TEANECK">TEANECK</option>
+<option value="TOWNSHIP OF WASHINGTON">TOWNSHIP OF WASHINGTON</option>
+<option value="UPPER SADDLE RIVER">UPPER SADDLE RIVER</option>
+<option value="WALDWICK">WALDWICK</option>
+<option value="WESTWOOD">WESTWOOD</option>
+<option value="WOOD RIDGE">WOOD RIDGE</option>
+<option value="WOODCLIFF LAKE">WOODCLIFF LAKE</option>
+<option value="WYCKOFF">WYCKOFF</option>
+</select>
+</div>
+</div>
+<div>
+<br/>
+</div>
+<h2><span class="hidden-print" style="color:#595959; font-size: large;">Click the Details link next to the property to view additional information. (108 search results)</span></h2>
+</div>
+<div>
+<table class="table table-striped">
+<thead>
+<tr>
+<th aria-label="Property Link" class="hidden-print"></th>
+<th>Sheriff #</th>
+<th>Sales Date</th>
+<th>Plaintiff</th>
+<th>Defendant</th>
+<th>Address</th>
+</tr>
+</thead>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212057865" style="color: #255783;">View Details</a></td>
+<td>F-23001945</td>
+<td>11/6/2026</td>
+<td>METROPOLITAN LIFE INSURANCE COMPANY</td>
+<td>MARIA ZAPANTIS-DROSOS; EVANGELOS DROSOS, HUSBAND AND WIFE, ET AL.</td>
+<td>3723 VICTORIA ROAD AKA 37-23 VICTORIA ROAD FAIR LAWN NJ 07410</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212058543" style="color: #255783;">View Details</a></td>
+<td>F-25002574</td>
+<td>11/6/2026</td>
+<td>U.S. BANK TRUST NATIONAL ASSOCIATION, NOT IN ITS INDIVIDUAL CAPACITY BUT SOLELY AS OWNER TRUSTEE FOR RCAF ACQUISITION TRUST</td>
+<td>CHERYL DESOUZA; STATE OF NEW JERSEY; ARTHUR E. KOOK, DMD; ET AL</td>
+<td>475 RAMAPO VALLEY ROAD OAKLAND NJ 07436</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212058564" style="color: #255783;">View Details</a></td>
+<td>F-25002607</td>
+<td>11/6/2026</td>
+<td>U.S. BANK TRUST COMPANY, NATIONAL ASSOCIATION, AS TRUSTEE FOR VELOCITY COMMERCIAL CAPITAL LOAN TRUST 2024-4</td>
+<td>PREMIER REAL ESTATE GROUP, LLC, A NEW YORK LIMITED LIABILITY COMPANY, ET AL.</td>
+<td>200 LAIRD AVENUE UNIT 101 CLIFFSIDE PARK NJ 07010</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212058672" style="color: #255783;">View Details</a></td>
+<td>F-25003097</td>
+<td>11/6/2026</td>
+<td>WILMINGTON SAVINGS FUND SOCIETY, FSB, NOT IN ITS INDIVIDUAL CAPACITY BUT SOLELY AS TRUSTEE FOR ISV TRUST 1A</td>
+<td>LOIS JINA KUSUMAN; SHABU KUSUMAN, ET AL.</td>
+<td>4 DONNER COURT MAHWAH NJ 07430</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212058702" style="color: #255783;">View Details</a></td>
+<td>F-26000051</td>
+<td>11/6/2026</td>
+<td>PHH MORTGAGE CORPORATION</td>
+<td>JAZMINE DRAKEFORD; MR. DRAKEFORD, SPOUSE OF JAZMINE DRAKEFORD</td>
+<td>147 PINE AVENUE NEW MILFORD NJ 07646</td>
+</tr>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</table>
+</div>
+</form>
+<div class="container-fluid footer">
+</div>
+</main>
+</div>
+
+
+</body>
+</html>

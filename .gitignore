@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+
+# Operator data: names, addresses, phone numbers. Never commit.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+data/cache/
+data/exports/
+data/backups/
+config/settings.local.yaml
+
+# Run logs (swarm_intelligence.md is aggregate-only and IS committed)
+logs/*.log
+
+data/imports/

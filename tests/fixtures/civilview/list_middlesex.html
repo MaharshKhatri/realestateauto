@@ -1,0 +1,460 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+<title>Sales Listing</title>
+
+
+
+
+
+</head>
+<body>
+<div>
+
+<main class="search-container">
+<table style="width:100%">
+<tr>
+<th>
+<h1>Middlesex County, NJ - Foreclosure Sales Listing <span style="color:#595959; font-size:large;">(last updated: 10/26/2026 3:13:00 PM)</span></h1>
+<div>
+<p>
+This site is provided as a public service by the Middlesex County Sheriff's Office and is only intended to be general summary information to the public. 
+The Middlesex County Sheriff's Office does not warrant the accuracy, completeness, or timeliness of this information.
+</p>
+<p>
+<font style="color: black; font-size: 12pt;">
+Sale location, frequency, and other details can be found at:<br/>
+<a href="https://www.middlesexcountynj.gov/government/departments/department-of-public-safety-and-health/office-of-the-county-sheriff/foreclosures">https://www.middlesexcountynj.gov/government/departments/department-of-public-safety-and-health/office-of-the-county-sheriff/foreclosures</a>
+</font>
+</p></div>
+<span class="btn-danger" id="ErrorLabel" style="visibility:hidden"></span>
+</th>
+</tr>
+</table>
+<form action="/Sales/SalesSearch" class="form-horizontal" id="search_form" method="post" role="form"> <div class="hidden-print">
+<br/>
+<div class="form-group">
+<div class="col-sm-9 row">
+<div class="col-sm-2">
+<input class="btn btn-primary" type="submit" value="Search"/>
+</div>
+<div class="col-sm-2">
+<input class="btn btn-primary" onclick="doClearBtnClick()" type="button" value="Clear"/>
+</div>
+</div>
+<div class="row"> </div>
+<br/>
+<div class="col-sm-12" row="">
+<div class="col-sm-7">
+</div>
+<fieldset class="col-sm-5" row="">
+<legend>Status</legend>
+<div class="col-sm-6">
+<input checked="checked" id="open-radio" name="IsOpen" onclick="getSearchCriteria(true)" type="radio" value="true"/>
+<label for="open-radio">Open </label>
+</div>
+<div class="col-sm-6">
+<input id="sold-radio" name="IsOpen" onclick="getSearchCriteria(false)" type="radio" value="false"/>
+<label for="sold-radio">Sold\Cancelled </label>
+</div>
+</fieldset>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="SheriffNumber">Sheriff #:</label></div>
+<div class="col-sm-4"><input class="form-control" id="SheriffNumber" name="SheriffNumber" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap" for="PropertyStatusDate" style="font-weight: bold">Sales Date:</div>
+<div class="col-sm-5 row">
+<div class="col-sm-5">
+<label class="sr-only" for="PropertyStatusDate">Sales Date</label>
+<select class="form-control" id="PropertyStatusDate" name="PropertyStatusDate" onchange="dateChanged(this)"><option value=""></option>
+<option value="09/11/2024">09/11/2024</option>
+<option value="11/20/2024">11/20/2024</option>
+<option value="12/04/2024">12/04/2024</option>
+<option value="12/17/2024">12/17/2024</option>
+<option value="12/18/2024">12/18/2024</option>
+<option value="01/08/2025">01/08/2025</option>
+<option value="01/22/2025">01/22/2025</option>
+<option value="02/05/2025">02/05/2025</option>
+<option value="02/10/2025">02/10/2025</option>
+<option value="02/19/2025">02/19/2025</option>
+<option value="03/19/2025">03/19/2025</option>
+<option value="03/28/2025">03/28/2025</option>
+<option value="04/30/2025">04/30/2025</option>
+<option value="05/14/2025">05/14/2025</option>
+<option value="05/16/2025">05/16/2025</option>
+<option value="06/11/2025">06/11/2025</option>
+<option value="06/25/2025">06/25/2025</option>
+<option value="07/09/2025">07/09/2025</option>
+<option value="07/15/2025">07/15/2025</option>
+<option value="07/23/2025">07/23/2025</option>
+<option value="08/20/2025">08/20/2025</option>
+<option value="08/22/2025">08/22/2025</option>
+<option value="09/03/2025">09/03/2025</option>
+<option value="09/17/2025">09/17/2025</option>
+<option value="10/01/2025">10/01/2025</option>
+<option value="10/15/2025">10/15/2025</option>
+<option value="10/20/2025">10/20/2025</option>
+<option value="11/04/2026">11/04/2026</option>
+<option value="12/02/2026">12/02/2026</option>
+<option value="01/06/2027">01/06/2027</option>
+<option value="02/03/2027">02/03/2027</option>
+</select>
+</div>
+<div class="col-sm-1 control-label text-nowrap" style="font-weight: bold">or</div>
+<div class="col-sm-5">
+<label class="sr-only" for="MonthNumber">Sales Month</label>
+<select class="form-control" data-val="true" data-val-number="The field MonthNumber must be a number." data-val-required="The MonthNumber field is required." id="MonthNumber" name="MonthNumber" onchange="monthChanged()"><option selected="selected" value="0"></option>
+<option value="1">January</option>
+<option value="2">February</option>
+<option value="3">March</option>
+<option value="4">April</option>
+<option value="5">May</option>
+<option value="6">June</option>
+<option value="7">July</option>
+<option value="8">August</option>
+<option value="9">September</option>
+<option value="10">October</option>
+<option value="11">November</option>
+<option value="12">December</option>
+</select>
+</div>
+</div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="PlaintiffTitle">Plaintiff:</label></div>
+<div class="col-sm-4"><input class="form-control" id="PlaintiffTitle" name="PlaintiffTitle" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div class="col-sm-1 control-label text-nowrap"><label for="DefendantTitle">Defendant:</label></div>
+<div class="col-sm-4"><input class="form-control" id="DefendantTitle" name="DefendantTitle" type="text" value=""/></div>
+</div>
+<div class="form-group">
+<div class="col-sm-1 control-label text-nowrap"><label for="Address">Address:</label></div>
+<div class="col-sm-4"><input class="form-control" id="Address" name="Address" type="text" value=""/></div>
+<div class="col-sm-1"></div>
+<div><label class="col-sm-1 control-label text-nowrap" for="CityDesc">City:</label></div>
+<div class="col-sm-5">
+<select class="form-control" id="CityDesc" name="CityDesc"><option value=""></option>
+<option value="AVENEL">AVENEL</option>
+<option value="CARTERET">CARTERET</option>
+<option value="CLIFFWOOD BEACH">CLIFFWOOD BEACH</option>
+<option value="COLONIA">COLONIA</option>
+<option value="DUNELLEN">DUNELLEN</option>
+<option value="EAST BRUNSWICK">EAST BRUNSWICK</option>
+<option value="EDISON">EDISON</option>
+<option value="EDISON TOWNSHIP">EDISON TOWNSHIP</option>
+<option value="FORDS">FORDS</option>
+<option value="HELMETTA">HELMETTA</option>
+<option value="ISELIN">ISELIN</option>
+<option value="JAMESBURG">JAMESBURG</option>
+<option value="KENDALL PARK">KENDALL PARK</option>
+<option value="KEYPORT">KEYPORT</option>
+<option value="MATAWAN">MATAWAN</option>
+<option value="METUCHEN">METUCHEN</option>
+<option value="MIDDLESEX">MIDDLESEX</option>
+<option value="MILLTOWN">MILLTOWN</option>
+<option value="MONMOUTH JUNCTION">MONMOUTH JUNCTION</option>
+<option value="MONROE">MONROE</option>
+<option value="NEW BRUNSWICK">NEW BRUNSWICK</option>
+<option value="NORTH BRUNSWICK">NORTH BRUNSWICK</option>
+<option value="OLD BRIDGE">OLD BRIDGE</option>
+<option value="PARLIN">PARLIN</option>
+<option value="PERTH AMBOY">PERTH AMBOY</option>
+<option value="PISCATAWAY">PISCATAWAY</option>
+<option value="PLAINSBORO">PLAINSBORO</option>
+<option value="PORT READING">PORT READING</option>
+<option value="PRINCETON">PRINCETON</option>
+<option value="SAYREVILLE">SAYREVILLE</option>
+<option value="SEWAREN">SEWAREN</option>
+<option value="SOUTH AMBOY">SOUTH AMBOY</option>
+<option value="SOUTH BRUNSWICK">SOUTH BRUNSWICK</option>
+<option value="SOUTH BRUNWSICK">SOUTH BRUNWSICK</option>
+<option value="SOUTH PLAINFIELD">SOUTH PLAINFIELD</option>
+<option value="SOUTH RIVER">SOUTH RIVER</option>
+<option value="SPOTSWOOD">SPOTSWOOD</option>
+<option value="WOODBRIDGE">WOODBRIDGE</option>
+<option value="WOODBRIDGE TOWNSHIP">WOODBRIDGE TOWNSHIP</option>
+</select>
+</div>
+</div>
+<div>
+<br/>
+</div>
+<h2><span class="hidden-print" style="color:#595959; font-size: large;">Click the Details link next to the property to view additional information. (206 search results)</span></h2>
+</div>
+<div>
+<table class="table table-striped">
+<thead>
+<tr>
+<th aria-label="Property Link" class="hidden-print"></th>
+<th>Sheriff #</th>
+<th>Status</th>
+<th>Sales Date</th>
+<th>Plaintiff</th>
+<th>Defendant</th>
+<th>Address</th>
+</tr>
+</thead>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212072983" style="color: #255783;">View Details</a></td>
+<td>F-24000020</td>
+<td>Purchased - 3rd Party</td>
+<td>2/5/2025</td>
+<td>U.S. BANK TRUST NATIONAL ASSOCIATION, NOT IN ITS INDIVIDUAL CAPACITY BUT SOLELY AS OWNER TRUSTEE FOR RCAF ACQUISITON TRUST</td>
+<td>JOSEPH JELENCSICS, JR. ET ALS.</td>
+<td>682 LEONE STREET WOODBRIDGE NJ 07095</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212073068" style="color: #255783;">View Details</a></td>
+<td>F-24000250</td>
+<td>Bankruptcy Dismissed</td>
+<td>3/19/2025</td>
+<td>SOUTH CAROLINA FEDERAL CREDIT UNION</td>
+<td>JESSIE LAQUAN RASHEN SANDERS, ET ALS.</td>
+<td>93 MEREDITH ROAD COLONIA NJ 07067</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212073074" style="color: #255783;">View Details</a></td>
+<td>F-24000370</td>
+<td>Purchased - 3rd Party</td>
+<td>2/5/2025</td>
+<td>PENNYMAC LOAN SERVICES, LLC</td>
+<td>CAROLINE A. LOPEZ DE PEREZ, ET ALS.</td>
+<td>276 WARD STREET NEW BRUNSWICK NJ 08901</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212073076" style="color: #255783;">View Details</a></td>
+<td>F-24000392</td>
+<td>Purchased - 3rd Party</td>
+<td>8/22/2025</td>
+<td>DEUTSCHE BANK NATIONAL TRUST COMPANY, AS TRUSTEE FOR SECURITIZED ASSET BACKED RECEIVABLES LLC TRUST 2007-BR5, MORTGAGE PASS-THROUGH CERTIFICATES, SERIES 2007-BR5</td>
+<td>EUTON M. LAING, ET ALS.</td>
+<td>15 ANGELA COURT PISCATAWAY NJ 08854</td>
+</tr>
+<tr>
+<td class="hidden-print"><a href="/Sales/SaleDetails?PropertyId=2212073077" style="color: #255783;">View Details</a></td>
+<td>F-24000393</td>
+<td>Purchased - 3rd Party</td>
+<td>2/5/2025</td>
+<td>NEWREZ LLC DBA SHELLPOINT MORTGAGE SERVICING</td>
+<td>JAMES CRUZ, ET ALS.</td>
+<td>33 ELM TERRACE PARLIN NJ 08859</td>
+</tr>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</table>
+</div>
+</form>
+<div class="container-fluid footer">
+</div>
+</main>
+</div>
+
+
+</body>
+</html>

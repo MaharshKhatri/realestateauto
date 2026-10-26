@@ -1,0 +1,346 @@
+"""ORM models — the single source of truth for the database schema.
+
+Natural keys (used for idempotent upserts):
+  properties.parcel_id                 COUNTY-MUNCODE-BLOCK-LOT[-QUAL]   e.g. ESSEX-0702-335-78
+  distress_signals (signal_type, source, source_ref)
+  cash_buyers.entity_key               normalized buyer name
+  listings (source, source_ref)
+  deed_transfers (parcel_id, deed_date, grantee)
+"""
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+from enum import StrEnum
+from typing import Any
+
+from sqlalchemy import (JSON, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String,
+                        Text, UniqueConstraint)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+class Base(DeclarativeBase):
+    type_annotation_map = {dict[str, Any]: JSON, list[Any]: JSON}
+
+
+class SignalType(StrEnum):
+    SHERIFF_SALE = "SHERIFF_SALE"
+    LIS_PENDENS = "LIS_PENDENS"
+    TAX_DELINQUENT = "TAX_DELINQUENT"
+    TAX_SALE_CERTIFICATE = "TAX_SALE_CERTIFICATE"
+    CODE_VIOLATION = "CODE_VIOLATION"
+    PROBATE = "PROBATE"
+    ESTATE_OWNER = "ESTATE_OWNER"
+    LONG_TERM_ABSENTEE = "LONG_TERM_ABSENTEE"
+    OUT_OF_STATE_OWNER = "OUT_OF_STATE_OWNER"
+    VACANT = "VACANT"
+    FAILED_LISTING = "FAILED_LISTING"
+    STALE_LISTING = "STALE_LISTING"
+
+
+class LeadStage(StrEnum):
+    NEW = "NEW"
+    SKIP_TRACE = "SKIP_TRACE"
+    CONTACT_ATTEMPTED = "CONTACT_ATTEMPTED"
+    CONTACTED = "CONTACTED"
+    INTERESTED = "INTERESTED"
+    APPOINTMENT = "APPOINTMENT"
+    OFFER_MADE = "OFFER_MADE"
+    NEGOTIATING = "NEGOTIATING"
+    UNDER_CONTRACT = "UNDER_CONTRACT"
+    ASSIGNED = "ASSIGNED"
+    CLOSED = "CLOSED"
+    DEAD = "DEAD"
+    DO_NOT_CONTACT = "DO_NOT_CONTACT"
+
+
+class RehabTier(StrEnum):
+    LIGHT = "LIGHT"
+    MEDIUM = "MEDIUM"
+    HEAVY = "HEAVY"
+
+
+class Property(Base):
+    __tablename__ = "properties"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    parcel_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    pams_pin: Mapped[str | None] = mapped_column(String(40), index=True)
+    county: Mapped[str] = mapped_column(String(32), index=True)
+    municipality: Mapped[str | None] = mapped_column(String(64), index=True)
+    mun_code: Mapped[str | None] = mapped_column(String(4), index=True)
+    block: Mapped[str | None] = mapped_column(String(16))
+    lot: Mapped[str | None] = mapped_column(String(16))
+    qual: Mapped[str | None] = mapped_column(String(16))
+    street_address: Mapped[str | None] = mapped_column(String(160), index=True)
+    city: Mapped[str | None] = mapped_column(String(64))
+    zip_code: Mapped[str | None] = mapped_column(String(10), index=True)
+    property_class: Mapped[str | None] = mapped_column(String(4), index=True)
+    building_desc: Mapped[str | None] = mapped_column(String(40))
+    dwellings: Mapped[int | None] = mapped_column(Integer)
+
+    owner_name: Mapped[str | None] = mapped_column(String(200))
+    owner_name_source: Mapped[str | None] = mapped_column(String(40))
+    owner_mailing_address: Mapped[str | None] = mapped_column(String(200))
+    owner_city_state_zip: Mapped[str | None] = mapped_column(String(120))
+    owner_state: Mapped[str | None] = mapped_column(String(2))
+    is_absentee: Mapped[bool | None] = mapped_column(Boolean, index=True)
+    is_out_of_state: Mapped[bool | None] = mapped_column(Boolean, index=True)
+    is_corporate_owned: Mapped[bool | None] = mapped_column(Boolean)
+    is_estate_owned: Mapped[bool | None] = mapped_column(Boolean)
+
+    year_built: Mapped[int | None] = mapped_column(Integer)
+    sqft: Mapped[int | None] = mapped_column(Integer)
+    sqft_source: Mapped[str | None] = mapped_column(String(40))
+    lot_size: Mapped[float | None] = mapped_column(Float)          # acres
+    beds: Mapped[float | None] = mapped_column(Float)
+    baths: Mapped[float | None] = mapped_column(Float)
+    assessed_land: Mapped[int | None] = mapped_column(Integer)
+    assessed_improvement: Mapped[int | None] = mapped_column(Integer)
+    assessed_total: Mapped[int | None] = mapped_column(Integer)
+    annual_taxes: Mapped[float | None] = mapped_column(Float)
+    last_sale_date: Mapped[date | None] = mapped_column(Date)
+    last_sale_price: Mapped[int | None] = mapped_column(Integer)
+    estimated_value: Mapped[float | None] = mapped_column(Float)   # latest as-is/market estimate
+    estimated_equity: Mapped[float | None] = mapped_column(Float)
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+
+    data_sources: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    raw_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    signals: Mapped[list[DistressSignal]] = relationship(back_populates="property", cascade="all, delete-orphan")
+    valuations: Mapped[list[Valuation]] = relationship(back_populates="property", cascade="all, delete-orphan")
+    lead: Mapped[Lead | None] = relationship(back_populates="property", uselist=False, cascade="all, delete-orphan")
+    listings: Mapped[list[Listing]] = relationship(back_populates="property")
+
+    __table_args__ = (Index("ix_properties_muni_block_lot", "mun_code", "block", "lot"),)
+
+    @property
+    def active_signals(self) -> list[DistressSignal]:
+        return [s for s in self.signals if s.active]
+
+    @property
+    def current_valuation(self) -> Valuation | None:
+        current = [v for v in self.valuations if v.is_current]
+        return max(current, key=lambda v: v.calculated_at) if current else None
+
+    @property
+    def display_address(self) -> str:
+        parts = [self.street_address or "", self.city or self.municipality or "", "NJ", self.zip_code or ""]
+        return " ".join(p for p in parts if p).strip()
+
+
+class DistressSignal(Base):
+    __tablename__ = "distress_signals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    signal_type: Mapped[str] = mapped_column(String(32), index=True)
+    severity_weight: Mapped[float] = mapped_column(Float, default=0.5)  # 0..1
+    filing_date: Mapped[date | None] = mapped_column(Date)
+    scheduled_auction_date: Mapped[date | None] = mapped_column(Date, index=True)
+    amount_owed: Mapped[float | None] = mapped_column(Float)
+    plaintiff_or_lienholder: Mapped[str | None] = mapped_column(String(300))
+    defendant: Mapped[str | None] = mapped_column(String(300))
+    case_number: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str | None] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(48))
+    source_ref: Mapped[str] = mapped_column(String(128))
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    raw_metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    property: Mapped[Property] = relationship(back_populates="signals")
+
+    __table_args__ = (UniqueConstraint("signal_type", "source", "source_ref", name="uq_signal_natural_key"),)
+
+
+class Valuation(Base):
+    __tablename__ = "valuations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    arv_estimate: Mapped[float | None] = mapped_column(Float)
+    as_is_value: Mapped[float | None] = mapped_column(Float)
+    est_repair_cost: Mapped[float | None] = mapped_column(Float)
+    rehab_tier: Mapped[str | None] = mapped_column(String(8))
+    target_assignment_fee: Mapped[float | None] = mapped_column(Float)
+    mao_conservative: Mapped[float | None] = mapped_column(Float)
+    mao_aggressive: Mapped[float | None] = mapped_column(Float)
+    anchor_offer: Mapped[float | None] = mapped_column(Float)
+    confidence_score: Mapped[float | None] = mapped_column(Float)       # 0..100
+    comps_json: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    comp_count: Mapped[int] = mapped_column(Integer, default=0)
+    comp_source: Mapped[str | None] = mapped_column(String(40))
+    sqft_used: Mapped[int | None] = mapped_column(Integer)
+    effective_tax_rate: Mapped[float | None] = mapped_column(Float)
+    tax_drag_adjustment: Mapped[float | None] = mapped_column(Float)
+    debt_estimate: Mapped[float | None] = mapped_column(Float)          # upset amount / liens known
+    equity_estimate: Mapped[float | None] = mapped_column(Float)
+    deal_spread: Mapped[float | None] = mapped_column(Float)            # MAO - debt (room to make a deal)
+    verdict: Mapped[str | None] = mapped_column(String(24))
+    assumptions_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    property: Mapped[Property] = relationship(back_populates="valuations")
+
+
+class Lead(Base):
+    __tablename__ = "leads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), unique=True)
+    motivation_score: Mapped[float] = mapped_column(Float, default=0)
+    deal_viability_score: Mapped[float] = mapped_column(Float, default=0)
+    priority_rank_score: Mapped[float] = mapped_column(Float, default=0, index=True)
+    score_breakdown_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    scoring_version: Mapped[int | None] = mapped_column(Integer)
+    status_stage: Mapped[str] = mapped_column(String(24), default=LeadStage.NEW, index=True)
+    primary_source: Mapped[str | None] = mapped_column(String(48))
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    next_followup_at: Mapped[datetime | None] = mapped_column(DateTime)
+    ai_strategy_brief: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    outcome: Mapped[str | None] = mapped_column(String(48))   # feeds self-improvement (closed/dead reason)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    property: Mapped[Property] = relationship(back_populates="lead")
+
+
+class CashBuyer(Base):
+    __tablename__ = "cash_buyers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_key: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    entity_name: Mapped[str] = mapped_column(String(200))
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    phone: Mapped[str | None] = mapped_column(String(32))
+    email: Mapped[str | None] = mapped_column(String(120))
+    mailing_address: Mapped[str | None] = mapped_column(String(250))
+    mailing_key: Mapped[str | None] = mapped_column(String(250), index=True)  # normalized street|unit|city
+    buyer_type: Mapped[str | None] = mapped_column(String(24))      # flipper / landlord / builder / unknown
+    target_counties: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    target_municipalities: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    min_arv: Mapped[float | None] = mapped_column(Float)
+    max_arv: Mapped[float | None] = mapped_column(Float)
+    max_rehab: Mapped[str | None] = mapped_column(String(8))         # LIGHT / MEDIUM / HEAVY
+    cash_purchases_count: Mapped[int] = mapped_column(Integer, default=0)
+    flips_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_volume: Mapped[float] = mapped_column(Float, default=0)
+    avg_purchase_price: Mapped[float | None] = mapped_column(Float)
+    first_purchase_date: Mapped[date | None] = mapped_column(Date)
+    last_purchase_date: Mapped[date | None] = mapped_column(Date)
+    recent_purchases_json: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    reliability_score: Mapped[float] = mapped_column(Float, default=0)
+    source: Mapped[str | None] = mapped_column(String(48))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class DeedTransfer(Base):
+    """A recorded sale (public record). Feeds cash-buyer detection and comps."""
+    __tablename__ = "deed_transfers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    parcel_id: Mapped[str] = mapped_column(String(64), index=True)
+    county: Mapped[str | None] = mapped_column(String(32))
+    municipality: Mapped[str | None] = mapped_column(String(64))
+    property_location: Mapped[str | None] = mapped_column(String(160))
+    grantor: Mapped[str | None] = mapped_column(String(250))
+    grantee: Mapped[str | None] = mapped_column(String(250))
+    grantee_address: Mapped[str | None] = mapped_column(String(250))
+    sale_price: Mapped[int | None] = mapped_column(Integer)
+    deed_date: Mapped[date | None] = mapped_column(Date, index=True)
+    nu_code: Mapped[str | None] = mapped_column(String(8))
+    property_class: Mapped[str | None] = mapped_column(String(4))
+    source: Mapped[str] = mapped_column(String(48))
+    raw_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (UniqueConstraint("parcel_id", "deed_date", "grantee", name="uq_deed_natural_key"),)
+
+
+class Listing(Base):
+    """MLS-style listing data (active, sold, off-market) from listing providers."""
+    __tablename__ = "listings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    property_id: Mapped[int | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"), index=True)
+    source: Mapped[str] = mapped_column(String(32))
+    source_ref: Mapped[str] = mapped_column(String(200))
+    url: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str | None] = mapped_column(String(24), index=True)
+    address: Mapped[str | None] = mapped_column(String(200))
+    city: Mapped[str | None] = mapped_column(String(64))
+    zip_code: Mapped[str | None] = mapped_column(String(10), index=True)
+    property_type: Mapped[str | None] = mapped_column(String(40))
+    beds: Mapped[float | None] = mapped_column(Float)
+    baths: Mapped[float | None] = mapped_column(Float)
+    sqft: Mapped[int | None] = mapped_column(Integer)
+    year_built: Mapped[int | None] = mapped_column(Integer)
+    list_price: Mapped[float | None] = mapped_column(Float)
+    sold_price: Mapped[float | None] = mapped_column(Float)
+    list_date: Mapped[date | None] = mapped_column(Date)
+    sold_date: Mapped[date | None] = mapped_column(Date)
+    days_on_market: Mapped[int | None] = mapped_column(Integer)
+    price_reduced: Mapped[bool | None] = mapped_column(Boolean)
+    distress_keywords: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    description: Mapped[str | None] = mapped_column(Text)
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    raw_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    property: Mapped[Property | None] = relationship(back_populates="listings")
+
+    __table_args__ = (UniqueConstraint("source", "source_ref", name="uq_listing_natural_key"),)
+
+
+class AgentRun(Base):
+    __tablename__ = "agent_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agent_name: Mapped[str] = mapped_column(String(48), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="running")   # running/success/partial/failed
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    records_processed: Mapped[int] = mapped_column(Integer, default=0)
+    new_leads_found: Mapped[int] = mapped_column(Integer, default=0)
+    records_updated: Mapped[int] = mapped_column(Integer, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    errors: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    self_improvement_notes: Mapped[str | None] = mapped_column(Text)
+
+
+class ScoringWeights(Base):
+    """Versioned scoring weights. The self-improvement agent writes new versions."""
+    __tablename__ = "scoring_weights"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, unique=True)
+    weights_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class SwarmState(Base):
+    """Small key/value store for swarm decisions that persist between runs
+    (e.g. auto-expansion municipalities chosen by the self-improvement agent)."""
+    __tablename__ = "swarm_state"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

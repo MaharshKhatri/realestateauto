@@ -1,0 +1,119 @@
+# Master configuration for the NJ wholesaling engine.
+# Personal overrides go in config/settings.local.yaml (git-ignored, same structure, only changed keys).
+# Secrets (API keys, passwords) go in .env — never here.
+
+operator:
+  name: "Operator"
+  company_name: "Your Company LLC"
+  phone: ""
+  email: ""
+  home_base: "Edison, NJ"
+  has_car: true
+  timezone: "America/New_York"
+
+markets:
+  # Priority order. Names match CivilView / NJGIN county names.
+  counties: [Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden]
+  # Focus municipalities for absentee/high-equity harvesting (NJGIN MUN_NAME values).
+  # The self-improvement agent proposes additions in logs/swarm_intelligence.md.
+  focus_municipalities:
+    - {county: MIDDLESEX, name: WOODBRIDGE TWP}
+    - {county: MIDDLESEX, name: EDISON TWP}
+    - {county: MIDDLESEX, name: NEW BRUNSWICK CITY}
+    - {county: MIDDLESEX, name: PERTH AMBOY CITY}
+    - {county: UNION, name: ELIZABETH CITY}
+    - {county: UNION, name: PLAINFIELD CITY}
+    - {county: UNION, name: LINDEN CITY}
+    - {county: ESSEX, name: NEWARK CITY}
+    - {county: ESSEX, name: IRVINGTON TWP}
+    - {county: ESSEX, name: EAST ORANGE CITY}
+    - {county: HUDSON, name: JERSEY CITY}
+    - {county: HUDSON, name: BAYONNE CITY}
+    - {county: PASSAIC, name: PATERSON CITY}
+    - {county: PASSAIC, name: PASSAIC CITY}
+    - {county: BERGEN, name: HACKENSACK CITY}
+    - {county: BERGEN, name: GARFIELD CITY}
+    - {county: CAMDEN, name: CAMDEN CITY}
+    - {county: CAMDEN, name: PENNSAUKEN TWP}
+  arv_sweet_spot: {min: 150000, max: 650000}
+
+harvest:
+  absentee_min_years_owned: 10       # "high equity" proxy: owned 10+ years
+  old_stock_year_built_max: 1980
+  max_parcels_per_municipality: 250  # cap per run so a run stays polite and fast
+  out_of_state_priority: [FL, NY, PA, NC, CA, GA, SC, TX, VA, MD, AZ, DE, CT]
+
+deal:
+  mao_pct_conservative: 0.70
+  mao_pct_aggressive: 0.75
+  anchor_discount_pct: 0.12          # opening offer = MAO * (1 - this)
+  min_assignment_fee: 10000
+  target_assignment_fee_min: 15000
+  target_assignment_fee_max: 35000
+  assignment_fee_pct_of_spread: 0.40 # share of the post-MAO spread we try to keep as fee
+  comp_radius_miles: 0.5
+  comp_radius_fallback_miles: 1.0
+  comp_sold_days: 180
+  comp_sqft_tolerance: 0.25
+  min_comps: 3
+  renovated_percentile: 0.70         # top 30% $/sqft -> ARV
+  distressed_percentile: 0.30        # bottom 30% $/sqft -> as-is
+  public_record_comp_months: 24      # NJGIN MOD-IV fallback comps (sale data lags ~1 year)
+  annual_appreciation: 0.05          # time-adjusts older public-record comps
+  high_tax_drag_threshold: 0.025     # effective tax rate (annual taxes / ARV) above this hurts buyer demand
+  tax_drag_arv_haircut_per_pct: 0.02 # ARV haircut per 1 pt of effective tax rate above threshold
+
+rehab:
+  light_per_sqft: 25
+  medium_per_sqft: 50
+  heavy_per_sqft: 85
+  heavy_roof_hvac_buffer: 15000
+  age_bumps:                          # extra $/sqft by build year (older NJ stock: knob & tube, lead, oil tanks)
+    - {before: 1940, add_per_sqft: 10}
+    - {before: 1960, add_per_sqft: 6}
+    - {before: 1980, add_per_sqft: 3}
+  default_sqft_per_unit: 1400         # when sqft is unknown
+
+scoring:
+  # Initial motivation weights (points). The self-improvement agent tunes these within bounds
+  # and stores versions in the scoring_weights table.
+  motivation:
+    sheriff_sale_scheduled: 45
+    sale_within_30_days: 15
+    sale_within_60_days: 8
+    adjourned_sale: 6
+    lis_pendens: 30
+    tax_delinquent: 25
+    tax_sale_certificate: 35
+    probate_estate: 30
+    code_violation: 15
+    vacant: 20
+    absentee: 12
+    out_of_state: 10
+    long_tenure: 10
+    old_stock: 5
+    stale_listing: 18
+    price_drops: 8
+    distress_keywords: 12
+    corporate_owner: -5
+  priority_mix: {motivation: 0.55, viability: 0.45}
+
+scrapers:
+  contact_email: ""            # included in the User-Agent so record custodians can reach you
+  min_interval_seconds: 1.5    # per-host politeness delay
+  cache_ttl_hours: 12
+  timeout_seconds: 45
+  max_retries: 3
+
+agents:
+  # cron: minute hour day month day_of_week (America/New_York)
+  schedules:
+    sheriff_sales: "30 5 * * *"
+    tax_assessment: "0 4 * * 1"
+    cash_buyers: "0 4 * * 2"
+    stale_listings: "0 6 * * *"
+    tax_sales: "0 5 * * 3"
+    owner_enrichment: "30 6 * * *"
+    lead_scoring: "0 7 * * *"
+    underwriter: "15 7 * * *"
+    self_improvement: "45 7 * * *"

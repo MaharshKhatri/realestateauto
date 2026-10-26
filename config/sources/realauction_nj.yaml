@@ -1,0 +1,279 @@
+# Generated from the 2026-10-26 reconnaissance survey (docs/recon/tax_sale_clerk_opendata.md §1.1).
+source: RealAuction NJ tax lien sale sites (https://<town>.newjerseytaxsale.com)
+verified: '2026-10-26'
+notes: N.J.A.C. 5:33-1.1(d)(1) requires online tax-lien-sale line items to be public and free. robots.txt allows /index.cfm
+  and /popup/. Refresh this list with `python -m agents.scrapers.tax_sale_agent --discover`.
+sites:
+- county: Bergen
+  town: Bergenfield
+  host: Bergenfield.newjerseytaxsale.com
+- county: Bergen
+  town: Bogota
+  host: Bogota.newjerseytaxsale.com
+- county: Bergen
+  town: Edgewater
+  host: Edgewater.newjerseytaxsale.com
+- county: Bergen
+  town: Englewood City
+  host: EnglewoodCity.newjerseytaxsale.com
+- county: Bergen
+  town: Fort Lee
+  host: FortLee.newjerseytaxsale.com
+- county: Bergen
+  town: Lodi
+  host: Lodi.newjerseytaxsale.com
+- county: Bergen
+  town: Maywood
+  host: Maywood.newjerseytaxsale.com
+- county: Bergen
+  town: Norwood
+  host: Norwood.newjerseytaxsale.com
+- county: Bergen
+  town: Oakland
+  host: Oakland.newjerseytaxsale.com
+- county: Bergen
+  town: Oradell
+  host: Oradell.newjerseytaxsale.com
+- county: Bergen
+  town: Paramus
+  host: Paramus.newjerseytaxsale.com
+- county: Bergen
+  town: Park Ridge
+  host: ParkRidge.newjerseytaxsale.com
+- county: Bergen
+  town: Ramsey
+  host: Ramsey.newjerseytaxsale.com
+- county: Bergen
+  town: Ridgewood
+  host: Ridgewood.newjerseytaxsale.com
+- county: Bergen
+  town: River Edge
+  host: RiverEdge.newjerseytaxsale.com
+- county: Bergen
+  town: Teaneck
+  host: Teaneck.newjerseytaxsale.com
+- county: Bergen
+  town: Upper Saddle River
+  host: UpperSaddleRiver.newjerseytaxsale.com
+- county: Bergen
+  town: Washington Twp (Bergen)
+  host: Washington-Bergen.newjerseytaxsale.com
+- county: Bergen
+  town: Westwood
+  host: Westwood.newjerseytaxsale.com
+- county: Camden
+  town: Audubon Borough
+  host: AudubonBorough.newjerseytaxsale.com
+- county: Camden
+  town: Bellmawr
+  host: Bellmawr.newjerseytaxsale.com
+- county: Camden
+  town: Berlin Borough
+  host: BerlinBorough.newjerseytaxsale.com
+- county: Camden
+  town: Camden
+  host: Camden.newjerseytaxsale.com
+- county: Camden
+  town: Gibbsboro
+  host: Gibbsboro.newjerseytaxsale.com
+- county: Camden
+  town: Gloucester City
+  host: GloucesterCity.newjerseytaxsale.com
+- county: Camden
+  town: Gloucester Township
+  host: GloucesterTownship.newjerseytaxsale.com
+- county: Camden
+  town: Haddonfield
+  host: Haddonfield.newjerseytaxsale.com
+- county: Camden
+  town: Lindenwold
+  host: Lindenwold.newjerseytaxsale.com
+- county: Camden
+  town: Magnolia
+  host: Magnolia.newjerseytaxsale.com
+- county: Camden
+  town: Oaklyn
+  host: Oaklyn.newjerseytaxsale.com
+- county: Camden
+  town: Pennsauken
+  host: Pennsauken.newjerseytaxsale.com
+- county: Camden
+  town: Pine Hill
+  host: PineHill.newjerseytaxsale.com
+- county: Camden
+  town: Runnemede
+  host: Runnemede.newjerseytaxsale.com
+- county: Camden
+  town: Somerdale
+  host: Somerdale.newjerseytaxsale.com
+- county: Camden
+  town: Stratford
+  host: Stratford.newjerseytaxsale.com
+- county: Camden
+  town: Voorhees
+  host: Voorhees.newjerseytaxsale.com
+- county: Essex
+  town: Bloomfield
+  host: Bloomfield.newjerseytaxsale.com
+- county: Essex
+  town: Caldwell Borough
+  host: CaldwellBorough.newjerseytaxsale.com
+- county: Essex
+  town: Cedar Grove
+  host: CedarGrove.newjerseytaxsale.com
+- county: Essex
+  town: East Orange
+  host: EastOrange.newjerseytaxsale.com
+- county: Essex
+  town: Essex Fells
+  host: EssexFells.newjerseytaxsale.com
+- county: Essex
+  town: Glen Ridge
+  host: GlenRidge.newjerseytaxsale.com
+- county: Essex
+  town: Irvington
+  host: Irvington.newjerseytaxsale.com
+- county: Essex
+  town: Livingston
+  host: Livingston.newjerseytaxsale.com
+- county: Essex
+  town: Maplewood
+  host: Maplewood.newjerseytaxsale.com
+- county: Essex
+  town: Montclair
+  host: Montclair.newjerseytaxsale.com
+- county: Essex
+  town: Newark
+  host: Newark.newjerseytaxsale.com
+- county: Essex
+  town: Nutley
+  host: Nutley.newjerseytaxsale.com
+- county: Essex
+  town: Orange City
+  host: OrangeCity.newjerseytaxsale.com
+- county: Essex
+  town: South Orange Village
+  host: SouthOrangeVillage.newjerseytaxsale.com
+- county: Essex
+  town: Verona
+  host: Verona.newjerseytaxsale.com
+- county: Essex
+  town: West Orange
+  host: westOrange.newjerseytaxsale.com
+- county: Hudson
+  town: Hoboken
+  host: Hoboken.newjerseytaxsale.com
+- county: Hudson
+  town: North Bergen
+  host: NorthBergen.newjerseytaxsale.com
+- county: Hudson
+  town: Secaucus
+  host: Secaucus.newjerseytaxsale.com
+- county: Hudson
+  town: Union City
+  host: UnionCity.newjerseytaxsale.com
+- county: Hudson
+  town: Weehawken
+  host: Weehawken.newjerseytaxsale.com
+- county: Hudson
+  town: West New York
+  host: WestNewYork.newjerseytaxsale.com
+- county: Middlesex
+  town: Carteret
+  host: Carteret.newjerseytaxsale.com
+- county: Middlesex
+  town: Cranbury
+  host: Cranbury.newjerseytaxsale.com
+- county: Middlesex
+  town: Dunellen
+  host: Dunellen.newjerseytaxsale.com
+- county: Middlesex
+  town: East Brunswick
+  host: EastBrunswick.newjerseytaxsale.com
+- county: Middlesex
+  town: Helmetta
+  host: Helmetta.newjerseytaxsale.com
+- county: Middlesex
+  town: Highland Park
+  host: HighlandPark.newjerseytaxsale.com
+- county: Middlesex
+  town: Milltown
+  host: Milltown.newjerseytaxsale.com
+- county: Middlesex
+  town: Monroe (Middlesex)
+  host: Monroe-Middlesex.newjerseytaxsale.com
+- county: Middlesex
+  town: New Brunswick
+  host: NewBrunswick.newjerseytaxsale.com
+- county: Middlesex
+  town: Perth Amboy
+  host: PerthAmboy.newjerseytaxsale.com
+- county: Middlesex
+  town: Piscataway
+  host: Piscataway.newjerseytaxsale.com
+- county: Middlesex
+  town: Sayreville
+  host: Sayreville.newjerseytaxsale.com
+- county: Middlesex
+  town: South Amboy
+  host: SouthAmboy.newjerseytaxsale.com
+- county: Middlesex
+  town: South Brunswick
+  host: SouthBrunswick.newjerseytaxsale.com
+- county: Middlesex
+  town: South River
+  host: SouthRiver.newjerseytaxsale.com
+- county: Middlesex
+  town: Spotswood
+  host: Spotswood.newjerseytaxsale.com
+- county: Passaic
+  town: Bloomingdale
+  host: Bloomingdale.newjerseytaxsale.com
+- county: Passaic
+  town: Clifton
+  host: Clifton.newjerseytaxsale.com
+- county: Passaic
+  town: Passaic City
+  host: PassaicCity.newjerseytaxsale.com
+- county: Passaic
+  town: Paterson
+  host: Paterson.newjerseytaxsale.com
+- county: Passaic
+  town: Ringwood
+  host: Ringwood.newjerseytaxsale.com
+- county: Passaic
+  town: West Milford
+  host: WestMilford.newjerseytaxsale.com
+- county: Union
+  town: Clark
+  host: Clark.newjerseytaxsale.com
+- county: Union
+  town: Cranford
+  host: Cranford.newjerseytaxsale.com
+- county: Union
+  town: Elizabeth
+  host: Elizabeth.newjerseytaxsale.com
+- county: Union
+  town: Fanwood
+  host: Fanwood.newjerseytaxsale.com
+- county: Union
+  town: Hillside
+  host: Hillside.newjerseytaxsale.com
+- county: Union
+  town: Linden
+  host: Linden.newjerseytaxsale.com
+- county: Union
+  town: Plainfield City
+  host: PlainfieldCity.newjerseytaxsale.com
+- county: Union
+  town: Roselle
+  host: Roselle.newjerseytaxsale.com
+- county: Union
+  town: Scotch Plains
+  host: ScotchPlains.newjerseytaxsale.com
+- county: Union
+  town: Springfield (Union)
+  host: Springfield-Union.newjerseytaxsale.com
+- county: Union
+  town: Westfield
+  host: Westfield.newjerseytaxsale.com
