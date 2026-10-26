@@ -177,11 +177,16 @@ def daemon() -> None:
         log.info("swarm daemon stopped")
 
 
+LIST_OPTIONS = {"counties", "towns", "zips", "municipalities"}
+
+
 def _parse_opts(pairs: list[str] | None) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for pair in pairs or []:
         key, _, value = pair.partition("=")
-        if value.isdigit():
+        if key in LIST_OPTIONS or "," in value:
+            out[key] = [v.strip() for v in value.split(",") if v.strip()]
+        elif value.isdigit():
             out[key] = int(value)
         elif value.lower() in ("true", "false"):
             out[key] = value.lower() == "true"

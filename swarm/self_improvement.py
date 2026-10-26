@@ -20,6 +20,7 @@ from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from agents.base import AgentContext, BaseAgent
 from agents.scrapers.njgis_client import NJGISClient
@@ -238,7 +239,7 @@ class PipelineSelfImprovementAgent(BaseAgent):
                 s.add(cached)
             cached.value_json = {"ranking": ranking[:60]}
             cached.updated_at = utcnow()
-        current = state.value_json.get("municipalities", [])
+        current = list(state.value_json.get("municipalities", []))   # copy: in-place edits aren't tracked
         have = {(m["county"], m["name"]) for m in current} | focus
         picks = [r for r in ranking if (r["county"], r["municipality"]) not in have][:2]
         max_auto = int(self.options.get("max_auto_expansion", 6))
@@ -251,6 +252,7 @@ class PipelineSelfImprovementAgent(BaseAgent):
                                f"renovated/distressed price gap {r['gap']:.2f}x, median sale ${r['median_price']:,.0f}, "
                                f"{r['pct_pre_1980']:.0%} pre-1980 stock")
             state.value_json = {"municipalities": current}
+            flag_modified(state, "value_json")
             state.updated_at = utcnow()
         sections["Alpha discovery — spread potential by town (top 10)"] = [
             "| town | county | score | p75/p25 price-to-assessment gap | median sale | pre-1980 | in harvest |",

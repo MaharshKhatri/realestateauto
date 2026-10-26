@@ -270,6 +270,20 @@ class Underwriter:
         return val
 
 
+def known_debt(prop: Property) -> float | None:
+    sheriff = next((s for s in prop.active_signals if s.signal_type == SignalType.SHERIFF_SALE), None)
+    return sheriff.amount_owed if sheriff and sheriff.amount_owed else None
+
+
+def inputs_changed(prop: Property, val: Valuation) -> bool:
+    """A fresh valuation is still stale if the facts it priced have changed since (debt, sqft, signals)."""
+    if (known_debt(prop) or 0) != (val.debt_estimate or 0):
+        return True
+    if prop.sqft and val.sqft_used != prop.sqft:
+        return True
+    return any(s.first_seen_at > val.calculated_at for s in prop.active_signals)
+
+
 class UnderwriterAgent(BaseAgent):
     name = "underwriter"
     description = "Comps, ARV, rehab and MAO for the highest-priority leads."
@@ -309,7 +323,8 @@ class UnderwriterAgent(BaseAgent):
         prop = lead.property
         self.tried.add(lead.id)
         cur = prop.current_valuation
-        if cur and not self.options.get("force") and (utcnow() - cur.calculated_at).days < stale_days:
+        if cur and not self.options.get("force") and (utcnow() - cur.calculated_at).days < stale_days \
+                and not inputs_changed(prop, cur):
             return
         try:
             val = underwriter.underwrite(ctx.session, prop)

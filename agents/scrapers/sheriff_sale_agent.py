@@ -274,59 +274,53 @@ class SheriffSaleAgent(BaseAgent):
         gis = NJGISClient()
         today = date.today()
 
+        # CivilView regenerates PropertyIds when its data refreshes (every ~30 min in business hours),
+        # so each county is processed end to end — list, then that county's details immediately —
+        # and an expired id is re-resolved from a fresh list by sheriff number.
         candidates: list[SaleListing] = []
+        processed = 0
         for county in counties:
             cid = NJ_COUNTY_IDS.get(county)
             if cid is None:
                 ctx.error(f"No CivilView id for county {county}")
                 continue
-            civil_http = sessions[county] = PoliteSession(min_interval=1.0, cache_ttl_hours=10)
-            try:
-                resp = civil_http.get(f"{BASE}/Sales/SalesSearch", params={"countyId": cid}, cache=False)
-            except FetchError as exc:
-                ctx.error(f"{county}: list page failed: {exc}")
+            sessions[county] = PoliteSession(min_interval=1.0, cache_ttl_hours=10)
+            listings = self._list_county(ctx, sessions[county], county)
+            if listings is None:
                 continue
-            listings = parse_list_page(resp.text, county)
             ctx.bump(f"listed_{county.lower()}", len(listings))
-            closed = [l for l in listings if l.status and CLOSED_STATUS.search(l.status)]
-            self._close_signals(ctx, closed)
-            for l in listings:
-                if l.status and CLOSED_STATUS.search(l.status):
-                    continue
-                if l.sale_date and (l.sale_date < today - timedelta(days=2) or
-                                    l.sale_date > today + timedelta(days=horizon_days)):
-                    continue
-                candidates.append(l)
-        candidates.sort(key=lambda l: l.sale_date or date.max)
-        if limit:
-            candidates = candidates[: int(limit)]
+            self._close_signals(ctx, [l for l in listings if l.status and CLOSED_STATUS.search(l.status)])
+            todo = [l for l in listings if not (l.status and CLOSED_STATUS.search(l.status))
+                    and not (l.sale_date and (l.sale_date < today - timedelta(days=2)
+                                              or l.sale_date > today + timedelta(days=horizon_days)))]
+            todo.sort(key=lambda l: l.sale_date or date.max)
+            if limit:
+                todo = todo[: max(int(limit) - len(candidates), 0)]
+            candidates.extend(todo)
+
+            def fetch(listing: SaleListing) -> tuple[SaleListing, dict | None, str | None]:
+                try:
+                    listing.detail = self._fetch_detail(ctx, sessions[listing.county], listing)
+                    return listing, self._match_parcel(gis, listing), None
+                except Exception as exc:  # noqa: BLE001
+                    return listing, None, f"{listing.county} {listing.sheriff_number}: {type(exc).__name__}: {exc}"
+
+            # Detail pages + parcel matching overlap in a small pool (CivilView and ArcGIS are
+            # different hosts; each is throttled separately). DB writes stay on this thread.
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for fut in as_completed([pool.submit(fetch, l) for l in todo]):
+                    listing, feature, err = fut.result()
+                    if err:
+                        ctx.error(err)
+                        continue
+                    self._store(ctx, listing, feature)
+                    ctx.checkpoint()  # short transactions: other agents write to the same DB in parallel
+                    processed += 1
+                    if processed % 25 == 0:
+                        log.info("sheriff_sales: stored %d (%s)", processed, county)
+            if limit and len(candidates) >= int(limit):
+                break
         ctx.note(f"{len(candidates)} open sheriff sales within {horizon_days} days across {len(counties)} counties")
-
-        # Network work (detail page + parcel match) runs in a small thread pool; the polite
-        # session serializes requests per host, so CivilView and ArcGIS calls overlap. DB writes
-        # stay on this thread.
-        def fetch(listing: SaleListing) -> tuple[SaleListing, dict | None, str | None]:
-            try:
-                detail = self._fetch_detail(sessions[listing.county], listing)
-                listing.detail = detail
-                feature = self._match_parcel(gis, listing)
-                return listing, feature, None
-            except Exception as exc:  # noqa: BLE001
-                return listing, None, f"{listing.county} {listing.sheriff_number}: {type(exc).__name__}: {exc}"
-
-        processed = 0
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(fetch, l) for l in candidates]
-            for fut in as_completed(futures):
-                listing, feature, err = fut.result()
-                if err:
-                    ctx.error(err)
-                    continue
-                self._store(ctx, listing, feature)
-                ctx.checkpoint()  # short transactions: other agents write to the same DB in parallel
-                processed += 1
-                if processed % 25 == 0:
-                    log.info("sheriff_sales: stored %d/%d", processed, len(candidates))
 
         # Anything from these counties we didn't see this run and whose sale date passed is stale.
         stale = ctx.session.scalars(select(DistressSignal).where(
@@ -339,19 +333,32 @@ class SheriffSaleAgent(BaseAgent):
                 sig.status = sig.status or "no longer listed"
         ctx.metrics["stale_deactivated"] = len(stale)
         ctx.metrics["civilview_http"] = {c: h.stats_summary() for c, h in sessions.items()}
-        ctx.metrics["details_missing"] = sum(1 for l in candidates if not l.detail)
         ctx.metrics["njgis_http"] = gis.http.stats_summary()
 
     # -- helpers --------------------------------------------------------------------------------
-    def _fetch_detail(self, http: PoliteSession, listing: SaleListing) -> dict:
+    @staticmethod
+    def _list_county(ctx: AgentContext, http: PoliteSession, county: str) -> list[SaleListing] | None:
+        try:
+            resp = http.get(f"{BASE}/Sales/SalesSearch", params={"countyId": NJ_COUNTY_IDS[county]}, cache=False)
+        except FetchError as exc:
+            ctx.error(f"{county}: list page failed: {exc}")
+            return None
+        return parse_list_page(resp.text, county)
+
+    def _fetch_detail(self, ctx: AgentContext, http: PoliteSession, listing: SaleListing) -> dict:
         if not listing.detail_url:
             return {}
         detail = parse_detail_page(http.get(listing.detail_url).text)
-        if not detail:   # a cached redirect page, or the session lost its county: fetch fresh
+        if not detail:   # a cached error page or a brief session hiccup: fetch fresh
             detail = parse_detail_page(http.get(listing.detail_url, cache=False).text)
-        if not detail:   # session cookie expired: re-open the county list page, then retry once
-            http.get(f"{BASE}/Sales/SalesSearch", params={"countyId": NJ_COUNTY_IDS[listing.county]}, cache=False)
-            detail = parse_detail_page(http.get(listing.detail_url, cache=False).text)
+        if not detail:   # PropertyId expired (site data refresh): re-list the county, find our sheriff #
+            fresh = {l.sheriff_number: l.property_id for l in (self._list_county(ctx, http, listing.county) or [])}
+            if fresh.get(listing.sheriff_number):
+                listing.property_id = fresh[listing.sheriff_number]
+                detail = parse_detail_page(http.get(listing.detail_url, cache=False).text)
+                ctx.bump("detail_ids_refreshed")
+        if not detail:
+            ctx.bump("details_missing")
         return detail
 
     def _match_parcel(self, gis: NJGISClient, listing: SaleListing) -> dict | None:
@@ -431,6 +438,7 @@ class SheriffSaleAgent(BaseAgent):
             "attorney": d.get("attorney"), "attorney_phone": d.get("attorney_phone"),
             "block_lot": d.get("block_lot"), "on_hold": on_hold,
             "parcel_matched": feature is not None,
+            "detail_url_at_scrape": listing.detail_url,
         }
         _, sig_created = upsert_signal(
             ctx.session, prop, signal_type=SignalType.SHERIFF_SALE, source=SOURCE,
@@ -438,7 +446,8 @@ class SheriffSaleAgent(BaseAgent):
             severity_weight=severity_for(sale_date), scheduled_auction_date=sale_date,
             amount_owed=d.get("upset_amount") or d.get("judgment_amount"),
             plaintiff_or_lienholder=listing.plaintiff[:300], defendant=listing.defendant[:300],
-            case_number=d.get("court_case"), status=status, source_url=listing.detail_url,
+            case_number=d.get("court_case"), status=status,
+            source_url=f"{BASE}/Sales/SalesSearch?countyId={NJ_COUNTY_IDS[listing.county]}",
             raw_metadata_json=meta, active=True)
         if sig_created:
             ctx.bump("signals_created")

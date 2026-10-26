@@ -23,6 +23,7 @@ from db.models import Lead, Property, ScoringWeights, SignalType, utcnow
 log = logging.getLogger(__name__)
 
 TERMINAL = {"DEAD", "DO_NOT_CONTACT", "CLOSED"}
+NON_DEAL_PRIORITY_FACTOR = {"PASS": 0.5, "FRFPA_BLOCKED": 0.6, "SHORT_SALE_ONLY": 0.75}
 VERDICT_POINTS = {"STRONG": 45, "WORKABLE": 33, "TIGHT": 18, "SHORT_SALE_ONLY": 8, "FRFPA_BLOCKED": 5, "PASS": 0}
 
 
@@ -219,6 +220,9 @@ def score_property(prop: Property, weights: dict[str, Any], primary_source: str 
     # Urgency: a near auction with real equity is the most valuable call of the day.
     if factors.get("sale_within_30_days") and via >= 40:
         priority += 5
+    # A motivated seller with no compliant/profitable wholesale offer is a referral, not a deal.
+    verdict = prop.current_valuation.verdict if prop.current_valuation else None
+    priority *= NON_DEAL_PRIORITY_FACTOR.get(verdict, 1.0)
     if prop.owner_name:
         priority += 2   # someone to ask for
     priority = round(max(0.0, min(priority, 100.0)), 1)
@@ -320,7 +324,10 @@ def strategy_brief(lead: Lead, sc: Score) -> str:
                      "hassle-free sale; owner name pending lookup, use the mailing address for a letter.")
     elif "absentee" in f:
         parts.append("Absentee landlord with long tenure: likely high equity and tenant fatigue; mail + call.")
-    if val and val.mao_conservative:
+    if val and val.verdict in ("FRFPA_BLOCKED", "PASS"):
+        parts.append("No compliant wholesale offer at today's numbers — offer a listing-agent referral, or revisit "
+                     "if the repair estimate drops after a walkthrough.")
+    elif val and val.mao_conservative:
         parts.append(f"Open at {_fmt_money(val.anchor_offer)}, walk-away {_fmt_money(val.mao_conservative)} "
                      f"(aggressive ceiling {_fmt_money(val.mao_aggressive)}).")
     parts.append("Disclose: investor, not an agent; may assign the contract; seller should have an attorney review.")

@@ -35,7 +35,7 @@ python manage.py briefing        # today's call list
 python manage.py lead 42         # one lead in depth (signals, comps, offer math, strategy)
 python manage.py buyers          # who is buying right now
 python -m swarm.orchestrator daemon       # keep it running on the cron schedules in config/settings.yaml
-pytest                           # 39 tests; parsers run against real saved CivilView pages
+pytest                           # 49 tests; parsers run against real saved pages
 ```
 
 Run a single agent: `python -m swarm.orchestrator run sheriff_sales --opt limit=50`,
