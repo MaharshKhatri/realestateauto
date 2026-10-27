@@ -3,6 +3,82 @@
 Written by `swarm/self_improvement.py` after every pipeline run (newest first). Contains aggregate metrics only — no personal data.
 
 <!-- report -->
+## Swarm intelligence report — 2026-10-27 20:13 UTC
+
+### Bottlenecks & findings
+- Owner names known on only 28% of open leads (NJGIN redacts names). Biggest unlock: owner-record enrichment / skip tracing for absentee leads.
+- 21 listed foreclosures with an agent haven't been contacted (7 with a sale within 14 days) — python manage.py today, Block 1.
+- Only 12% of the top 100 leads have a callable number. 88 can be skip-traced right now (python manage.py skiptrace --export-top 50); 0 need an owner name first (owner exports / OPRA).
+- National DNC data is missing: download the free NJ area codes from telemarketing.donotcall.gov and run python manage.py dnc --load <file> before dialing owners.
+
+### Actions taken automatically
+- Scoring weights v6 → v7: viability prior by source from underwriting verdicts: sheriff_sale=0.13, stale_listing=0.94, out_of_state_owner=0.50, absentee_owner=0.83
+
+### Scraper health (7 days)
+| agent | last status | ok runs | processed | new leads | errors | http fail | duration |
+|---|---|---|---|---|---|---|---|
+| buyer_matcher | success | 7/7 | 50 | 0 | 0 | 0% | 0.4s |
+| cash_buyers | success | 2/2 | 294 | 0 | 0 | 0% | 1841.8s |
+| closing_alerts | success | 1/1 | 0 | 0 | 0 | 0% | 0.0s |
+| fast_track | success | 1/1 | 54 | 0 | 0 | 0% | 2.8s |
+| lead_scoring | success | 15/15 | 7854 | 0 | 0 | 0% | 20.4s |
+| listing_agents | success | 3/3 | 1132 | 0 | 0 | 0% | 2.3s |
+| municipal_owners | success | 3/3 | 994 | 0 | 0 | 0% | 17.3s |
+| outlier_guard | success | 3/3 | 1679 | 0 | 0 | 0% | 2.3s |
+| owner_enrichment | success | 4/4 | 65670 | 0 | 0 | 0% | 13.9s |
+| owner_resolver | success | 8/8 | 7854 | 0 | 0 | 0% | 15.1s |
+| sheriff_sales | success | 6/7 | 858 | 14 | 0 | 0% | 986.6s |
+| signal_stacker | success | 5/5 | 95 | 0 | 0 | 0% | 10.1s |
+| stale_listings | success | 2/3 | 4789 | 16 | 0 | 0% | 1103.4s |
+| tax_assessment | success | 2/2 | 56647 | 1493 | 0 | 0% | 783.5s |
+| tax_sales | success | 2/2 | 0 | 0 | 0 | 0% | 0.7s |
+| underwriter | success | 11/12 | 3 | 0 | 0 | 0% | 52.9s |
+
+### Yield & coverage
+- Open leads: **7854** (1785 new in 24h) — by source: absentee_owner 4393, out_of_state_owner 1596, stale_listing 974, sheriff_sale 891
+- Active sheriff sales tracked: 858; upset/judgment amount captured on 100%
+- Owner name known: 28% · parcel matched: 97% · living area known: 10%
+- Top-50 leads underwritten: 100%
+
+### Contact readiness & CRM
+- Top-100 contact-ready: **12%** — owner/heir phone 0, listing agent only 12; skip-traceable now (name known, no phone) 88; need a name first 0
+- Top deals with 5 matched cash buyers: 50/50 (100%); buyer_matches rows: 415
+- National DNC data: not loaded
+- Calls (7 days): 0; conversations 0 (0% connect); none logged; overdue follow-ups 0
+- Ready to call now (deal + live phone / agent e-mail): **127**; agent LOIs awaiting follow-up 0; stacked distress 2x 1227, 3x 51, 4x+ 0
+
+### Guardrails, fast track & money
+- Outlier guard: 1679/1679 valuations checked; 199 ARVs capped to a benchmark, 105 non-residential parcels (PASS / unit-of-a-larger-parcel); 0 offer-verdict ARVs above $1.8M
+- Listed foreclosures: 54 (21 actionable with an agent, 21 not yet contacted)
+- Closing: 0 open files, 0 milestones due soon (0 overdue)
+- Money 2026: fees 0, net 0, tax reserve 0, weighted pipeline 0
+
+### Spread viability
+- Valuations: 1679 — STRONG 632, WORKABLE 365, FRFPA_BLOCKED 187, SHORT_SALE_ONLY 160, EQUITY_RESCUE_REFERRAL 148, PASS 103, WORKABLE_82_PCT_FLOOR 75, TIGHT 9
+- absentee_owner: 17/18 STRONG/WORKABLE
+- out_of_state_owner: 3/5 STRONG/WORKABLE
+- sheriff_sale: 92/722 STRONG/WORKABLE
+- stale_listing: 885/934 STRONG/WORKABLE
+- Median MAO/ARV by town (higher = more room): SADDLE RIVER BORO 67% (n=1), MONTVALE BORO 66% (n=1), HARRINGTON PARK BORO 65% (n=1), RAMSEY BORO 65% (n=1), RIVERVALE TWP 65% (n=1), CLIFFSIDE PARK BORO 64% (n=5), MAHWAH TWP 63% (n=5), SOUTH PLAINFIELD BORO 63% (n=2)
+
+### Learning
+- Outcome learning waits for 20 labeled leads (have 0). Log call outcomes to feed it.
+
+### Alpha discovery — spread potential by town (top 10)
+| town | county | score | p75/p25 price-to-assessment gap | median sale | pre-1980 | in harvest |
+|---|---|---|---|---|---|---|
+| PATERSON CITY | Passaic | 65.39 | 1.47x | $480,000 | 91% | yes |
+| NEWARK CITY | Essex | 55.67 | 1.41x | $517,000 | 84% | yes |
+| PASSAIC CITY | Passaic | 49.76 | 1.34x | $550,000 | 95% | yes |
+| LINDENWOLD BORO | Camden | 46.68 | 1.33x | $220,000 | 90% | yes |
+| NEW BRUNSWICK CITY | Middlesex | 46.38 | 1.34x | $435,000 | 85% | yes |
+| CAMDEN CITY | Camden | 46.36 | 1.63x | $135,000 | 96% | yes |
+| GLOUCESTER CITY | Camden | 46.07 | 1.31x | $212,500 | 97% | yes |
+| WEST NEW YORK TOWN | Hudson | 42.55 | 1.33x | $500,000 | 78% | yes |
+| GUTTENBERG TOWN | Hudson | 40.06 | 1.31x | $350,000 | 81% | yes |
+| ELMWOOD PARK BORO | Bergen | 39.56 | 1.29x | $580,000 | 87% | yes |
+
+<!-- report -->
 ## Swarm intelligence report — 2026-10-27 17:19 UTC
 
 ### Bottlenecks & findings
