@@ -184,9 +184,13 @@ def split_person_name(name: str | None) -> tuple[str, str]:
     """('JOHN', 'SMITH') from 'SMITH, JOHN A' / 'John A. Smith Jr' / 'SMITH JOHN & MARY' (best effort)."""
     s = clean(name).upper()
     s = re.sub(r"\b(JR|SR|II|III|IV|ESQ|MD)\b\.?", "", s)
-    s = re.split(r"\s*(?:&|\bAND\b|;|/)\s*", s)[0].strip(" ,.")
-    if not s:
+    people = [x.strip(" ,.") for x in re.split(r"\s*(?:&|\bAND\b|;|/)\s*", s) if x.strip(" ,.")]
+    if not people:
         return "", ""
+    s = people[0]
+    if len(people) > 1 and "," not in s and len(s.split()) == 1 and len(people[1].split()) >= 2 \
+            and "," not in people[1]:
+        return s.title(), people[1].split()[-1].title()      # 'ROBERT & LINDA JONES' → Robert Jones
     if "," in s:
         last, _, rest = s.partition(",")
         first = rest.strip().split(" ")[0] if rest.strip() else ""

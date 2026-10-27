@@ -55,7 +55,7 @@ import threading
 import time
 import zipfile
 from collections import OrderedDict
-from typing import Iterator, Optional
+from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import requests

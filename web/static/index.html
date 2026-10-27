@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wholesale Cockpit</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="#/" class="brand">NJ Wholesale Cockpit</a>
+    <form id="search" class="search" autocomplete="off">
+      <input id="q" type="search" placeholder="Search address, town, owner, parcel…" aria-label="Search leads">
+    </form>
+    <div id="status" class="status"></div>
+  </header>
+  <main id="app" aria-live="polite"><p class="muted pad">Loading…</p></main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

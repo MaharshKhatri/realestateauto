@@ -15,7 +15,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from core.config import CACHE_DIR, settings
+from core.config import CACHE_DIR
 from core.geo import haversine_miles
 from core.text import muni_base
 from engine.comps import Comp, ValueResult, iqr_filter, value_from_metric

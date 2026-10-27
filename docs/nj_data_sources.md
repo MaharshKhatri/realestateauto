@@ -1,4 +1,4 @@
-# NJ Data Sources — Verified Findings (Phase 1 reconnaissance, 2026-10-26)
+# NJ Data Sources — Verified Findings (Phase 1 recon 2026-10-26; Phase 2 additions 2026-10-27)
 
 Every source below was tested from this environment with real requests on 2026-10-26. Verdicts:
 **USE** (automated in production), **FALLBACK** (works, secondary), **MANUAL** (human-in-the-loop),
@@ -125,6 +125,40 @@ Full evidence, district-code tables and sample rows: `docs/recon/assessment_owne
 - Blocked/unavailable: `oprs.co.monmouth.nj.us` (connection closed), `njpropertyrecords.com` (Cloudflare),
   Hudson/Middlesex/Passaic board sites (Sucuri/Akamai), Essex Register of Deeds search (unreachable from here).
 
+### 5.1 Municipal ArcGIS layers that still publish owner names (Phase 2 recon, 2026-10-27)
+
+Full evidence (12/12 PINs matched NJGIN `PAMS_PIN`, field lists, counts, vintages, rejected layers):
+`docs/recon/public_owner_layers.md`. **Automated** by `agents/enrichment/municipal_owner_layers.py`
+(`municipal_owners` agent), querying only our leads' PINs in batches of 80 with explicit `outFields`:
+
+| Town | Layer | Names | Vintage | Live result |
+|---|---|---|---|---|
+| Jersey City | City of Jersey City `EnerGov_AddressPoints_and_Parcels/FeatureServer/1` (`Parcel_PAMS_PIN`) | 59,641 | updates through Dec 2025 | 433 / 433 leads named |
+| New Brunswick | `Tax_Parcels/FeatureServer/0` (`PAMS_PIN`) | 8,038 | MOD-IV 2025-09-18 | 264 / 264 |
+| Plainfield | SpatialDataLogic `Plainfield_NJ_Parcels_081825` (`PAMS_PIN`, field `Owner`) | 10,576 | 2025-08-18 | 293 / 293 |
+
+- A layer name is applied only if the record is at least as new as NJGIN's last deed for the parcel; servicer
+  mailing addresses defer to the foreclosure defendant and switch off mailing-derived absentee signals.
+- **Never request `*`**: the Plainfield vendor layer carries raw MOD-IV SSN columns (`SocialSecu`, `SpouseSoci`).
+- Fallback (older; deed book/page must still match): Middlesex 2022 (Woodbridge/Edison/Perth Amboy), Passaic City
+  2023, Essex/Passaic 2017, Newark rent-control registry 2021 — queued for Sprint 3.
+- No owner-name layer exists for Elizabeth, Linden, Bayonne, West New York, Hackensack, Garfield or the Camden
+  County towns → owner exports / OPRA.
+- Entity lookups: NJ Business Name Search is free (name, ID, city, type); registered agent costs $5 + $1.25 per
+  status report (bulk: $0.0185/record). OpenCorporates' API needs a key and its free tier is personal/open-data
+  only → the engine generates manual links, it does not call either service.
+
+### 5.2 Phones (skip tracing) and do-not-call data
+
+- People-search sites (TruePeopleSearch, FastPeopleSearch, CyberBackgroundChecks) forbid automated access.
+  `manage.py skiptrace --export-top 50` writes the queue (who to look up — executor > owner > co-defendant — with
+  prebuilt search links); the operator pastes results into the cockpit or fills the CSV and imports it.
+  Every imported number is DNC-classified.
+- National DNC registry: register at telemarketing.donotcall.gov, download the area codes you call (the first 5
+  are free; `manage.py dnc --status` recommends the five that cover the most of our contacts), load with
+  `manage.py dnc --load`. Data older than 31 days stops counting as a scrub.
+- Listing agents: names/phones/emails come with the listing payload (stale-listing agent) — no skip trace needed.
+
 ## 6. Tax sales, tax delinquency, county clerk (lis pendens), open data
 
 Full evidence and per-town survey: `docs/recon/tax_sale_clerk_opendata.md`.
@@ -175,4 +209,6 @@ Full evidence and per-town survey: `docs/recon/tax_sale_clerk_opendata.md`.
 3. Tax sales: before each town's sale, save its Preview Items / Results / Bidding Rules pages to
    `data/imports/tax_sales/<Town>/` — or send the OPRA request once a year.
 4. Newark current owners: TaxDataHub export by hand (reCAPTCHA) → `data/imports/owner_lists/`.
-5. Run `python -m swarm.orchestrator run-all`.
+5. National DNC: re-download your area codes every 31 days → `python manage.py dnc --load <file>`.
+6. Skip trace: `python manage.py skiptrace --export-top 50` → look up → paste/import.
+7. Run `python -m swarm.orchestrator run-all`.

@@ -183,7 +183,8 @@ def mailing_key(street: str | None, city_state: str | None) -> str:
     city = re.sub(r"[\s,]+\d{5}(?:-?\d{4})?\s*$", "", city)          # trailing ZIP
     city = re.sub(r"[\s,]+N\.?\s?J\.?\s*$|[\s,]+[A-Z]{2}\.?\s*$", "", city)  # trailing state
     city = re.sub(r"[^A-Z ]", " ", city)
-    return f"{s}|{unit}|{re.sub(r'\s+', ' ', city).strip()}"
+    city = re.sub(r"\s+", " ", city).strip()
+    return f"{s}|{unit}|{city}"
 
 
 def address_mailing_key(mailing_address: str | None) -> str | None:

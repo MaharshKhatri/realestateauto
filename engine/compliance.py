@@ -72,6 +72,7 @@ def add_internal(session: Session, phone: str, source: str = "internal", notes: 
     session.flush()
     for c in session.scalars(select(Contact).where(Contact.phone == digits)):
         c.dnc_status = "dnc"
+    session.flush()
     return row
 
 

@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from agents.base import AgentContext, BaseAgent
 from core.text import clean, normalize_phone
-from db.models import ContactType, DistressSignal, Lead, SignalType
+from db.models import ContactType, DistressSignal, SignalType
 from db.repository import upsert_contact
 from engine.compliance import classify_number
 

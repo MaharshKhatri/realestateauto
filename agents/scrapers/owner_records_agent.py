@@ -229,33 +229,41 @@ class OwnerEnrichmentAgent(BaseAgent):
             ctx.note(f"{path.name}: {len(rows):,} parcels, {matched} matched our properties, {named_buyers} cash buyers named")
 
     @staticmethod
-    def _apply_owner(ctx: AgentContext, p: Property, r: dict) -> None:
+    def _apply_owner(ctx: AgentContext, p: Property, r: dict, source: str = SRC_TAXLIST,
+                     asof: str | None = None) -> None:
         from agents.scrapers.sheriff_sale_agent import first_defendant
         sheriff = next((s for s in p.active_signals if s.signal_type == SignalType.SHERIFF_SALE and s.defendant), None)
         servicer = is_servicer_mailing(r["owner_street"], r["owner_city_state"])
-        p.raw_json = {**(p.raw_json or {}), SRC_TAXLIST: {"owner_name": r["owner_name"], "mailing": r["owner_street"],
-                                                          "city_state_zip": f"{r['owner_city_state']} {r['owner_zip']}"}}
+        p.raw_json = {**(p.raw_json or {}), source: {"owner_name": r["owner_name"], "mailing": r["owner_street"],
+                                                     "city_state_zip": f"{r['owner_city_state']} {r['owner_zip']}",
+                                                     **({"asof": asof} if asof else {})}}
         if sheriff and (is_lender(r["owner_name"]) or servicer or not r["owner_name"]):
             # Tax bills of mortgaged homes often go to the servicer; the foreclosure defendant is the owner.
             p.owner_name, p.owner_name_source = first_defendant(sheriff.defendant), "sheriff_defendant"
+            p.is_corporate_owned = is_entity(p.owner_name or "")
         elif r["owner_name"]:
             p.owner_name = r["owner_name"]
-            p.owner_name_source = SRC_TAXLIST
+            p.owner_name_source = source
             p.is_corporate_owned = is_entity(r["owner_name"])
             p.is_estate_owned = is_estate(r["owner_name"]) or bool(p.is_estate_owned)
         if servicer:
+            # The bill goes to a loan servicer, so the mailing address says nothing about where the owner lives:
+            # drop the absentee/out-of-state signals that were derived from it (FRFPA then presumes occupancy).
             p.is_absentee = p.is_out_of_state = None
+            for sig in p.active_signals:
+                if sig.signal_type in (SignalType.OUT_OF_STATE_OWNER, SignalType.LONG_TERM_ABSENTEE):
+                    sig.active = False
             r = {**r, "owner_street": None}
         if r["owner_street"]:
             p.owner_mailing_address = r["owner_street"]
             p.owner_city_state_zip = f"{r['owner_city_state'] or ''} {r['owner_zip'] or ''}".strip()
             p.owner_state = mailing_state(r["owner_city_state"]) or p.owner_state
         if r["sqft"] and r["sqft"] >= 300:
-            p.sqft, p.sqft_source = r["sqft"], SRC_TAXLIST
+            p.sqft, p.sqft_source = r["sqft"], source
         if r["year_built"] and not p.year_built and 1700 < r["year_built"] <= date.today().year:
             p.year_built = r["year_built"]
         if p.is_estate_owned:
-            upsert_signal(ctx.session, p, signal_type=SignalType.ESTATE_OWNER, source=SRC_TAXLIST,
+            upsert_signal(ctx.session, p, signal_type=SignalType.ESTATE_OWNER, source=source,
                           source_ref=p.parcel_id, severity_weight=0.8, active=True,
                           raw_metadata_json={"evidence": f"tax list owner: {r['owner_name']}"})
         if p.lead and not p.lead.contact_name:

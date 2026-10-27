@@ -3,14 +3,15 @@
 An autonomous, zero-budget deal-finding and underwriting system for real estate wholesaling in
 New Jersey (Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden). It harvests distressed and
 motivated-owner leads from free public NJ data, finds the cash buyers who are actively buying,
-underwrites every top lead (comps → ARV → rehab → MAO → opening offer), ranks them, and prints a
-daily action briefing so the operator spends their time on the phone and at the kitchen table.
+underwrites every top lead (comps → ARV → rehab → MAO → opening offer), ranks them, finds who to call,
+writes the call script, logs the call, drafts the paperwork and matches the deal to buyers — so the operator
+spends their time on the phone and at the kitchen table.
 
 > **Read `CLAUDE.md` first** — it is the architecture memory and the NJ legal rulebook the code
 > enforces (attorney review, tax sale certificates, sheriff-sale adjournments, the Foreclosure Rescue
 > Fraud Prevention Act 82%-of-FMV floor, Consumer Fraud Act disclosures, TCPA/DNC, Daniel's Law).
 
-## What it does today (Sprint 1)
+## What it does today (Phases 1–2)
 
 | Component | Source (all free) | Output |
 |---|---|---|
@@ -22,7 +23,14 @@ daily action briefing so the operator spends their time on the phone and at the 
 | `engine/scoring.py` | everything above | Motivation / viability / priority scores with plain-English reasons |
 | `swarm/orchestrator.py` | — | Parallel scrape phase, pipeline order, cron daemon, run bookkeeping |
 | `swarm/self_improvement.py` | agent_runs + DB | Health/coverage/spread audit → `logs/swarm_intelligence.md`, tunes scoring weights, auto-adds high-spread towns |
-| `manage.py briefing` | DB | The Daily Action Briefing (top 15 leads with ARV, MAO, fee and *why*) |
+| `engine/frfpa_classifier.py` | signals, owner/defendant, confirmed occupancy | FRFPA track per foreclosure lead (exempt vs covered) and how a covered deal can still work: 82%-of-FMV floor, equity-rescue referral, or blocked |
+| `agents/enrichment/*` | municipal ArcGIS owner layers, listing payloads, sheriff defendants, owner/deed exports | Contacts: owners, heirs/executors, relatives, listing agents, entity lookups; skip-trace queue (CSV/HTML with manual search links) and paste/CSV import |
+| `engine/compliance.py` | FTC DNC downloads, internal + Daniel's Law lists | Callable / unscrubbed / DNC per number, 8am–9pm window |
+| `engine/scripts.py` | lead facts + valuation | Battle cards: playbooks A (sheriff sale), B (estate), C (tired landlord), D (listing agent), E (cash buyer); 12+ objections; never-say lists |
+| `engine/contracts.py` | lead + valuation | LOI, NJ purchase-agreement draft, assignment, JV, 1-page deal sheet → `deals/<id>/` (md, html, pdf) behind FRFPA / attorney-review gates |
+| `engine/crm.py` + `web/` | operator | Call logging → stage → follow-up → re-score → post-call coach; local cockpit at http://127.0.0.1:8000 |
+| `engine/buyer_matcher.py` | recorded cash buyers | Top 5 buyers per top deal with reasons |
+| `manage.py briefing` | DB | The Daily Action Briefing (top leads with ARV, MAO, fee, FRFPA track, contact status, top buyers and *why*) |
 
 ## Quickstart
 
@@ -34,9 +42,18 @@ python -m swarm.orchestrator run-all      # live pipeline: scrape → score → 
 python manage.py briefing        # today's call list
 python manage.py lead 42         # one lead in depth (signals, comps, offer math, strategy)
 python manage.py buyers          # who is buying right now
+python manage.py server          # CRM cockpit: http://127.0.0.1:8000 (local only)
+python manage.py skiptrace --export-top 50   # who to look up, with search links; then --import the CSV
+python manage.py dnc --load 973.txt          # National DNC data for an area code (free for 5 codes)
+python manage.py script 42       # pre-call battle card
+python manage.py call 42 --outcome SPOKE_NEEDS_OFFER --occupancy VACANT --ask 300k
+python manage.py docs 42 --type loi          # LOI / psa / assignment / jv / deal_sheet / all
 python -m swarm.orchestrator daemon       # keep it running on the cron schedules in config/settings.yaml
-pytest                           # 49 tests; parsers run against real saved pages
+pytest                           # 98 tests; parsers run against real saved pages
 ```
+
+Optional AI coach after calls: `pip install -e ".[ai]"` and set `ANTHROPIC_API_KEY`; tick "AI coach" in the
+cockpit (or `--ai`). Only the town, deal numbers and redacted notes are sent.
 
 Run a single agent: `python -m swarm.orchestrator run sheriff_sales --opt limit=50`,
 `python -m agents.scrapers.nj_tax_assessment_agent absentee --county MIDDLESEX --muni "WOODBRIDGE TWP"`.
@@ -50,9 +67,12 @@ Set `WHOLESALING_DATABASE_URL` to a Postgres URL (e.g. a free Supabase project) 
 
 ## Honest limitations
 
-- **Owner names**: NJ's GIS parcel layer redacts owner names (Daniel's Law). Sheriff-sale leads carry
-  the defendant's name; absentee leads carry the mailing address until the owner-records enrichment
-  agent attaches names (Sprint 2 — see `docs/nj_data_sources.md`).
+- **Owner names and phones**: NJ's GIS parcel layer redacts owner names (Daniel's Law). Names come from
+  sheriff defendants, Jersey City / New Brunswick / Plainfield parcel layers, county owner exports and
+  mailing cross-references (~33% of leads today). Phone numbers need skip tracing: the engine prepares the
+  lookups, the operator clicks them (people-search sites forbid scraping) and pastes the result back.
+- **Documents are drafts.** The purchase agreement, assignment and JV are for a NJ attorney to finalize;
+  FRFPA-covered (owner-occupied foreclosure) contracts are never generated — the attorney drafts those.
 - **Public-record sales lag** about a year (MOD-IV list vintage); they're time-adjusted and used as
   a cross-check. Fresh comps come from homeharvest, which scrapes Realtor.com — their terms forbid
   scraping, so it runs low-volume, cached, and internal-only, and the engine falls back to public
@@ -66,6 +86,5 @@ Set `WHOLESALING_DATABASE_URL` to a Postgres URL (e.g. a free Supabase project) 
 
 ## Roadmap
 
-Sprint 2 — owner-name enrichment, skip-trace assist, outcome-trained scoring · Sprint 3 — CRM, call
-script engine, deal-package PDFs · Sprint 4 — buyer outreach, NJ contract templates, closing coordinator.
-See `CLAUDE.md`.
+Sprint 3 — clerk lis pendens, NJ permits, paid skip-trace adapters, outcome-trained scoring · Sprint 4 —
+deal blasts to matched buyers, attorney-reviewed templates, closing coordinator. See `CLAUDE.md`.

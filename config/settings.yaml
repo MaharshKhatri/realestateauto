@@ -22,6 +22,23 @@ compliance:
   attorney_review_business_days: 3
   frfpa_cancellation_business_days: 10
 
+contracts:
+  earnest_money: 1000                # seller-side deposit, held in escrow by the title company/attorney
+  inspection_business_days: 10       # due-diligence window after attorney review ends
+  closing_days: 30                   # target closing, calendar days after attorney review ends
+  loi_valid_days: 5
+  assignee_deposit: 5000             # non-refundable deposit from the end buyer on assignment
+  jv_split_pct: 50                   # default JV fee split to the partner who brings the end buyer
+  title_company: ""                  # name/address of the NJ title company or closing attorney you use
+
+ai:
+  # Optional Claude coaching note after calls (pip install -e ".[ai]" + ANTHROPIC_API_KEY or `ant auth login`).
+  # Only the town, deal numbers, outcome and redacted notes are sent — never names, phones or street addresses.
+  enabled: true
+  model: "claude-opus-5-5"
+  effort: "low"
+  timeout_seconds: 60
+
 crm:
   # Days until the next touch, by call outcome (business-hours follow-up queue).
   followup_days:
@@ -140,6 +157,10 @@ agents:
     stale_listings: "0 6 * * *"
     tax_sales: "0 5 * * 3"
     owner_enrichment: "30 6 * * *"
+    municipal_owners: "35 6 * * 1"
+    listing_agents: "40 6 * * *"
+    owner_resolver: "50 6 * * *"
     lead_scoring: "0 7 * * *"
     underwriter: "15 7 * * *"
+    buyer_matcher: "35 7 * * *"
     self_improvement: "45 7 * * *"

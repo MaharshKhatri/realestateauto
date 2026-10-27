@@ -1,0 +1,114 @@
+{
+ "objectIdFieldName": "OBJECTID",
+ "uniqueIdField": {
+  "name": "OBJECTID",
+  "isSystemMaintained": true
+ },
+ "globalIdFieldName": "",
+ "geometryType": "esriGeometryPolygon",
+ "spatialReference": {
+  "wkid": 102711,
+  "latestWkid": 3424
+ },
+ "fields": [
+  {
+   "name": "PAMS_PIN",
+   "type": "esriFieldTypeString",
+   "alias": "PAMS_PIN",
+   "sqlType": "sqlTypeOther",
+   "length": 38,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "OwnersName",
+   "type": "esriFieldTypeString",
+   "alias": "OwnersName",
+   "sqlType": "sqlTypeOther",
+   "length": 255,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "OwnerAddr1",
+   "type": "esriFieldTypeString",
+   "alias": "OwnerAddr1",
+   "sqlType": "sqlTypeOther",
+   "length": 255,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "OwnerAddr2",
+   "type": "esriFieldTypeString",
+   "alias": "OwnerAddr2",
+   "sqlType": "sqlTypeOther",
+   "length": 255,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "ZipCode",
+   "type": "esriFieldTypeString",
+   "alias": "ZipCode",
+   "sqlType": "sqlTypeOther",
+   "length": 255,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "SalesDate",
+   "type": "esriFieldTypeDate",
+   "alias": "SalesDate",
+   "sqlType": "sqlTypeOther",
+   "length": 8,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "ModIVDate",
+   "type": "esriFieldTypeDate",
+   "alias": "ModIVDate",
+   "sqlType": "sqlTypeOther",
+   "length": 8,
+   "domain": null,
+   "defaultValue": null
+  }
+ ],
+ "exceededTransferLimit": true,
+ "features": [
+  {
+   "attributes": {
+    "PAMS_PIN": "1213_407_1",
+    "OwnersName": "CITY OF NEW BRUNSWICK",
+    "OwnerAddr1": "78 BAYARD ST, PO BOX 269",
+    "OwnerAddr2": "NEW BRUNSWICK, NJ",
+    "ZipCode": "08903",
+    "SalesDate": null,
+    "ModIVDate": 1758153600000
+   }
+  },
+  {
+   "attributes": {
+    "PAMS_PIN": "1213_413_35.02",
+    "OwnersName": "CITY OF NEW BRUNSWICK",
+    "OwnerAddr1": "78 BAYARD ST, PO BOX 269",
+    "OwnerAddr2": "NEW BRUNSWICK, NJ",
+    "ZipCode": "08903",
+    "SalesDate": null,
+    "ModIVDate": 1758153600000
+   }
+  },
+  {
+   "attributes": {
+    "PAMS_PIN": "1213_321_4.02",
+    "OwnersName": "CITY OF NEW BRUNSWICK",
+    "OwnerAddr1": "78 BAYARD ST, PO BOX 269",
+    "OwnerAddr2": "NEW BRUNSWICK, NJ",
+    "ZipCode": "08903",
+    "SalesDate": 966470400000,
+    "ModIVDate": 1758153600000
+   }
+  }
+ ]
+}

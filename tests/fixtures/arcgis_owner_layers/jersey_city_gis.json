@@ -1,0 +1,90 @@
+{
+ "objectIdFieldName": "OBJECTID",
+ "uniqueIdField": {
+  "name": "OBJECTID",
+  "isSystemMaintained": true
+ },
+ "globalIdFieldName": "",
+ "geometryType": "esriGeometryPolygon",
+ "spatialReference": {
+  "wkid": 102100,
+  "latestWkid": 3857
+ },
+ "fields": [
+  {
+   "name": "Parcel_PAMS_PIN",
+   "type": "esriFieldTypeString",
+   "alias": "PAMS_PIN",
+   "sqlType": "sqlTypeOther",
+   "length": 32,
+   "domain": null,
+   "defaultValue": "1"
+  },
+  {
+   "name": "M4_Owner_Name",
+   "type": "esriFieldTypeString",
+   "alias": "Owner_Name",
+   "sqlType": "sqlTypeOther",
+   "length": 36,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "M4_Owner_Street",
+   "type": "esriFieldTypeString",
+   "alias": "Owner_Street",
+   "sqlType": "sqlTypeOther",
+   "length": 25,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "M4_Owner_Csz",
+   "type": "esriFieldTypeString",
+   "alias": "Owner_Csz",
+   "sqlType": "sqlTypeOther",
+   "length": 30,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "M4_Update_Date",
+   "type": "esriFieldTypeString",
+   "alias": "Update_Date",
+   "sqlType": "sqlTypeOther",
+   "length": 8,
+   "domain": null,
+   "defaultValue": null
+  }
+ ],
+ "exceededTransferLimit": true,
+ "features": [
+  {
+   "attributes": {
+    "Parcel_PAMS_PIN": "0906_101_7_HM",
+    "M4_Owner_Name": "CITY OF JERSEY CITY",
+    "M4_Owner_Street": "280 GROVE ST",
+    "M4_Owner_Csz": "JERSEY CITY N J          07302",
+    "M4_Update_Date": "08/03/22"
+   }
+  },
+  {
+   "attributes": {
+    "Parcel_PAMS_PIN": "0906_201_13",
+    "M4_Owner_Name": "CITY OF JERSEY CITY",
+    "M4_Owner_Street": "280 GROVE ST",
+    "M4_Owner_Csz": "JERSEY CITY N J          07302",
+    "M4_Update_Date": "08/03/22"
+   }
+  },
+  {
+   "attributes": {
+    "Parcel_PAMS_PIN": "0906_1801_5",
+    "M4_Owner_Name": "CITY OF JERSEY CITY",
+    "M4_Owner_Street": "280 GROVE ST",
+    "M4_Owner_Csz": "JERSEY CITY N J          07302",
+    "M4_Update_Date": "08/03/22"
+   }
+  }
+ ]
+}

@@ -19,22 +19,24 @@ Target outcome: assignment fees of $15K–$40K per deal.
 | Sprint | Scope | Status |
 |---|---|---|
 | **1. Data & Valuation Swarm** | DB layer, live NJ scrapers (sheriff sales, MOD-IV absentee/out-of-state, mailing-cluster cash buyers, stale listings, tax-sale import), owner/deed import + flip detection, comps/ARV/MAO underwriter with NJ tax drag + FRFPA floor, explainable scoring, swarm orchestrator, self-improvement log, daily briefing CLI | **Done (Phase 1)** |
-| **2. Skip-Tracing, Lead Scoring & Self-Improving Loop** | Skip-trace assist (search-link generation, NJ entity registered-agent lookup), paid-provider adapters, DNC/Daniel's-Law suppression list, Union + Essex clerk lis-pendens agents (names → parcels via owner lists), NJ permits (demolition/alteration → flipper + condition signals), outcome logging so the learner can re-fit weights | Next |
-| **3. CRM, NJ Call Script Engine & Deal Package PDFs** | Pipeline stages, follow-up engine, call logging + debrief, situation-specific scripts/objection handling, investor deal-package PDF | Planned |
-| **4. Cash Buyers, Outreach & Contract/Closing Coordinator** | Buyer list growth + matching, deal blasts, NJ contract templates (PSA, assignment), attorney-review/closing milestone tracker | Planned |
+| **2. Contacts, FRFPA Tracks, Call Scripts, Deal Docs & CRM Cockpit** | Contacts table + enrichment (listing agents, foreclosure defendants/heirs/executors, municipal ArcGIS owner layers, mailing cross-reference, entity lookup links), skip-trace export/paste/import, DNC guard (FTC/internal/Daniel's Law, calling hours), FRFPA occupancy classifier + covered-deal tracks (82% floor / equity-rescue referral), battle cards (playbooks A–E, 12+ objections), LOI/PSA/assignment/JV/deal-sheet generator with compliance gates, CRM (call log → stage → follow-up → rescore → coach), local web cockpit, buyer matcher, contact-readiness audit | **Done (Phase 2)** |
+| **3. Lead Sources & Learning at Scale** | Union + Essex clerk lis-pendens agents (names → parcels via owner lists), NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), outcome-driven weight re-fits once calls are logged | Next |
+| **4. Disposition & Closing Coordinator** | Buyer list growth (county deed exports), deal blasts to matched buyers (only after attorney review), attorney-reviewed templates replacing the drafts, title/closing milestone tracker | Planned |
 
 ## Directory structure
 
 ```
 CLAUDE.md                     ← you are here
-manage.py                     ← operator CLI (rich): briefing, lead, underwrite, buyers, stats, swarm passthrough
+manage.py                     ← operator CLI (rich): briefing, lead, underwrite, buyers, stats, server, queue, script,
+                                call, occupancy, contract, docs, skiptrace, dnc, match, swarm passthrough
 config/settings.yaml          ← all tunables (counties/towns, MAO %, fees, rehab $/sqft, scoring weights, cron)
 config/sources/               ← source directories (realauction_nj.yaml: 91 tax-sale sites in target counties)
 core/                         ← config loader, polite HTTP client (per-host rate limit, retries, disk cache,
                                 host stats), text/address utils, NJ business days, geo, ZIP (ZCTA) resolver
 db/database.py                ← engine/session factory, create + additive migrations, init lock (thread-safe)
-db/models.py                  ← ORM: properties, distress_signals, valuations, leads, cash_buyers,
-                                deed_transfers, listings, agent_runs, scoring_weights, swarm_state
+db/models.py                  ← ORM: properties, distress_signals, valuations, leads (+ occupancy, FRFPA track, CRM
+                                fields), contacts, interactions, dnc_entries, buyer_matches, generated_documents,
+                                cash_buyers, deed_transfers, listings, agent_runs, scoring_weights, swarm_state
 db/repository.py              ← idempotent upserts keyed on natural keys; parcel_id = COUNTY-MUN-BLOCK-LOT[-QUAL]
 agents/base.py                ← BaseAgent: agent_runs bookkeeping, checkpoints, fault isolation
 agents/scrapers/
@@ -44,6 +46,13 @@ agents/scrapers/
   stale_listing_distress_agent.py ← homeharvest active listings: 90+ DOM, price cuts, distress keywords
   tax_sale_agent.py           ← RealAuction municipal tax lien sales (live if allowed, else saved-page import)
   owner_records_agent.py      ← imports county owner/deed exports, Newark 2020 snapshot; names buyers; flips
+agents/enrichment/
+  municipal_owner_layers.py   ← owner names from Jersey City / New Brunswick / Plainfield ArcGIS layers (PAMS_PIN join,
+                                explicit outFields, skip records older than the last deed)
+  listing_agent_enricher.py   ← listing-agent contacts (name, brokerage, phones, email) for stale MLS leads
+  public_owner_resolver.py    ← foreclosure defendants → OWNER / HEIR_EXECUTOR / RELATIVE / DECEASED; mailing
+                                cross-reference (owner lists, deed grantees); entity lookup links
+  skiptrace_pipeline.py       ← export top N (CSV+HTML with manual people-search links), import CSV, paste parser
 engine/
   market.py                   ← per-town sale/assessment ratio, median price, pre-1980 share (from NJGIN)
   equity.py                   ← purchase-money mortgage amortization → likely equity / free-and-clear
@@ -52,14 +61,24 @@ engine/
   homeharvest_provider.py     ← normalized wrapper around homeharvest (throttled; ProviderBlocked fallback)
   rehab.py                    ← NJ rehab tiers ($25/$50/$85 per sqft + age bumps + roof/HVAC buffer)
   underwriter.py              ← ARV/as-is → tax drag → rehab → fee → MAO 70/75 → anchor → FRFPA → verdict
-  scoring.py                  ← motivation / viability / priority with reasons; strategy brief
+  scoring.py                  ← motivation / viability / priority with reasons (+ CRM engagement); strategy brief
+  frfpa_classifier.py         ← occupancy facts → FRFPA track (exempt vs covered) + covered-deal monetization
+  compliance.py               ← DNC (FTC 31-day data, internal, Daniel's Law), calling hours, can_call()
+  scripts.py                  ← battle cards: playbooks A–E, objection matrix, never-say lists, resources
+  contracts.py                ← LOI / PSA draft / assignment / JV / deal sheet → deals/<property_id>/ md+html+pdf, gated
+  crm.py                      ← log_call, follow-up cadence, confirm_occupancy (re-price), record_contract, queues
+  debrief.py / ai.py          ← rule-based post-call coach; optional Claude note (redacted payload, opt-in)
+  buyer_matcher.py            ← top-5 recorded cash buyers per top deal (geography, price, units, rehab, recency)
+web/app.py + web/static/      ← local cockpit (FastAPI, 127.0.0.1 only, Host/Origin guard): dashboard, battle station
 swarm/orchestrator.py         ← `python -m swarm.orchestrator` (list | run | job | run-all | daemon | status)
 swarm/self_improvement.py     ← audits health/coverage/spreads → logs/swarm_intelligence.md; tunes weights;
                                 auto-adds high-spread towns (swarm_state.auto_expansion)
 docs/nj_data_sources.md       ← verified data-source report (what works, how, limits, manual checklist)
 docs/recon/                   ← raw recon: legal_rules.md, comps_listings.md, assessment_owner_deeds.md,
-                                tax_sale_clerk_opendata.md, nj_owner_records_client.py (evidence only)
+                                tax_sale_clerk_opendata.md, public_owner_layers.md, nj_owner_records_client.py
 data/imports/                 ← operator-downloaded files (owner_lists/, deeds/, tax_sales/<Town>/) — git-ignored
+data/exports/                 ← skip-trace queues (CSV/HTML) — git-ignored
+deals/<property_id>/          ← generated LOI/PSA/assignment/JV/deal sheets — git-ignored (names sellers)
 logs/                         ← swarm_intelligence.md (committed); *.log (ignored)
 tests/                        ← pytest; parsers run against saved real pages in tests/fixtures/
 wholesaling.db                ← SQLite database (git-ignored: contains names/addresses)
@@ -74,6 +93,15 @@ wholesaling.db                ← SQLite database (git-ignored: contains names/a
   browsers only), Essex TaxDataHub (reCAPTCHA). OPRA requests to tax collectors are the scalable route.
 - Never: impersonate a browser, solve/bypass CAPTCHAs, accept click-through terms for the operator, or
   crawl paths a robots.txt disallows. If a source starts refusing us, record it in agent_runs and fall back.
+- Municipal ArcGIS owner layers (learned 2026-10-27, `docs/recon/public_owner_layers.md`): query only our
+  leads' PAMS_PINs with an **explicit field list** — the Plainfield vendor layer carries raw SSN columns that
+  must never be requested. Skip the Middlesex `mcgisportal` parcels service (looks like an accidental exposure).
+- People-search sites (TruePeopleSearch, FastPeopleSearch, CyberBackgroundChecks) and entity search
+  (NJ Business Name Search, OpenCorporates) are **manual links the operator clicks**; results come back via
+  paste/CSV import. No scraping (ToS), no OpenCorporates API (key + share-alike licence). Voter-file lookups
+  are not used (use restrictions).
+- National DNC data is a manual download from the operator's FTC account (first 5 area codes free), loaded
+  with `manage.py dnc --load`; it is stale after 31 days.
 
 ## NJ Legal & Market Rules (encode these in logic and scripts)
 
@@ -133,8 +161,20 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   cancellation** (no deed signed before it ends); contract recorded within 10 business days; owner
   receives **≥ 82% of fair market value**; closing at an attorney/title office; lienholders notified.
   Penalties: treble damages, civil penalties, and it can be a crime.
-- `engine/underwriter.py::frfpa_applies()` flags these leads and raises the offer floor to 82% of the
-  as-is value; if MAO is below it the verdict is **FRFPA_BLOCKED** (refer to an agent / short sale / pass).
+- `engine/frfpa_classifier.py::classify()` decides coverage from occupancy facts. **Exempt**: not in
+  foreclosure / not 1–4 family, entity owner (trusts are *not* exempt), confirmed tenant-occupied or vacant;
+  **presumed exempt** (screening only): VACANT signal, absentee estate, absentee owner. **Covered**:
+  presumed owner-occupied, estate with unknown occupancy (an heir living there is an owner-occupant),
+  operator-confirmed owner/heir occupancy. Servicer tax-bill addresses are not evidence of absence.
+- Covered leads are priced at ≥ 82% of as-is FMV. When 70% MAO is below that floor, `covered_track()` picks
+  **WORKABLE_82_PCT_FLOOR** (a 75%-of-ARV buyer still leaves ≥ $10K), else **EQUITY_RESCUE_REFERRAL**
+  (0.9·FMV − debt > $75K: refer to a listing agent/counselor — no referral fee while unlicensed,
+  N.J.S.A. 45:15-3), else **FRFPA_BLOCKED**.
+- Gates in `engine/contracts.py`: never generate a PSA for a covered lead (attorney drafts the statutory
+  form); LOIs for covered leads ≥ the floor; a *presumed* exemption needs operator-confirmed occupancy
+  (`crm.confirm_occupancy`, which re-prices) before any offer below the floor; no offer documents on
+  EQUITY_RESCUE_REFERRAL / FRFPA_BLOCKED. `crm.record_contract` uses the later of attorney review and the
+  10-business-day FRFPA cancellation before anything is marketed.
 
 ### Consumer Fraud Act & wholesale transparency (N.J.S.A. 56:8-1 et seq.)
 - Unconscionable practices or misrepresentations → **treble damages + attorney fees** (56:8-19); AG
@@ -156,6 +196,12 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   Easy Offer* (9th Cir. 2026): "we buy houses" outreach can be telemarketing.
 - NJ (N.J.S.A. 56:8-119 et seq.): telemarketers must **register annually** with the Division of Consumer
   Affairs; within the first 30 seconds state name, company, phone number and purpose; no caller-ID spoofing.
+- Enforced in code (`engine/compliance.py`, `engine/crm.py`): the cockpit shows a number as callable only
+  inside 8am–9pm Eastern and not on any DNC list; numbers not covered by fresh FTC data are flagged
+  "unscrubbed"; a DNC call outcome adds the number to the internal list immediately; Daniel's Law requests
+  go in with source `daniels_law`. Listing agents' advertised numbers are B2B but still honor stop requests.
+  Two-party-consent states (CA, FL, PA, MD, MA, WA, …): ask before recording. The optional AI coach sends
+  only the town, deal numbers and redacted notes — never names, phones or street addresses.
 - **Daniel's Law** (N.J.S.A. 56:8-166.1): on a nondisclosure request, stop disclosing that person's home
   address/phone (including mailing lists and vendor sharing) within **10 business days**; strict
   liability, $1,000+ per violation (N.J. Supreme Court, Aug. 2026). It is why NJGIN owner names are blank.
@@ -180,17 +226,20 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
 
 ## The autonomous agent runner
 
-- Every agent subclasses `agents.base.BaseAgent` and implements `run(session) -> AgentResult`.
+- Every agent subclasses `agents.base.BaseAgent` and implements `run(ctx: AgentContext) -> None`.
   `BaseAgent.execute()` wraps it: opens an `agent_runs` row, records counts/errors/notes,
   never lets one agent's crash stop the swarm.
 - `swarm/orchestrator.py` holds the registry (`AGENTS`), dependency order and cron schedules
   (from `config/settings.yaml`). Modes:
-  - `python -m swarm.orchestrator run-all` — run the full pipeline once (scrape → enrich → score → underwrite → self-improve).
+  - `python -m swarm.orchestrator run-all` — run the full pipeline once (scrape ∥ → owner enrichment →
+    contact enrichment [municipal_owners → listing_agents → owner_resolver] → score → underwrite → re-score →
+    buyer_matcher → self-improve).
   - `python -m swarm.orchestrator run <agent>` — run one agent.
   - `python -m swarm.orchestrator daemon` — APScheduler loop using the cron schedules.
   - `python -m swarm.orchestrator status` — recent runs and health.
 - The **Self-Improvement & Alpha Discovery Agent** runs last in every pipeline: audits scraper
-  success rates, data coverage, comp coverage and spread viability, writes findings to
+  success rates, data coverage, contact readiness (top-100 leads with a callable phone), buyer-match
+  coverage, DNC freshness, call outcomes, comp coverage and spread viability, writes findings to
   `logs/swarm_intelligence.md`, tunes the scoring weights stored in `scoring_weights`,
   and proposes adjacent municipalities with better spread-to-ARV ratios.
 
@@ -203,5 +252,13 @@ python -m swarm.orchestrator run-all        # full live pipeline (scrape ∥ →
 python manage.py briefing                   # daily action briefing (top 15 leads)
 python manage.py underwrite --top 15        # (re)underwrite the top leads
 python manage.py lead <id>                  # full detail for one lead
+python manage.py server                     # CRM cockpit → http://127.0.0.1:8000
+python manage.py queue                      # today's dial list (follow-ups first)
+python manage.py script <id>                # pre-call battle card (playbook auto-chosen)
+python manage.py call <id> --outcome SPOKE_NEEDS_OFFER --occupancy VACANT --ask 300k
+python manage.py docs <id> --type loi       # LOI / psa / assignment / jv / deal_sheet / all (gated)
+python manage.py skiptrace --export-top 50  # then --import <csv> or --lead <id> --paste <file>
+python manage.py dnc --load <ftc_file>      # National DNC data (re-load every 31 days)
+python manage.py match                      # top-5 cash buyers for the top 50 deals
 pytest                                      # tests
 ```

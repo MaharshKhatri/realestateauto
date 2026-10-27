@@ -251,29 +251,8 @@ class Underwriter:
             as_is_to_arv=(result.as_is / result.arv) if result.as_is and result.arv else None,
             units=prop.dwellings)
         as_is = min(result.as_is or 0, result.arv) or None
-        decision = frfpa_decision(prop)
-        frfpa = decision.applies
-        om = offer_math(arv=result.arv, repairs=rehab.cost, annual_taxes=prop.annual_taxes, debt=debt, cfg=self.cfg,
-                        frfpa=frfpa, fmv=as_is)
-        track_info: dict[str, Any] = {}
-        if frfpa and om.verdict == "FRFPA_BLOCKED" and as_is:
-            ct = covered_track(arv=om.arv, fmv=as_is, repairs=om.repairs, debt=debt,
-                               aggressive_pct=float(self.cfg.get("mao_pct_aggressive", 0.75)),
-                               min_fee=float(self.cfg.get("min_assignment_fee", 10000)))
-            om.verdict = ct.track
-            om.flags.extend(ct.notes)
-            track_info = {"compliant_offer": ct.compliant_offer, "track_buyer_price": ct.buyer_price,
-                          "track_fee": ct.fee, "equity_at_risk": ct.equity_at_risk}
-            if ct.track == "WORKABLE_82_PCT_FLOOR":
-                om.anchor_offer = ct.compliant_offer
-                om.assignment_fee = ct.fee
-        exempt_scenario = None
-        if frfpa:   # what the deal looks like if occupancy verification shows FRFPA does not apply
-            ex = offer_math(arv=result.arv, repairs=rehab.cost, annual_taxes=prop.annual_taxes, debt=debt, cfg=self.cfg)
-            exempt_scenario = {"verdict": ex.verdict, "mao_conservative": ex.mao_conservative,
-                               "anchor_offer": ex.anchor_offer, "fee": ex.assignment_fee}
-        if prop.lead:
-            prop.lead.frfpa_track = decision.track
+        om, decision, frfpa_fields = decide_offer(prop, arv=result.arv, repairs=rehab.cost, as_is=as_is, debt=debt,
+                                                  cfg=self.cfg)
         conf = confidence(result, sqft_known, int(self.cfg.get("min_comps", 3)))
         as_is = min(as_is or 0, om.arv) or None
         equity = estimate_equity(as_is, prop.last_sale_price, prop.last_sale_date, known_debt=debt)
@@ -295,17 +274,86 @@ class Underwriter:
                 "buyer_profit": om.buyer_profit, "buyer_roi": om.buyer_roi, "flags": om.flags,
                 "comp_notes": result.notes, "renovated_comps": result.renovated_count,
                 "distressed_comps": result.distressed_count, "dispersion": result.dispersion,
-                "radius_miles": result.radius_used, "valued_on": date.today().isoformat(),
-                "frfpa_applies": frfpa, "frfpa_floor": om.frfpa_floor, "frfpa_track": decision.track,
-                "frfpa_confidence": decision.confidence, "frfpa_basis": decision.basis,
-                "verify_before_contract": decision.verify_before_contract, "exempt_scenario": exempt_scenario,
-                **track_info,
+                "radius_miles": result.radius_used, "valued_on": date.today().isoformat(), **frfpa_fields,
             })
         session.add(val)
         prop.estimated_value = as_is
         prop.estimated_equity = equity
         session.flush()
         return val
+
+
+def decide_offer(prop: Property, *, arv: float, repairs: float, as_is: float | None, debt: float | None,
+                 cfg: dict[str, Any]) -> tuple[OfferMath, FrfpaDecision, dict[str, Any]]:
+    """Offer math + FRFPA track for already-valued inputs (shared by underwrite() and reprice())."""
+    decision = frfpa_decision(prop)
+    frfpa = decision.applies
+    om = offer_math(arv=arv, repairs=repairs, annual_taxes=prop.annual_taxes, debt=debt, cfg=cfg, frfpa=frfpa, fmv=as_is)
+    track_info: dict[str, Any] = {}
+    if frfpa and om.verdict == "FRFPA_BLOCKED" and as_is:
+        ct = covered_track(arv=om.arv, fmv=as_is, repairs=om.repairs, debt=debt,
+                           aggressive_pct=float(cfg.get("mao_pct_aggressive", 0.75)),
+                           min_fee=float(cfg.get("min_assignment_fee", 10000)))
+        om.verdict = ct.track
+        if ct.track != "FRFPA_BLOCKED":   # the 70%-MAO "no compliant offer" note no longer describes the deal
+            om.flags = [f for f in om.flags if "no compliant wholesale offer" not in f]
+        om.flags.extend(ct.notes)
+        track_info = {"compliant_offer": ct.compliant_offer, "track_buyer_price": ct.buyer_price,
+                      "track_fee": ct.fee, "equity_at_risk": ct.equity_at_risk}
+        if ct.track == "WORKABLE_82_PCT_FLOOR":
+            om.anchor_offer = ct.compliant_offer
+            om.assignment_fee = ct.fee
+    exempt_scenario = None
+    if frfpa:   # what the deal looks like if occupancy verification shows FRFPA does not apply
+        ex = offer_math(arv=arv, repairs=repairs, annual_taxes=prop.annual_taxes, debt=debt, cfg=cfg)
+        exempt_scenario = {"verdict": ex.verdict, "mao_conservative": ex.mao_conservative,
+                           "anchor_offer": ex.anchor_offer, "fee": ex.assignment_fee}
+    if prop.lead:
+        prop.lead.frfpa_track = decision.track
+    fields = {"frfpa_applies": frfpa, "frfpa_floor": om.frfpa_floor, "frfpa_track": decision.track,
+              "frfpa_confidence": decision.confidence, "frfpa_basis": decision.basis,
+              "verify_before_contract": decision.verify_before_contract, "exempt_scenario": exempt_scenario,
+              **track_info}
+    return om, decision, fields
+
+
+FRFPA_FIELDS = ("frfpa_applies", "frfpa_floor", "frfpa_track", "frfpa_confidence", "frfpa_basis",
+                "verify_before_contract", "exempt_scenario", "compliant_offer", "track_buyer_price", "track_fee",
+                "equity_at_risk")
+
+
+def reprice(session: Session, prop: Property) -> Valuation | None:
+    """Re-run the offer math on the current valuation's ARV/repairs/as-is without re-pulling comps.
+
+    Used when a fact that only affects the offer changes — e.g. the operator confirms occupancy on a call,
+    which can move a lead from the 82% FRFPA floor to a standard 70% MAO (or the reverse).
+    """
+    cur = prop.current_valuation
+    if cur is None or not cur.arv_estimate:
+        return None
+    a = dict(cur.assumptions_json or {})
+    arv = a.get("arv_before_tax_drag") or cur.arv_estimate
+    cfg = dict(settings().deal)
+    debt = known_debt(prop)
+    om, _, fields = decide_offer(prop, arv=arv, repairs=cur.est_repair_cost or 0, as_is=cur.as_is_value, debt=debt,
+                                 cfg=cfg)
+    for k in FRFPA_FIELDS:
+        a.pop(k, None)
+    a.update(fields)
+    a.update({"buyer_purchase_price": om.buyer_purchase_price, "buyer_profit": om.buyer_profit,
+              "buyer_roi": om.buyer_roi, "flags": om.flags, "repriced_from": cur.id})
+    cur.is_current = False
+    val = Valuation(
+        property=prop, arv_estimate=om.arv, as_is_value=cur.as_is_value, est_repair_cost=om.repairs,
+        rehab_tier=cur.rehab_tier, target_assignment_fee=om.assignment_fee, mao_conservative=om.mao_conservative,
+        mao_aggressive=om.mao_aggressive, anchor_offer=om.anchor_offer, confidence_score=cur.confidence_score,
+        comps_json=cur.comps_json, comp_count=cur.comp_count, comp_source=cur.comp_source, sqft_used=cur.sqft_used,
+        effective_tax_rate=om.effective_tax_rate, tax_drag_adjustment=om.tax_drag_adjustment, debt_estimate=debt,
+        equity_estimate=cur.equity_estimate, deal_spread=om.deal_spread, verdict=om.verdict, is_current=True,
+        calculated_at=utcnow(), assumptions_json=a)
+    session.add(val)
+    session.flush()
+    return val
 
 
 def known_debt(prop: Property) -> float | None:
@@ -344,8 +392,11 @@ class UnderwriterAgent(BaseAgent):
         elif scope == "sheriff":
             q = q.join(DistressSignal, DistressSignal.property_id == Lead.property_id).where(
                 DistressSignal.signal_type == SignalType.SHERIFF_SALE, DistressSignal.active.is_(True))
+        lead_ids = [int(i) for i in (self.options.get("lead_ids") or [])]
+        if lead_ids:
+            q = q.where(Lead.id.in_(lead_ids))
         q = q.order_by(Lead.priority_rank_score.desc(), Lead.motivation_score.desc())
-        if scope == "top":
+        if scope == "top" and not lead_ids:
             q = q.limit(top)
         leads = list(dict.fromkeys(ctx.session.scalars(q).all()))
         self.verdicts: dict[str, int] = {}

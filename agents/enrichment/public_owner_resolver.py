@@ -24,14 +24,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from agents.base import AgentContext, BaseAgent
 from agents.scrapers.nj_tax_assessment_agent import mailing_key
 from agents.scrapers.owner_records_agent import deed_rows, owner_rows
 from core.config import DATA_DIR
 from core.text import clean, is_entity, is_government, is_lender, strip_et_al
-from db.models import CashBuyer, Contact, ContactType, Lead, Property, SignalType
+from db.models import CashBuyer, Contact, ContactType, Interaction, Lead, Property, SignalType
 from db.repository import upsert_contact
 
 log = logging.getLogger(__name__)
@@ -166,7 +166,8 @@ class PublicOwnerResolver(BaseAgent):
             self._cross_reference_buyers(ctx, idx)
         self._entity_links(ctx)
         ctx.checkpoint()
-        total = s.scalar(select(Lead.id).limit(1)) and len(s.scalars(select(Lead.id)).all())
+        total = s.scalar(select(func.count(Lead.id)))
+        ctx.records_processed = total
         named = len(s.scalars(select(Property.id).join(Lead).where(Property.owner_name.is_not(None))).all())
         ctx.metrics["owner_name_coverage"] = round(named / total, 3) if total else 0.0
         ctx.note(f"Owner names known on {named:,} of {total:,} leads ({named / total:.0%})" if total else "no leads")
@@ -244,8 +245,14 @@ class PublicOwnerResolver(BaseAgent):
                 ctx.bump("buyer_principals_linked")
 
     def _entity_links(self, ctx: AgentContext) -> None:
+        # The corporate flag can predate a person's name replacing the owner of record: drop stale lookups.
+        for c in ctx.session.scalars(select(Contact).where(Contact.source == "entity_lookup_links")):
+            used = ctx.session.scalar(select(Interaction.id).where(Interaction.contact_id == c.id).limit(1))
+            if not is_entity(clean(c.name).upper()) and used is None:
+                ctx.session.delete(c)
         for p in ctx.session.scalars(select(Property).join(Lead).where(Property.is_corporate_owned.is_(True))):
-            if not p.owner_name or is_lender(p.owner_name) or is_government(p.owner_name):
+            if not p.owner_name or not is_entity(clean(p.owner_name).upper()) or is_lender(p.owner_name) \
+                    or is_government(p.owner_name):
                 continue
             upsert_contact(ctx.session, lead=p.lead, contact_type=ContactType.REGISTERED_AGENT,
                            source="entity_lookup_links", name=p.owner_name,

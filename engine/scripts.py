@@ -18,12 +18,13 @@ Compliance is part of every card, not an afterthought (CLAUDE.md "NJ Legal & Mar
 """
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from typing import Any
 
 from core.config import settings
-from core.text import format_phone
+from core.text import format_phone, is_entity, split_person_name
 from db.models import CashBuyer, Contact, ContactType, Lead, SignalType
 
 TWO_PARTY_CONSENT_STATES = {"CA", "CT", "FL", "IL", "MD", "MA", "MI", "MT", "NV", "NH", "PA", "WA", "OR"}
@@ -111,6 +112,18 @@ def lead_facts(lead: Lead) -> dict[str, Any]:
         "price_reduced": lmeta.get("price_reduced"), "keywords": lmeta.get("keywords") or [],
         "listing_url": lmeta.get("url"),
     }
+
+
+def speaking_name(raw: str | None) -> str:
+    """Owner-of-record text → how you'd say it on the phone: 'COLODNE, YETTA ESTATE OF' → 'Yetta Colodne'."""
+    from agents.scrapers.sheriff_sale_agent import first_defendant
+    if not raw:
+        return ""
+    name = first_defendant(raw)
+    if is_entity(name.upper()):
+        return re.sub(r"\b(Llc|Lp|Llp|Inc|Nj|Usa)\b", lambda m: m.group(1).upper(), name.title())
+    first, last = split_person_name(name)
+    return " ".join(x for x in (first, last) if x) or name.title()
 
 
 def pick_contact(lead: Lead) -> Contact | None:
@@ -224,9 +237,18 @@ def objection_matrix(f: dict[str, Any], playbook: str) -> list[Objection]:
 
 
 # -- playbooks ---------------------------------------------------------------------------------------
+def card_about(f: dict[str, Any]) -> str:
+    return f"the property at {f['address']}"
+
+
+def callback_number() -> str:
+    op = settings().operator
+    return format_phone("".join(ch for ch in (op.get("phone") or "") if ch.isdigit())) or "[your callback number]"
+
+
 def _intro(contact_name: str, about: str) -> tuple[str, str]:
     op = settings().operator
-    phone = format_phone("".join(ch for ch in (op.get("phone") or "") if ch.isdigit())) or "[your callback number]"
+    phone = callback_number()
     opening = (f"Hi, is this {contact_name or '[name]'}? My name is {op.get('name')} with {op.get('company_name')} — "
                f"my number is {phone}. I'm calling about {about}. Do you have two minutes?")
     disclosure = settings().get("compliance", {}).get(
@@ -261,7 +283,11 @@ def build_battle_card(lead: Lead, contact: Contact | None = None) -> BattleCard:
     contact = contact or pick_contact(lead)
     f = lead_facts(lead)
     pb = choose_playbook(lead, contact)
-    name = (contact.name if contact else None) or f.get("owner_name") or ""
+    name = speaking_name(contact.name) if contact and contact.name else speaking_name(f.get("owner_name"))
+    family_of = None
+    if pb == "B" and (contact is None or contact.contact_type not in (ContactType.HEIR_EXECUTOR, ContactType.RELATIVE)):
+        # Deceased owner and nobody living identified yet: ask for the family, never for the decedent.
+        family_of, name = name or "the owner", ""
     cdict = {"name": name, "type": contact.contact_type if contact else None,
              "phone": format_phone(contact.phone) if contact and contact.phone else None,
              "phone_type": contact.phone_type if contact else None, "dnc": contact.dnc_status if contact else None,
@@ -288,6 +314,11 @@ def build_battle_card(lead: Lead, contact: Contact | None = None) -> BattleCard:
     else:
         card = _playbook_c(f, name)
     opening, disclosure = _intro(name, card.pop("about"))
+    if family_of:
+        op = settings().operator
+        opening = (f"Hi, I'm trying to reach a family member of {family_of}. My name is {op.get('name')} with "
+                   f"{op.get('company_name')} — my number is {callback_number()}. I'm calling about {card_about(f)}. "
+                   "Is this a good time?")
     offer = offer_block(f)
     if pb == "D":
         disclosure = ("We're investors buying as principals, not licensed agents. Our offers may name "

@@ -272,11 +272,37 @@ class LeadScoringAgent(BaseAgent):
         ctx.checkpoint()
 
 
+# Pipeline stage → priority points: a seller who engaged is worth more than any cold record.
+STAGE_BONUS = {"CONTACTED": 4, "INTERESTED": 12, "APPOINTMENT": 15, "OFFER_MADE": 18, "NEGOTIATING": 20,
+               "UNDER_CONTRACT": 25, "ASSIGNED": 25}
+
+
+def engagement_adjustment(lead: Lead) -> tuple[float, list[str]]:
+    """Priority points from what the operator has learned (CRM stage, reachable phone, dead-end dialing)."""
+    if lead.status_stage in TERMINAL:
+        return 0.0, [f"pipeline: {lead.status_stage.replace('_', ' ').lower()}"]
+    bonus, why = float(STAGE_BONUS.get(lead.status_stage, 0)), []
+    if bonus:
+        why.append(f"pipeline: {lead.status_stage.replace('_', ' ').lower()} (+{bonus:.0f})")
+    if any(c.phone and c.dnc_status != "dnc" and (c.confidence_score or 0) > 0 for c in lead.contacts):
+        bonus += 4
+        why.append("callable phone on file (+4)")
+    if lead.contact_attempts >= 6 and lead.status_stage in ("NEW", "SKIP_TRACE", "CONTACT_ATTEMPTED"):
+        bonus -= 6
+        why.append(f"{lead.contact_attempts} attempts without a conversation (-6): switch to mail / door-knock")
+    return bonus, why
+
+
 def apply_score(lead: Lead, version: int, weights: dict[str, Any]) -> Score:
     from engine.underwriter import frfpa_decision   # local import: underwriter imports this module
     if any(s.signal_type in (SignalType.SHERIFF_SALE, SignalType.LIS_PENDENS) for s in lead.property.active_signals):
         lead.frfpa_track = frfpa_decision(lead.property).track
     sc = score_property(lead.property, weights, lead.primary_source)
+    bonus, why = engagement_adjustment(lead)
+    if bonus or why:
+        sc.priority = round(max(0.0, min(sc.priority + bonus, 100.0)), 1) if lead.status_stage not in TERMINAL else 0.0
+        sc.factors["engagement"] = bonus
+        sc.reasons.extend(why)
     lead.motivation_score, lead.deal_viability_score, lead.priority_rank_score = sc.motivation, sc.viability, sc.priority
     lead.score_breakdown_json = {"factors": sc.factors, "reasons": sc.reasons,
                                  "viability_basis": sc.viability_basis, "scored_at": utcnow().isoformat()}

@@ -349,7 +349,6 @@ if __name__ == "__main__":
 
     loc = sys.argv[1] if len(sys.argv) > 1 else "07095"
     try:
-        import homeharvest
         from importlib.metadata import version
         print(f"homeharvest {version('homeharvest')} | location={loc} | {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%SZ}")
     except Exception:

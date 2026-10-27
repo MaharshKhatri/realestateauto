@@ -7,6 +7,16 @@
     python manage.py underwrite [--top 15]    comps / ARV / MAO for the top leads
     python manage.py buyers [--top 20]        active cash buyers
     python manage.py stats                    database and pipeline stats
+    python manage.py server [--port 8000]     local CRM cockpit at http://127.0.0.1:8000
+    python manage.py queue [--top 25]         today's call queue (follow-ups first)
+    python manage.py script <lead> [--contact ID] [--buyer ID]   pre-call battle card (playbooks A–E)
+    python manage.py call <lead> --outcome SPOKE_NEEDS_OFFER [--notes ..] [--occupancy VACANT] [--ask 350k] [--ai]
+    python manage.py occupancy <lead> VACANT --source "seller on 10/27 call"     confirm + re-price
+    python manage.py contract <lead> --price 250000 [--signed 2026-10-27]       record a signed contract
+    python manage.py docs <lead> [--type loi|psa|assignment|jv|deal_sheet|all] [--price N] [--buyer ID]
+    python manage.py skiptrace --export-top 50 | --import found.csv | --lead ID --paste file.txt
+    python manage.py dnc --load ftc_201.txt [--date YYYY-MM-DD] | --add PHONE [--source daniels_law] | --status
+    python manage.py match [--top 50]         top-5 cash buyers for each top deal
     python manage.py swarm <args...>          passthrough to `python -m swarm.orchestrator`
 """
 from __future__ import annotations
@@ -22,8 +32,9 @@ from rich.panel import Panel
 from rich.table import Table
 from sqlalchemy import func, select
 
+from core.text import format_phone
 from db.database import init_db, session_scope
-from db.models import AgentRun, CashBuyer, DistressSignal, Lead, Property, SignalType, Valuation
+from db.models import AgentRun, CashBuyer, Contact, DistressSignal, Lead, Property, SignalType, Valuation
 
 console = Console(width=200)
 TERMINAL = ["DEAD", "DO_NOT_CONTACT", "CLOSED"]
@@ -56,6 +67,11 @@ def owner_label(lead: Lead) -> str:
     return "[name pending]"
 
 
+def buyer_label(b: CashBuyer) -> str:
+    name = b.entity_name or ""
+    return (name[8:] if name.upper().startswith("OWNER @ ") else name)[:28]
+
+
 def cmd_briefing(args: argparse.Namespace) -> None:
     init_db()
     today = date.today()
@@ -77,13 +93,22 @@ def cmd_briefing(args: argparse.Namespace) -> None:
         last_runs = {}
         for r in s.scalars(select(AgentRun).order_by(AgentRun.started_at.desc()).limit(60)):
             last_runs.setdefault(r.agent_name, r)
+        from engine import compliance, crm
+        top100 = s.scalars(select(Lead).where(Lead.status_stage.notin_(TERMINAL))
+                           .order_by(Lead.priority_rank_score.desc()).limit(100)).all()
+        ready = sum(1 for lead in top100 if crm.best_phone(s, lead))
+        due = crm.due_followups(s)
+        ftc = compliance.ftc_data_status(s)
 
         console.print(Panel.fit(
             f"[bold]Daily Action Briefing — {today:%A, %B %d, %Y}[/bold]\n"
             f"Open leads: [bold]{open_total:,}[/bold]  ({', '.join(f'{k} {v:,}' for k, v in by_source.most_common())})\n"
             f"Sheriff sales in next 14 days: [bold]{auctions_14}[/bold]   ·   Underwritten: {len(vals)} "
             f"({', '.join(f'{k} {v}' for k, v in verdicts.most_common())})   ·   Cash buyers on file: {buyers}\n"
-            f"Data freshness: " + ", ".join(
+            f"Contact-ready (top 100): [bold]{ready}%[/bold]   ·   Follow-ups due: [bold]{len(due)}[/bold]   ·   "
+            f"National DNC data: " + (f"{ftc['list_date']} ({'fresh' if ftc['fresh'] else '[red]STALE — reload[/red]'})"
+                                      if ftc["loaded"] else "[yellow]not loaded (manage.py dnc --load)[/yellow]") + "\n"
+            "Data freshness: " + ", ".join(
                 f"{n} {r.started_at:%m/%d %H:%M} ({r.status})" for n, r in sorted(last_runs.items())),
             title="NJ Wholesale Engine", border_style="cyan"))
 
@@ -94,13 +119,15 @@ def cmd_briefing(args: argparse.Namespace) -> None:
                         ("Why now", {"max_width": 44}), ("ARV", {"justify": "right"}), ("As-is", {"justify": "right"}),
                         ("Repairs", {"justify": "right"}), ("MAO 70/75", {"justify": "right"}),
                         ("Anchor", {"justify": "right"}), ("Fee", {"justify": "right"}), ("Debt", {"justify": "right"}),
-                        ("Verdict", {})]:
+                        ("Verdict / FRFPA", {"max_width": 24}), ("Contact", {"max_width": 18}),
+                        ("Top buyers", {"max_width": 30})]:
             table.add_column(col, **kw)
         for i, lead in enumerate(leads, 1):
             p = lead.property
             v = p.current_valuation
-            verdict_style = {"STRONG": "bold green", "WORKABLE": "green", "TIGHT": "yellow",
-                             "SHORT_SALE_ONLY": "red", "FRFPA_BLOCKED": "red", "PASS": "dim red"}.get(v.verdict if v else "", "dim")
+            verdict_style = {"STRONG": "bold green", "WORKABLE": "green", "WORKABLE_82_PCT_FLOOR": "cyan", "TIGHT": "yellow",
+                             "SHORT_SALE_ONLY": "red", "FRFPA_BLOCKED": "red", "EQUITY_RESCUE_REFERRAL": "magenta",
+                             "PASS": "dim red"}.get(v.verdict if v else "", "dim")
             table.add_row(
                 str(i), f"{lead.priority_rank_score:.0f}", f"{lead.motivation_score:.0f}/{lead.deal_viability_score:.0f}",
                 f"{p.street_address or '?'}\n[dim]{p.municipality or p.city or ''} {p.zip_code or ''} · {p.county}[/dim]",
@@ -111,7 +138,10 @@ def cmd_briefing(args: argparse.Namespace) -> None:
                 short_money(v.anchor_offer) if v else "—", short_money(v.target_assignment_fee) if v else "—",
                 short_money(v.debt_estimate) if v and v.debt_estimate else "—",
                 f"[{verdict_style}]{v.verdict if v else 'not underwritten'}[/{verdict_style}]"
-                + (f"\n[dim]conf {v.confidence_score:.0f}[/dim]" if v else ""))
+                + (f"\n[dim]conf {v.confidence_score:.0f}[/dim]" if v else "")
+                + (f"\n[dim]{lead.frfpa_track}[/dim]" if lead.frfpa_track else ""),
+                crm.contact_status(s, lead) + (f"\n[dim]{lead.status_stage.lower()}[/dim]" if lead.status_stage != "NEW" else ""),
+                "\n".join(f"{m.rank}. {buyer_label(m.buyer)}" for m in lead.buyer_matches[:3]) or "[dim]—[/dim]")
         console.print(table)
 
         console.print("[bold]Why the engine ranked them here[/bold]")
@@ -126,6 +156,9 @@ def cmd_briefing(args: argparse.Namespace) -> None:
                 console.print(f"     • {r}")
             if lead.ai_strategy_brief:
                 console.print(f"     [green]Plan:[/green] {lead.ai_strategy_brief}")
+        if due:
+            console.print(f"[bold]Follow-ups due now ({len(due)}):[/bold] " + ", ".join(
+                f"#{lead.id} {lead.property.street_address}" for lead in due[:12]))
         console.print(Panel(
             "Every call: identify yourself as a real estate investor (not an agent), say you may assign the contract to "
             "another investor, and encourage attorney review. Call 8am–9pm only; scrub numbers against the National DNC "
@@ -222,9 +255,167 @@ def cmd_underwrite(args: argparse.Namespace) -> None:
     from engine.underwriter import UnderwriterAgent
     from swarm.orchestrator import setup_logging
     setup_logging()
-    run = UnderwriterAgent(top=args.top, force=args.force).execute()
+    run = UnderwriterAgent(top=args.top, force=args.force, lead_ids=args.lead or None).execute()
     console.print(f"underwriter: {run.status} processed={run.records_processed} errors={run.error_count} "
                   f"verdicts={run.metrics_json.get('verdicts')}")
+
+
+def _lead(s, lead_id: int) -> Lead:
+    lead = s.get(Lead, lead_id)
+    if lead is None:
+        console.print(f"[red]lead {lead_id} not found[/red]")
+        raise SystemExit(2)
+    return lead
+
+
+def cmd_server(args: argparse.Namespace) -> None:
+    import uvicorn
+    init_db()
+    console.print(f"[green]Cockpit:[/green] http://127.0.0.1:{args.port}  (local only — Ctrl+C to stop)")
+    uvicorn.run("web.app:app", host="127.0.0.1", port=args.port, log_level="warning")
+
+
+def cmd_queue(args: argparse.Namespace) -> None:
+    from engine import compliance, crm
+    init_db()
+    with session_scope() as s:
+        if not compliance.within_calling_hours():
+            console.print("[yellow]Outside 8am–9pm Eastern: prepare, don't dial.[/yellow]")
+        t = Table(box=box.SIMPLE_HEAVY, title="Call queue")
+        for col in ("#", "lead", "property", "why", "call", "phone", "verdict"):
+            t.add_column(col)
+        for i, item in enumerate(crm.call_queue(s, args.top), 1):
+            c, p, v = item.contact, item.lead.property, item.lead.property.current_valuation
+            t.add_row(str(i), str(item.lead.id), f"{p.street_address}, {p.city or p.municipality}", item.reason,
+                      f"{c.name} ({c.contact_type.lower()})" if c else "—",
+                      f"{format_phone(c.phone) if c and c.phone else ''} [dim]{c.dnc_status if c else ''}[/dim]",
+                      v.verdict if v else "—")
+        console.print(t)
+
+
+def cmd_script(args: argparse.Namespace) -> None:
+    from engine.scripts import build_battle_card, build_buyer_pitch, render_markdown
+    init_db()
+    with session_scope() as s:
+        lead = _lead(s, args.id)
+        if args.buyer:
+            buyer = s.get(CashBuyer, args.buyer)
+            card = build_buyer_pitch(buyer, lead)
+        else:
+            contact = s.get(Contact, args.contact) if args.contact else None
+            card = build_battle_card(lead, contact)
+        console.print(render_markdown(card), markup=False, highlight=False)
+
+
+def cmd_call(args: argparse.Namespace) -> None:
+    from engine import crm
+    init_db()
+    with session_scope() as s:
+        lead = _lead(s, args.id)
+        contact = s.get(Contact, args.contact) if args.contact else None
+        debrief = {"asking_price": args.ask, "occupancy": args.occupancy, "motivation": args.motivation,
+                   "timeline": args.timeline}
+        r = crm.log_call(s, lead, args.outcome.upper(), notes=args.notes or "", contact=contact,
+                         occupancy=args.occupancy, debrief={k: v for k, v in debrief.items() if v}, use_ai=args.ai)
+        console.print(f"[green]logged[/green] stage={r.stage} priority={r.priority} next={r.next_followup_at or '—'}"
+                      + (" [red]added to DNC[/red]" if r.dnc_added else ""))
+        for n in r.notes:
+            console.print(f"  {n}")
+        c = r.coach
+        console.print(f"[bold]Next:[/bold] {c['next_action']}")
+        for label, items in (("Compliance", c["compliance_flags"]), ("Still missing", c["missing_info"]),
+                             ("Coaching", c["tips"])):
+            for x in items:
+                console.print(f"  [{'yellow' if label == 'Compliance' else 'dim'}]{label}:[/] {x}")
+        if c.get("ai"):
+            console.print(Panel(f"{c['ai']['read_on_seller']}\n- " + "\n- ".join(c["ai"]["next_call_plan"]),
+                                title="AI coach"))
+        if r.suggested_docs:
+            console.print(f"Suggested: python manage.py docs {lead.id} --type {r.suggested_docs[0]}")
+
+
+def cmd_occupancy(args: argparse.Namespace) -> None:
+    from engine import crm
+    init_db()
+    with session_scope() as s:
+        for n in crm.confirm_occupancy(s, _lead(s, args.id), args.status.upper(), args.source):
+            console.print(n)
+
+
+def cmd_contract(args: argparse.Namespace) -> None:
+    from engine import crm
+    init_db()
+    with session_scope() as s:
+        signed = date.fromisoformat(args.signed) if args.signed else None
+        for n in crm.record_contract(s, _lead(s, args.id), args.price, signed):
+            console.print(n)
+
+
+def cmd_docs(args: argparse.Namespace) -> None:
+    from engine.contracts import DOC_TYPES, ContractBlocked, generate
+    init_db()
+    with session_scope() as s:
+        lead = _lead(s, args.id)
+        buyer = s.get(CashBuyer, args.buyer) if args.buyer else (lead.buyer_matches[0].buyer if lead.buyer_matches else None)
+        for t in (DOC_TYPES if args.type == "all" else [args.type]):
+            try:
+                g = generate(s, lead, t, price=args.price, buyer=buyer, partner=args.partner)
+            except ContractBlocked as exc:
+                console.print(f"[red]{t} blocked:[/red] " + " ".join(exc.reasons))
+                continue
+            console.print(f"[green]{t}[/green] {money(g.price)} → " + ", ".join(str(x) for x in g.paths))
+            for w in g.warnings:
+                console.print(f"  [yellow]{w}[/yellow]")
+
+
+def cmd_skiptrace(args: argparse.Namespace) -> None:
+    from pathlib import Path
+    from agents.enrichment import skiptrace_pipeline as st
+    init_db()
+    with session_scope() as s:
+        if args.export_top:
+            csv_path, html_path, n = st.export_queue(s, args.export_top)
+            console.print(f"[green]{n} leads[/green] → {csv_path}\n  open {html_path} and click the search links; "
+                          "fill phone/email columns, then: python manage.py skiptrace --import <csv>")
+        elif args.import_csv:
+            leads, contacts = st.import_csv(s, Path(args.import_csv))
+            console.print(f"imported {contacts} contact(s) on {leads} lead(s)")
+        elif args.lead:
+            lead = _lead(s, args.lead)
+            text = sys.stdin.read() if args.paste in (None, "-") else Path(args.paste).read_text()
+            parsed = st.import_text(s, lead, text, name=args.name, role=args.role)
+            console.print(f"phones {parsed['phones']} emails {parsed['emails']} relatives {parsed['relatives'][:5]} "
+                          f"→ {parsed['contacts_added']} contact(s) added")
+        else:
+            console.print("use --export-top N, --import CSV, or --lead ID [--paste FILE]")
+
+
+def cmd_dnc(args: argparse.Namespace) -> None:
+    from pathlib import Path
+    from engine import compliance
+    init_db()
+    with session_scope() as s:
+        if args.load:
+            n = compliance.load_ftc_file(s, Path(args.load), date.fromisoformat(args.date) if args.date else None)
+            console.print(f"loaded {n:,} registry numbers from {args.load}")
+        if args.add:
+            row = compliance.add_internal(s, args.add, source=args.source, notes=args.notes)
+            console.print(f"added {row.phone} ({row.source})" if row else "[red]not a valid phone number[/red]")
+        if args.status or not (args.load or args.add):
+            st = compliance.ftc_data_status(s)
+            console.print(f"FTC data: {st}  sources: " + ", ".join(
+                f"{src} {n:,}" for src, n in s.execute(select(compliance.DncEntry.source, func.count())
+                                                     .group_by(compliance.DncEntry.source))))
+            console.print("Free area codes that cover the most of our contacts: " + ", ".join(
+                f"{a} ({n})" for a, n in compliance.recommended_free_area_codes(s)))
+            if st["loaded"]:
+                console.print(f"Re-download before {compliance.stale_after(date.fromisoformat(st['list_date']))} (31-day rule).")
+
+
+def cmd_match(args: argparse.Namespace) -> None:
+    from engine.buyer_matcher import BuyerMatcherAgent
+    run = BuyerMatcherAgent(top=args.top).execute()
+    console.print(f"buyer_matcher: {run.status} {run.metrics_json}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -245,13 +436,65 @@ def main(argv: list[str] | None = None) -> None:
     u = sub.add_parser("underwrite")
     u.add_argument("--top", type=int, default=15)
     u.add_argument("--force", action="store_true")
+    u.add_argument("--lead", type=int, action="append", help="underwrite this lead id (repeatable)")
     by = sub.add_parser("buyers")
     by.add_argument("--top", type=int, default=20)
     sub.add_parser("stats")
+    sv = sub.add_parser("server")
+    sv.add_argument("--port", type=int, default=8000)
+    qu = sub.add_parser("queue")
+    qu.add_argument("--top", type=int, default=25)
+    sc = sub.add_parser("script")
+    sc.add_argument("id", type=int)
+    sc.add_argument("--contact", type=int)
+    sc.add_argument("--buyer", type=int, help="playbook E: pitch this cash buyer")
+    ca = sub.add_parser("call")
+    ca.add_argument("id", type=int)
+    ca.add_argument("--outcome", required=True, help="NO_ANSWER LEFT_VM WRONG_NUMBER SPOKE_WARM_FOLLOWUP "
+                    "SPOKE_NEEDS_OFFER SPOKE_NOT_INTERESTED AGENT_WILL_PRESENT_LOI OFFER_ACCEPTED DEAD DNC")
+    ca.add_argument("--notes")
+    ca.add_argument("--contact", type=int)
+    ca.add_argument("--occupancy", help="OWNER_OCCUPIED HEIR_OCCUPIED TENANT_OCCUPIED VACANT")
+    ca.add_argument("--ask", help="their number, e.g. 350k")
+    ca.add_argument("--motivation")
+    ca.add_argument("--timeline")
+    ca.add_argument("--ai", action="store_true", help="add a Claude coaching note (needs the [ai] extra + key)")
+    oc = sub.add_parser("occupancy")
+    oc.add_argument("id", type=int)
+    oc.add_argument("status")
+    oc.add_argument("--source", required=True)
+    ct = sub.add_parser("contract")
+    ct.add_argument("id", type=int)
+    ct.add_argument("--price", type=float, required=True)
+    ct.add_argument("--signed", help="YYYY-MM-DD the fully signed contract reached both parties")
+    dc = sub.add_parser("docs")
+    dc.add_argument("id", type=int)
+    dc.add_argument("--type", default="all", choices=["all", "loi", "psa", "assignment", "jv", "deal_sheet"])
+    dc.add_argument("--price", type=float)
+    dc.add_argument("--buyer", type=int)
+    dc.add_argument("--partner")
+    sk = sub.add_parser("skiptrace")
+    sk.add_argument("--export-top", type=int)
+    sk.add_argument("--import", dest="import_csv")
+    sk.add_argument("--lead", type=int)
+    sk.add_argument("--paste", help="file with the pasted people-search text ('-' or omitted = stdin)")
+    sk.add_argument("--name")
+    sk.add_argument("--role")
+    dn = sub.add_parser("dnc")
+    dn.add_argument("--load", help="FTC registry download (one number per line)")
+    dn.add_argument("--date", help="list date of the download (default: file date)")
+    dn.add_argument("--add", help="phone to suppress")
+    dn.add_argument("--source", default="internal", choices=["internal", "daniels_law", "litigator"])
+    dn.add_argument("--notes")
+    dn.add_argument("--status", action="store_true")
+    mt = sub.add_parser("match")
+    mt.add_argument("--top", type=int, default=50)
     args = parser.parse_args(argv)
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
-     "stats": cmd_stats}[args.cmd](args)
+     "stats": cmd_stats, "server": cmd_server, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
+     "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
+     "dnc": cmd_dnc, "match": cmd_match}[args.cmd](args)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,8 @@
 Jobs (each composed of agents; every agent logs its own agent_runs row):
     SheriffSaleMonitorAgent      sheriff_sales
     DataRefreshAgent             tax_assessment + cash_buyers + stale_listings + tax_sales → owner_enrichment
-    CompUnderwriterAgent         lead_scoring → underwriter(top N) → lead_scoring (re-rank with valuations)
+    ContactEnrichmentAgent       municipal_owners → listing_agents → owner_resolver (names, agents, heirs, mailing matches)
+    CompUnderwriterAgent         lead_scoring → underwriter(top N) → lead_scoring → buyer_matcher (top-5 buyers/deal)
     PipelineSelfImprovementAgent self_improvement
 """
 from __future__ import annotations
@@ -48,6 +49,26 @@ def _owner_enrichment_agent(**opts: Any) -> BaseAgent:
     return OwnerEnrichmentAgent(**opts)
 
 
+def _listing_agent_enricher(**opts: Any) -> BaseAgent:
+    from agents.enrichment.listing_agent_enricher import ListingAgentEnricher
+    return ListingAgentEnricher(**opts)
+
+
+def _municipal_owners(**opts: Any) -> BaseAgent:
+    from agents.enrichment.municipal_owner_layers import MunicipalOwnerLayersAgent
+    return MunicipalOwnerLayersAgent(**opts)
+
+
+def _owner_resolver(**opts: Any) -> BaseAgent:
+    from agents.enrichment.public_owner_resolver import PublicOwnerResolver
+    return PublicOwnerResolver(**opts)
+
+
+def _buyer_matcher(**opts: Any) -> BaseAgent:
+    from engine.buyer_matcher import BuyerMatcherAgent
+    return BuyerMatcherAgent(**opts)
+
+
 def _tax_sale_agent(**opts: Any) -> BaseAgent:
     from agents.scrapers.tax_sale_agent import TaxSaleAgent
     return TaxSaleAgent(**opts)
@@ -69,20 +90,27 @@ REGISTRY: dict[str, AgentSpec] = {spec.name: spec for spec in [
     AgentSpec("stale_listings", _stale_listing_agent, "Active listings with 90+ DOM, price cuts, distress language.", "scrape"),
     AgentSpec("tax_sales", _tax_sale_agent, "Municipal tax lien sale lists: delinquent owners, sold certificates.", "scrape"),
     AgentSpec("owner_enrichment", _owner_enrichment_agent, "Owner names/sqft from county exports + Newark snapshot; name buyers, find flips.", "enrich"),
+    AgentSpec("listing_agents", _listing_agent_enricher, "Listing-agent contacts (name, brokerage, phones) for stale MLS leads.", "enrich"),
+    AgentSpec("municipal_owners", _municipal_owners, "Owner names from Jersey City / New Brunswick / Plainfield parcel layers.", "enrich"),
+    AgentSpec("owner_resolver", _owner_resolver, "Defendants/heirs/executors, mailing cross-reference, entity lookups, municipal owner layers.", "enrich"),
     AgentSpec("lead_scoring", LeadScoringAgent, LeadScoringAgent.description, "analyze"),
     AgentSpec("underwriter", UnderwriterAgent, UnderwriterAgent.description, "analyze", {"top": 25}),
+    AgentSpec("buyer_matcher", _buyer_matcher, "Top-5 recorded cash buyers for each top underwritten deal.", "analyze", {"top": 50}),
     AgentSpec("self_improvement", PipelineSelfImprovementAgent, PipelineSelfImprovementAgent.description, "improve"),
 ]}
 
 JOBS: dict[str, list[str]] = {
     "SheriffSaleMonitorAgent": ["sheriff_sales"],
     "DataRefreshAgent": ["tax_assessment", "cash_buyers", "stale_listings", "tax_sales", "owner_enrichment"],
-    "CompUnderwriterAgent": ["lead_scoring", "underwriter", "lead_scoring"],
+    "ContactEnrichmentAgent": ["municipal_owners", "listing_agents", "owner_resolver"],
+    "CompUnderwriterAgent": ["lead_scoring", "underwriter", "lead_scoring", "buyer_matcher"],
     "PipelineSelfImprovementAgent": ["self_improvement"],
 }
 JOB_ALIASES = {"sheriff": "SheriffSaleMonitorAgent", "data_refresh": "DataRefreshAgent",
-               "underwrite": "CompUnderwriterAgent", "self_improvement": "PipelineSelfImprovementAgent"}
-PIPELINE = ["SheriffSaleMonitorAgent", "DataRefreshAgent", "CompUnderwriterAgent", "PipelineSelfImprovementAgent"]
+               "contacts": "ContactEnrichmentAgent", "underwrite": "CompUnderwriterAgent",
+               "self_improvement": "PipelineSelfImprovementAgent"}
+PIPELINE = ["SheriffSaleMonitorAgent", "DataRefreshAgent", "ContactEnrichmentAgent", "CompUnderwriterAgent",
+            "PipelineSelfImprovementAgent"]
 
 
 def run_agent(name: str, **options: Any) -> AgentRun | None:
@@ -141,7 +169,7 @@ def run_all(*, parallel: bool = True, skip: set[str] | None = None,
     else:
         for j in ("SheriffSaleMonitorAgent", "DataRefreshAgent"):
             runs.extend(run_job(j, parallel=False, skip=skip, overrides=overrides))
-    for j in ("CompUnderwriterAgent", "PipelineSelfImprovementAgent"):
+    for j in ("ContactEnrichmentAgent", "CompUnderwriterAgent", "PipelineSelfImprovementAgent"):
         runs.extend(run_job(j, parallel=False, skip=skip, overrides=overrides))
     return runs
 

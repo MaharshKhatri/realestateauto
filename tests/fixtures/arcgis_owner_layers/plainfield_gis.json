@@ -1,0 +1,115 @@
+{
+ "objectIdFieldName": "FID",
+ "uniqueIdField": {
+  "name": "FID",
+  "isSystemMaintained": true
+ },
+ "globalIdFieldName": "",
+ "geometryType": "esriGeometryPolygon",
+ "spatialReference": {
+  "wkid": 102711,
+  "latestWkid": 3424,
+  "vcsWkid": 105703,
+  "latestVcsWkid": 6360
+ },
+ "fields": [
+  {
+   "name": "PAMS_PIN",
+   "type": "esriFieldTypeString",
+   "alias": "PAMS_PIN",
+   "sqlType": "sqlTypeOther",
+   "length": 38,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "Owner",
+   "type": "esriFieldTypeString",
+   "alias": "Owner",
+   "sqlType": "sqlTypeOther",
+   "length": 254,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "StreetAddr",
+   "type": "esriFieldTypeString",
+   "alias": "StreetAddr",
+   "sqlType": "sqlTypeOther",
+   "length": 254,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "CityState",
+   "type": "esriFieldTypeString",
+   "alias": "CityState",
+   "sqlType": "sqlTypeOther",
+   "length": 254,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "ZipCode",
+   "type": "esriFieldTypeInteger",
+   "alias": "ZipCode",
+   "sqlType": "sqlTypeOther",
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "DeedDate",
+   "type": "esriFieldTypeString",
+   "alias": "DeedDate",
+   "sqlType": "sqlTypeOther",
+   "length": 254,
+   "domain": null,
+   "defaultValue": null
+  },
+  {
+   "name": "DateOfLast",
+   "type": "esriFieldTypeString",
+   "alias": "DateOfLast",
+   "sqlType": "sqlTypeOther",
+   "length": 254,
+   "domain": null,
+   "defaultValue": null
+  }
+ ],
+ "exceededTransferLimit": true,
+ "features": [
+  {
+   "attributes": {
+    "PAMS_PIN": "2012_214_1",
+    "Owner": "CITY OF PLAINFIELD",
+    "StreetAddr": "515 WATCHUNG AVE",
+    "CityState": "PLAINFIELD, N J",
+    "ZipCode": 7060,
+    "DeedDate": " ",
+    "DateOfLast": "08-Feb-10"
+   }
+  },
+  {
+   "attributes": {
+    "PAMS_PIN": "2012_727_17",
+    "Owner": "CITY OF PLAINFIELD",
+    "StreetAddr": "515 WATCHUNG AVE",
+    "CityState": "PLAINFIELD, NJ",
+    "ZipCode": 7061,
+    "DeedDate": "12-Nov-04",
+    "DateOfLast": "16-Mar-21"
+   }
+  },
+  {
+   "attributes": {
+    "PAMS_PIN": "2012_606_25",
+    "Owner": "CITY OF PLAINFIELD",
+    "StreetAddr": "515 WATCHUNG AVENUE",
+    "CityState": "PLAINFIELD, NJ",
+    "ZipCode": 7060,
+    "DeedDate": "03-Feb-21",
+    "DateOfLast": "07-Jul-25"
+   }
+  }
+ ]
+}

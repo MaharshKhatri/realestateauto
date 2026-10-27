@@ -89,6 +89,22 @@ def skiptrace_target(lead: Lead) -> Target | None:
     return None
 
 
+def lookup_links(lead: Lead, target: Target | None = None) -> dict[str, str]:
+    """Manual people-search / entity links for the lead's best skip-trace target (the operator clicks them)."""
+    target = target or skiptrace_target(lead)
+    if target is None:
+        return {}
+    p = lead.property
+    if target.role == "ENTITY":
+        return {"truepeoplesearch": "", "fastpeoplesearch": "", "cyberbackgroundchecks": "",
+                "address_search": f"https://opencorporates.com/companies/us_nj?q={quote(target.name)}"}
+    first, last = split_person_name(target.name)
+    mail_city = mailing_city(p.owner_city_state_zip or "") or p.city or p.municipality or ""
+    mail_state = mailing_state(p.owner_city_state_zip or "") or "NJ"
+    return search_links(first, last, target.city or (p.city or ""), target.state or "NJ",
+                        street=p.owner_mailing_address or p.street_address, street_city=f"{mail_city}, {mail_state}")
+
+
 def export_queue(session: Session, top: int = 50, out_dir: Path = EXPORT_DIR) -> tuple[Path, Path, int]:
     leads = session.scalars(select(Lead).where(Lead.status_stage.notin_(list(TERMINAL)))
                             .order_by(Lead.priority_rank_score.desc())).all()
@@ -113,14 +129,7 @@ def export_queue(session: Session, top: int = 50, out_dir: Path = EXPORT_DIR) ->
             "mailing_zip": mail_zip,
             "why": ((lead.score_breakdown_json or {}).get("reasons") or [lead.primary_source])[0],
         }
-        if target.role == "ENTITY":
-            row.update({"truepeoplesearch": "", "fastpeoplesearch": "", "cyberbackgroundchecks": "",
-                        "address_search": f"https://opencorporates.com/companies/us_nj?q={quote(target.name)}"})
-        else:
-            links = search_links(first, last, target.city or (p.city or ""), target.state or "NJ",
-                                 street=p.owner_mailing_address or p.street_address,
-                                 street_city=f"{row['mailing_city'] or row['property_city']}, {row['mailing_state'] or 'NJ'}")
-            row.update(links)
+        row.update(lookup_links(lead, target))
         rows.append(row)
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = date.today().isoformat()

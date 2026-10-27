@@ -72,6 +72,13 @@ def _add_missing_columns(engine: Engine) -> None:
                 coltype = column.type.compile(dialect=engine.dialect)
                 conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{column.name}" {coltype}'))
                 log.info("migrated: added %s.%s", table.name, column.name)
+            # Columns added by earlier migrations have NULL on old rows; give them the model's scalar default.
+            for column in table.columns:
+                default = column.default.arg if column.default is not None and column.default.is_scalar else None
+                if default is None or column.primary_key:
+                    continue
+                conn.execute(text(f'UPDATE {table.name} SET "{column.name}" = :d WHERE "{column.name}" IS NULL'),
+                             {"d": default.value if hasattr(default, "value") else default})
 
 
 @contextmanager

@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from db.models import Lead, SignalType, Valuation
+from db.models import SignalType, Valuation
 from db.repository import ensure_lead, upsert_property, upsert_signal
 from engine.scoring import active_weights, score_property
 from engine.underwriter import frfpa_applies

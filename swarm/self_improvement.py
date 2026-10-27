@@ -3,13 +3,15 @@
 Runs last in every pipeline. It:
   1. audits scraper health (run status, HTTP failure rates per host),
   2. audits data yield and coverage (owner names, upset amounts, parcel matches, sqft, valuations),
-  3. audits spread viability (verdict mix and MAO/ARV by lead source and municipality),
-  4. tunes scoring:
+  3. audits contact readiness (top-100 leads with a callable phone or listing agent), buyer-match coverage,
+     DNC data freshness and call outcomes (connect rate, overdue follow-ups),
+  4. audits spread viability (verdict mix and MAO/ARV by lead source and municipality),
+  5. tunes scoring:
        - learns a viability prior per lead source from underwriting verdicts (always),
        - lifts/discounts motivation weights from real outcomes once >= 20 leads are labeled,
-  5. discovers alpha: ranks non-focus municipalities in the target counties by renovated-vs-
+  6. discovers alpha: ranks non-focus municipalities in the target counties by renovated-vs-
      distressed price gap ("spread potential") and auto-adds the best ones to the harvest list,
-  6. writes a dated report to logs/swarm_intelligence.md (newest first, last 30 kept).
+  7. writes a dated report to logs/swarm_intelligence.md (newest first, last 30 kept).
 """
 from __future__ import annotations
 
@@ -17,7 +19,6 @@ import logging
 import statistics
 from collections import Counter, defaultdict
 from datetime import timedelta
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
@@ -25,7 +26,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from agents.base import AgentContext, BaseAgent
 from agents.scrapers.njgis_client import NJGISClient
 from core.config import LOG_DIR, settings
-from db.models import AgentRun, DistressSignal, Lead, Property, ScoringWeights, SwarmState, Valuation, utcnow
+from db.models import AgentRun, DistressSignal, Lead, ScoringWeights, SwarmState, Valuation, utcnow
 from engine.market import muni_stats
 from engine.scoring import active_weights, default_weights
 
@@ -35,6 +36,34 @@ REPORT_MARKER = "\n<!-- report -->\n"
 POSITIVE_STAGES = {"INTERESTED", "APPOINTMENT", "OFFER_MADE", "NEGOTIATING", "UNDER_CONTRACT", "ASSIGNED", "CLOSED"}
 NEGATIVE_STAGES = {"DEAD", "DO_NOT_CONTACT"}
 GOOD_VERDICTS = {"STRONG", "WORKABLE"}
+DEAL_VERDICTS = {"STRONG", "WORKABLE", "WORKABLE_82_PCT_FLOOR", "TIGHT"}
+SPOKE_OUTCOMES = {"SPOKE_WARM_FOLLOWUP", "SPOKE_NEEDS_OFFER", "SPOKE_NOT_INTERESTED", "AGENT_WILL_PRESENT_LOI",
+                  "OFFER_ACCEPTED", "DNC", "DEAD"}
+
+
+def callable_contact(lead: Lead):
+    """A phone we may dial: not DNC, not marked wrong (confidence 0)."""
+    return next((c for c in lead.contacts if c.phone and c.dnc_status != "dnc" and (c.confidence_score or 0) > 0), None)
+
+
+def contact_readiness(leads: list[Lead]) -> dict[str, float | int]:
+    """Share of leads with a callable phone — owner/heir phone vs listing-agent phone — and who still needs a name."""
+    owner_phone = agent_phone = name_only = nothing = 0
+    for lead in leads:
+        c = callable_contact(lead)
+        if c is not None:
+            if c.contact_type == "LISTING_AGENT" and not any(
+                    x.phone and x.contact_type != "LISTING_AGENT" and x.dnc_status != "dnc" for x in lead.contacts):
+                agent_phone += 1
+            else:
+                owner_phone += 1
+        elif lead.property.owner_name or any(x.name for x in lead.contacts):
+            name_only += 1
+        else:
+            nothing += 1
+    n = len(leads) or 1
+    return {"ready": (owner_phone + agent_phone) / n, "owner_phone": owner_phone, "agent_phone": agent_phone,
+            "skip_traceable": name_only, "needs_name": nothing, "n": len(leads)}
 
 
 def smoothed_rate(successes: int, total: int, prior: float = 0.4, k: float = 5.0) -> float:
@@ -134,7 +163,51 @@ class PipelineSelfImprovementAgent(BaseAgent):
         if val_cov < 0.6 and top:
             findings.append(f"Only {val_cov:.0%} of the top 50 leads are underwritten — raise underwriter --top.")
 
-        # 3. Spread viability ---------------------------------------------------------------------
+        # 3. Contact readiness, buyer matching, DNC and call outcomes -------------------------------
+        from engine.compliance import ftc_data_status
+        from db.models import BuyerMatch, Interaction
+        cr = contact_readiness(sorted(open_leads, key=lambda l: l.priority_rank_score, reverse=True)[:100])
+        deals = [l for l in sorted(open_leads, key=lambda l: l.priority_rank_score, reverse=True)
+                 if l.property.current_valuation and l.property.current_valuation.verdict in DEAL_VERDICTS][:50]
+        matched = sum(1 for l in deals if len(l.buyer_matches) >= 5)
+        match_cov = matched / (len(deals) or 1)
+        ftc = ftc_data_status(s)
+        week = utcnow() - timedelta(days=7)
+        calls = s.scalars(select(Interaction).where(Interaction.occurred_at >= week)).all()
+        outcomes = Counter(i.outcome for i in calls)
+        spoke = sum(n for o, n in outcomes.items() if o in SPOKE_OUTCOMES)
+        overdue = sum(1 for l in open_leads if l.next_followup_at and l.next_followup_at < utcnow() - timedelta(days=1))
+        lines = [
+            f"- Top-100 contact-ready: **{cr['ready']:.0%}** — owner/heir phone {cr['owner_phone']}, listing agent only "
+            f"{cr['agent_phone']}; skip-traceable now (name known, no phone) {cr['skip_traceable']}; need a name first "
+            f"{cr['needs_name']}",
+            f"- Top deals with 5 matched cash buyers: {matched}/{len(deals)} ({match_cov:.0%}); buyer_matches rows: "
+            f"{s.query(BuyerMatch).count()}",
+            "- National DNC data: " + (f"{ftc['list_date']} ({'fresh' if ftc['fresh'] else 'STALE'})" if ftc["loaded"]
+                                       else "not loaded"),
+            f"- Calls (7 days): {len(calls)}; conversations {spoke} ({spoke / (len(calls) or 1):.0%} connect); "
+            + (", ".join(f"{o.lower()} {n}" for o, n in outcomes.most_common()) or "none logged")
+            + f"; overdue follow-ups {overdue}",
+        ]
+        sections["Contact readiness & CRM"] = lines
+        if cr["ready"] < 0.5:
+            findings.append(f"Only {cr['ready']:.0%} of the top 100 leads have a callable number. "
+                            f"{cr['skip_traceable']} can be skip-traced right now (python manage.py skiptrace "
+                            f"--export-top 50); {cr['needs_name']} need an owner name first (owner exports / OPRA).")
+        if not ftc["loaded"] or not ftc["fresh"]:
+            findings.append("National DNC data is " + ("missing" if not ftc["loaded"] else "older than 31 days")
+                            + ": download the free NJ area codes from telemarketing.donotcall.gov and run "
+                            "python manage.py dnc --load <file> before dialing owners.")
+        if deals and match_cov < 0.8:
+            findings.append(f"Only {match_cov:.0%} of the top deals have 5 matched buyers — grow the buyer list "
+                            "(county deed exports) or widen buyer geography.")
+        if overdue:
+            findings.append(f"{overdue} follow-up(s) are more than a day overdue — work the call queue first.")
+        if len(calls) >= 20 and spoke / len(calls) < 0.1:
+            findings.append(f"Connect rate {spoke / len(calls):.0%} on {len(calls)} calls: vary call times (evenings, "
+                            "Saturday mornings) and add letters/door-knocks for no-answer leads.")
+
+        # 4. Spread viability ---------------------------------------------------------------------
         vals = s.scalars(select(Valuation).where(Valuation.is_current.is_(True))).all()
         verdicts = Counter(v.verdict for v in vals)
         src_stats: dict[str, list[str]] = defaultdict(list)
@@ -158,7 +231,7 @@ class PipelineSelfImprovementAgent(BaseAgent):
             findings.append("Most underwritten sheriff-sale leads are underwater (debt > MAO). Prioritize the ones with "
                             "equity, pitch short sales on the rest, and give absentee/high-equity leads more call time.")
 
-        # 4. Tune scoring ---------------------------------------------------------------------------
+        # 5. Tune scoring ---------------------------------------------------------------------------
         version, weights = active_weights(s)
         new_weights = {k: (dict(v) if isinstance(v, dict) else v) for k, v in weights.items()}
         priors = {}
@@ -189,14 +262,16 @@ class PipelineSelfImprovementAgent(BaseAgent):
                                  reason="; ".join(changed_reasons)))
             actions.append(f"Scoring weights v{version} → v{version + 1}: " + "; ".join(changed_reasons))
 
-        # 5. Alpha discovery: expansion municipalities ------------------------------------------------
+        # 6. Alpha discovery: expansion municipalities ------------------------------------------------
         if not self.options.get("skip_expansion"):
             actions.extend(self._expansion(ctx, sections))
 
-        # 6. Report --------------------------------------------------------------------------------
+        # 7. Report --------------------------------------------------------------------------------
         ctx.metrics.update({"open_leads": len(open_leads), "owner_coverage": round(owner_cov, 3),
                             "upset_coverage": round(upset_cov, 3), "valuations": len(vals),
-                            "verdicts": dict(verdicts)})
+                            "verdicts": dict(verdicts), "contact_readiness_top100": round(cr["ready"], 3),
+                            "buyer_match_coverage": round(match_cov, 3), "calls_7d": len(calls),
+                            "connect_rate_7d": round(spoke / (len(calls) or 1), 3)})
         ctx.records_processed = len(open_leads)
         notes = findings + actions
         for n in notes:

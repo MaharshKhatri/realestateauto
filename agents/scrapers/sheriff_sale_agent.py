@@ -16,7 +16,7 @@ import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -26,7 +26,7 @@ from agents.base import AgentContext, BaseAgent
 from agents.scrapers.njgis_client import NJGISClient, feature_to_property
 from core.dates import parse_us_date
 from core.http import FetchError, PoliteSession
-from core.text import clean, muni_base, normalize_street, parse_one_line_address, strip_et_al
+from core.text import clean, muni_base, normalize_street, parse_one_line_address
 from db.models import DistressSignal, SignalType, utcnow
 from db.repository import ensure_lead, upsert_property, upsert_signal
 
@@ -226,8 +226,11 @@ def first_defendant(defendant: str) -> str:
     """'JULMALI HABIBUL; ET. AL.' -> 'JULMALI HABIBUL'; 'CLARK REINHARD A/K/A ...; NANCY' -> 'CLARK REINHARD';
     'DOROTHEA BRADLEY, HER HEIRS, BENEFICIARIES' -> 'DOROTHEA BRADLEY'."""
     s = re.sub(r"^(?:THE\s+)?(?:UNKNOWN\s+)?(?:HEIRS|DEVISEES)[^,;]*?\bOF\s+", "", defendant.strip(), flags=re.I)
-    s = re.sub(r"^ESTATE OF\s+", "", s, flags=re.I)
-    s = re.split(r",\s*(?:HIS|HER|THEIR)\s+HEIRS\b|,\s*(?:DECEASED|DEC'D)\b|,\s*(?:EXECUTOR|EXECUTRIX|ADMINISTRAT)", s, flags=re.I)[0]
+    s = re.sub(r"^(?:THE\s+)?ESTATE OF\s+", "", s, flags=re.I)
+    # 'X, HIS UNKNOWN HEIRS, DEVISEES' / 'X HIS/HER HEIRS' / 'X DECEASEDM HIS HEIRS' / 'X, EXECUTRIX ...'
+    s = re.split(r"[,\s]+(?:HIS|HER|THEIR)(?:\s*/\s*HER|\s+OR\s+HER)?\s+(?:UNKNOWN\s+)?(?:HEIRS|DEVISEES)\b"
+                 r"|,?\s*\b(?:DECEASED\w*|DEC'D)(?=\W|$)|,\s*(?:EXECUTOR|EXECUTRIX|ADMINISTRAT)", s, flags=re.I)[0]
+    s = re.sub(r"\s+ESTATE OF$", "", s.strip(), flags=re.I)
     s = re.split(r";|\bA/K/A\b|\bAKA\b|\bF/K/A\b|\bAND\b|&", s, flags=re.I)[0]
     # Comma-separated party lists ("ROGER NELSON, CAVALRY SPV I LLC, ..."): keep the first party. A lone
     # surname before the first comma means "LAST, FIRST" order, so keep two segments.

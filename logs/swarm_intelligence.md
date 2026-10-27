@@ -3,6 +3,162 @@
 Written by `swarm/self_improvement.py` after every pipeline run (newest first). Contains aggregate metrics only — no personal data.
 
 <!-- report -->
+## Swarm intelligence report — 2026-10-27 04:33 UTC
+
+### Bottlenecks & findings
+- Owner names known on only 33% of open leads (NJGIN redacts names). Biggest unlock: owner-record enrichment / skip tracing for absentee leads.
+- Only 0% of the top 100 leads have a callable number. 100 can be skip-traced right now (python manage.py skiptrace --export-top 50); 0 need an owner name first (owner exports / OPRA).
+- National DNC data is missing: download the free NJ area codes from telemarketing.donotcall.gov and run python manage.py dnc --load <file> before dialing owners.
+
+### Actions taken automatically
+- None this run.
+
+### Scraper health (7 days)
+| agent | last status | ok runs | processed | new leads | errors | http fail | duration |
+|---|---|---|---|---|---|---|---|
+| buyer_matcher | success | 5/5 | 50 | 0 | 0 | 0% | 0.3s |
+| cash_buyers | success | 1/1 | 293 | 0 | 0 | 0% | 1136.0s |
+| lead_scoring | success | 9/9 | 6331 | 0 | 0 | 0% | 11.5s |
+| listing_agents | success | 2/2 | 1112 | 0 | 0 | 0% | 1.5s |
+| municipal_owners | success | 2/2 | 990 | 0 | 0 | 0% | 1.7s |
+| owner_enrichment | success | 3/3 | 65670 | 0 | 0 | 0% | 11.5s |
+| owner_resolver | success | 7/7 | 6331 | 0 | 0 | 0% | 11.7s |
+| sheriff_sales | success | 5/6 | 414 | 25 | 0 | 0% | 472.2s |
+| stale_listings | success | 1/2 | 4793 | 950 | 0 | 0% | 730.4s |
+| tax_assessment | success | 1/1 | 44216 | 4496 | 0 | 0% | 238.3s |
+| tax_sales | success | 1/1 | 0 | 0 | 0 | 0% | 0.6s |
+| underwriter | success | 7/7 | 0 | 0 | 0 | 0% | 12.7s |
+
+### Yield & coverage
+- Open leads: **6331** (6331 new in 24h) — by source: absentee_owner 3382, out_of_state_owner 1114, stale_listing 958, sheriff_sale 877
+- Active sheriff sales tracked: 853; upset/judgment amount captured on 99%
+- Owner name known: 33% · parcel matched: 97% · living area known: 12%
+- Top-50 leads underwritten: 100%
+
+### Contact readiness & CRM
+- Top-100 contact-ready: **0%** — owner/heir phone 0, listing agent only 0; skip-traceable now (name known, no phone) 100; need a name first 0
+- Top deals with 5 matched cash buyers: 50/50 (100%); buyer_matches rows: 355
+- National DNC data: not loaded
+- Calls (7 days): 0; conversations 0 (0% connect); none logged; overdue follow-ups 0
+
+### Spread viability
+- Valuations: 722 — FRFPA_BLOCKED 184, SHORT_SALE_ONLY 164, EQUITY_RESCUE_REFERRAL 149, STRONG 104, WORKABLE_82_PCT_FLOOR 76, PASS 16, WORKABLE 15, TIGHT 14
+- sheriff_sale: 119/722 STRONG/WORKABLE
+- Median MAO/ARV by town (higher = more room): RAMSEY BORO 68% (n=1), SADDLE RIVER BORO 67% (n=1), HARRINGTON PARK BORO 67% (n=1), SOUTH PLAINFIELD BORO 67% (n=2), SUMMIT CITY 66% (n=1), MONTVALE BORO 66% (n=1), RIVERVALE TWP 65% (n=1), CLIFFSIDE PARK BORO 64% (n=5)
+
+### Learning
+- Outcome learning waits for 20 labeled leads (have 0). Log call outcomes to feed it.
+
+<!-- report -->
+## Swarm intelligence report — 2026-10-27 04:29 UTC
+
+### Bottlenecks & findings
+- Owner names known on only 33% of open leads (NJGIN redacts names). Biggest unlock: owner-record enrichment / skip tracing for absentee leads.
+- Only 0% of the top 100 leads have a callable number. 100 can be skip-traced right now (python manage.py skiptrace --export-top 50); 0 need an owner name first (owner exports / OPRA).
+- National DNC data is missing: download the free NJ area codes from telemarketing.donotcall.gov and run python manage.py dnc --load <file> before dialing owners.
+
+### Actions taken automatically
+- Expansion: added ELMWOOD PARK BORO (Bergen) to harvest list — renovated/distressed price gap 1.29x, median sale $580,000, 87% pre-1980 stock
+- Expansion: added HILLSIDE TWP (Union) to harvest list — renovated/distressed price gap 1.27x, median sale $474,000, 96% pre-1980 stock
+
+### Scraper health (7 days)
+| agent | last status | ok runs | processed | new leads | errors | http fail | duration |
+|---|---|---|---|---|---|---|---|
+| buyer_matcher | success | 3/3 | 50 | 0 | 0 | 0% | 0.2s |
+| cash_buyers | success | 1/1 | 293 | 0 | 0 | 0% | 1136.0s |
+| lead_scoring | success | 7/7 | 6331 | 0 | 0 | 0% | 12.7s |
+| listing_agents | success | 2/2 | 1112 | 0 | 0 | 0% | 1.5s |
+| municipal_owners | success | 2/2 | 990 | 0 | 0 | 0% | 1.7s |
+| owner_enrichment | success | 2/2 | 65670 | 0 | 0 | 0% | 13.5s |
+| owner_resolver | success | 6/6 | 6331 | 0 | 0 | 0% | 12.2s |
+| sheriff_sales | success | 5/6 | 414 | 25 | 0 | 0% | 472.2s |
+| stale_listings | success | 1/2 | 4793 | 950 | 0 | 0% | 730.4s |
+| tax_assessment | success | 1/1 | 44216 | 4496 | 0 | 0% | 238.3s |
+| tax_sales | success | 1/1 | 0 | 0 | 0 | 0% | 0.6s |
+| underwriter | success | 6/6 | 0 | 0 | 0 | 0% | 13.9s |
+
+### Yield & coverage
+- Open leads: **6331** (6331 new in 24h) — by source: absentee_owner 3382, out_of_state_owner 1114, stale_listing 958, sheriff_sale 877
+- Active sheriff sales tracked: 853; upset/judgment amount captured on 99%
+- Owner name known: 33% · parcel matched: 97% · living area known: 12%
+- Top-50 leads underwritten: 100%
+
+### Contact readiness & CRM
+- Top-100 contact-ready: **0%** — owner/heir phone 0, listing agent only 0; skip-traceable now (name known, no phone) 100; need a name first 0
+- Top deals with 5 matched cash buyers: 50/50 (100%); buyer_matches rows: 355
+- National DNC data: not loaded
+- Calls (7 days): 0; conversations 0 (0% connect); none logged; overdue follow-ups 0
+
+### Spread viability
+- Valuations: 722 — FRFPA_BLOCKED 184, SHORT_SALE_ONLY 164, EQUITY_RESCUE_REFERRAL 149, STRONG 104, WORKABLE_82_PCT_FLOOR 76, PASS 16, WORKABLE 15, TIGHT 14
+- sheriff_sale: 119/722 STRONG/WORKABLE
+- Median MAO/ARV by town (higher = more room): RAMSEY BORO 68% (n=1), SADDLE RIVER BORO 67% (n=1), HARRINGTON PARK BORO 67% (n=1), SOUTH PLAINFIELD BORO 67% (n=2), SUMMIT CITY 66% (n=1), MONTVALE BORO 66% (n=1), RIVERVALE TWP 65% (n=1), CLIFFSIDE PARK BORO 64% (n=5)
+
+### Learning
+- Outcome learning waits for 20 labeled leads (have 0). Log call outcomes to feed it.
+
+### Alpha discovery — spread potential by town (top 10)
+| town | county | score | p75/p25 price-to-assessment gap | median sale | pre-1980 | in harvest |
+|---|---|---|---|---|---|---|
+| PATERSON CITY | Passaic | 65.39 | 1.47x | $480,000 | 91% | yes |
+| NEWARK CITY | Essex | 55.67 | 1.41x | $517,000 | 84% | yes |
+| PASSAIC CITY | Passaic | 49.76 | 1.34x | $550,000 | 95% | yes |
+| LINDENWOLD BORO | Camden | 46.68 | 1.33x | $220,000 | 90% | yes |
+| NEW BRUNSWICK CITY | Middlesex | 46.38 | 1.34x | $435,000 | 85% | yes |
+| CAMDEN CITY | Camden | 46.36 | 1.63x | $135,000 | 96% | yes |
+| GLOUCESTER CITY | Camden | 46.07 | 1.31x | $212,500 | 97% | yes |
+| WEST NEW YORK TOWN | Hudson | 42.55 | 1.33x | $500,000 | 78% | yes |
+| GUTTENBERG TOWN | Hudson | 40.06 | 1.31x | $350,000 | 81% | yes |
+| ELMWOOD PARK BORO | Bergen | 39.56 | 1.29x | $580,000 | 87% | yes |
+
+<!-- report -->
+## Swarm intelligence report — 2026-10-27 04:24 UTC
+
+### Bottlenecks & findings
+- Owner names known on only 33% of open leads (NJGIN redacts names). Biggest unlock: owner-record enrichment / skip tracing for absentee leads.
+- Only 3% of the top 100 leads have a callable number. 97 can be skip-traced right now (python manage.py skiptrace --export-top 50); 0 need an owner name first (owner exports / OPRA).
+- National DNC data is missing: download the free NJ area codes from telemarketing.donotcall.gov and run python manage.py dnc --load <file> before dialing owners.
+
+### Actions taken automatically
+- Scoring weights v4 → v5: viability prior by source from underwriting verdicts: sheriff_sale=0.17
+
+### Scraper health (7 days)
+| agent | last status | ok runs | processed | new leads | errors | http fail | duration |
+|---|---|---|---|---|---|---|---|
+| buyer_matcher | success | 2/2 | 50 | 0 | 0 | 0% | 0.3s |
+| cash_buyers | success | 1/1 | 293 | 0 | 0 | 0% | 1136.0s |
+| lead_scoring | success | 5/5 | 6331 | 0 | 0 | 0% | 8.4s |
+| listing_agents | success | 1/1 | 1112 | 0 | 0 | 0% | 219.1s |
+| municipal_owners | success | 1/1 | 990 | 0 | 0 | 0% | 17.4s |
+| owner_enrichment | success | 2/2 | 65670 | 0 | 0 | 0% | 13.5s |
+| owner_resolver | success | 5/5 | 0 | 0 | 0 | 0% | 10.7s |
+| sheriff_sales | success | 5/6 | 414 | 25 | 0 | 0% | 472.2s |
+| stale_listings | success | 1/2 | 4793 | 950 | 0 | 0% | 730.4s |
+| tax_assessment | success | 1/1 | 44216 | 4496 | 0 | 0% | 238.3s |
+| tax_sales | success | 1/1 | 0 | 0 | 0 | 0% | 0.6s |
+| underwriter | success | 5/5 | 780 | 0 | 0 | 0% | 379.2s |
+
+### Yield & coverage
+- Open leads: **6331** (6331 new in 24h) — by source: absentee_owner 3382, out_of_state_owner 1114, stale_listing 958, sheriff_sale 877
+- Active sheriff sales tracked: 853; upset/judgment amount captured on 99%
+- Owner name known: 33% · parcel matched: 97% · living area known: 12%
+- Top-50 leads underwritten: 100%
+
+### Contact readiness & CRM
+- Top-100 contact-ready: **3%** — owner/heir phone 0, listing agent only 3; skip-traceable now (name known, no phone) 97; need a name first 0
+- Top deals with 5 matched cash buyers: 50/50 (100%); buyer_matches rows: 250
+- National DNC data: not loaded
+- Calls (7 days): 0; conversations 0 (0% connect); none logged; overdue follow-ups 0
+
+### Spread viability
+- Valuations: 722 — FRFPA_BLOCKED 184, SHORT_SALE_ONLY 164, EQUITY_RESCUE_REFERRAL 149, STRONG 104, WORKABLE_82_PCT_FLOOR 76, PASS 16, WORKABLE 15, TIGHT 14
+- sheriff_sale: 119/722 STRONG/WORKABLE
+- Median MAO/ARV by town (higher = more room): RAMSEY BORO 68% (n=1), SADDLE RIVER BORO 67% (n=1), HARRINGTON PARK BORO 67% (n=1), SOUTH PLAINFIELD BORO 67% (n=2), SUMMIT CITY 66% (n=1), MONTVALE BORO 66% (n=1), RIVERVALE TWP 65% (n=1), CLIFFSIDE PARK BORO 64% (n=5)
+
+### Learning
+- Outcome learning waits for 20 labeled leads (have 0). Log call outcomes to feed it.
+
+<!-- report -->
 ## Swarm intelligence report — 2026-10-26 21:30 UTC
 
 ### Bottlenecks & findings
