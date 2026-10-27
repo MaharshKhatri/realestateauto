@@ -78,7 +78,7 @@ Set `WHOLESALING_DATABASE_URL` to a Postgres URL (e.g. a free Supabase project) 
   scraping, so it runs low-volume, cached, and internal-only, and the engine falls back to public
   records when it's unavailable.
 - **Valuations are screening estimates**, not appraisals. Confidence scores say how much to trust
-  each one; walk the property (or get photos) before signing anything.
+  each one; get photos or a video walkthrough (engine/virtual_inspector.py) before signing anything.
 - **Legal**: this software encodes conservative readings of NJ law but is not legal advice. Have a NJ
   real estate attorney review your contract templates, your scripts, and whether the Foreclosure
   Rescue Fraud Prevention Act applies to your deals. Register as a telemarketer and subscribe to the

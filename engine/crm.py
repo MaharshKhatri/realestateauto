@@ -143,7 +143,7 @@ def log_call(session: Session, lead: Lead, outcome: str, *, notes: str = "", con
         contact.notes = ((contact.notes or "") + f" | wrong number {now_local:%Y-%m-%d}").strip(" |")
         extra.append("Number marked wrong; skip-trace the next-best phone.")
     if outcome in NO_CONTACT and attempts >= int(_crm().get("max_attempts_no_contact", 8)):
-        extra.append(f"{attempts} attempts with no conversation: switch to a letter or a door-knock.")
+        extra.append(f"{attempts} attempts with no conversation: switch to a letter (manage.py mail-merge) or another contact (agent, relative).")
     nxt = followup_at or next_followup(outcome, attempts, now_local, sale_date(lead))
     lead.next_followup_at = nxt
     if outcome == CallOutcome.DEAD:
@@ -163,7 +163,7 @@ def log_call(session: Session, lead: Lead, outcome: str, *, notes: str = "", con
 
 
 def confirm_occupancy(session: Session, lead: Lead, status: str, source: str, *, rescore_lead: bool = True) -> list[str]:
-    """Record occupancy the operator confirmed (call, drive-by, seller statement) and re-price the offer."""
+    """Record occupancy the operator confirmed (call, agent, seller photos/video, Street View) and re-price the offer."""
     from engine.underwriter import reprice
 
     if status not in Occupancy.__members__:

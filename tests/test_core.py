@@ -39,8 +39,8 @@ def test_address_normalization():
 def test_owner_classification():
     assert is_entity("555 BERKELEY AVE LLC")
     assert is_entity("SMITH FAMILY TRUST")
-    assert not is_entity("JOHN SMITH")
-    assert is_estate("SMITH, JOHN EST OF")
+    assert not is_entity("QUINN SAMPLE")
+    assert is_estate("SAMPLE, QUINN EST OF")
     assert is_estate("ESTATE OF MARY JONES")
     assert mailing_state("STATEN ISLAND  NY") == "NY"
     assert mailing_state("EFFORT,  PA") == "PA"

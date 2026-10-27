@@ -214,7 +214,7 @@ function leftColumn(d) {
         ${L.occupancy_confirmed_at ? `<span class="pill good">confirmed ${label(L.occupancy)}</span>` : ""}</div>
       <p>${esc(F.basis)}</p>${F.verify.length ? `<ul>${F.verify.map((v) => `<li class="flag">${esc(v)}</li>`).join("")}</ul>` : ""}
       ${V && V.exempt_scenario ? `<p class="muted">If nobody in the family lives there: ${label(V.exempt_scenario.verdict)}, anchor ${money(V.exempt_scenario.anchor_offer)}, MAO ${money(V.exempt_scenario.mao_conservative)}.</p>` : ""}
-      <label>Record who lives there (from the call / drive-by)</label>
+      <label>Record who lives there (from the call, agent, photos or Street View)</label>
       <div class="row"><select id="occ-status">${d.occupancy_values.filter((o) => o !== "UNKNOWN").map((o) => `<option value="${o}">${label(o)}</option>`).join("")}</select>
       <input type="text" id="occ-source" placeholder="source, e.g. 'seller on 10/27 call'" style="flex:1">
       <button class="btn" id="occ-save">Save &amp; re-price</button></div>

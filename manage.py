@@ -17,6 +17,7 @@
     python manage.py skiptrace --export-top 50 | --import found.csv | --lead ID --paste file.txt
     python manage.py dnc --load ftc_201.txt [--date YYYY-MM-DD] | --add PHONE [--source daniels_law] | --status
     python manage.py match [--top 50]         top-5 cash buyers for each top deal
+    python manage.py pii-scan                 check git-tracked files for names from the database (run before pushing)
     python manage.py swarm <args...>          passthrough to `python -m swarm.orchestrator`
 """
 from __future__ import annotations
@@ -412,6 +413,19 @@ def cmd_dnc(args: argparse.Namespace) -> None:
                 console.print(f"Re-download before {compliance.stale_after(date.fromisoformat(st['list_date']))} (31-day rule).")
 
 
+def cmd_pii_scan(_: argparse.Namespace) -> None:
+    from rich.markup import escape
+
+    from core.pii_scan import scan
+    init_db()
+    with session_scope() as s:
+        hits = scan(s)
+    for h in hits:
+        console.print(f"[red]{escape(h.path)}:{h.line}[/red] {escape(h.name)}: {escape(h.text)}")
+    console.print(f"{len(hits)} personal name(s) from the database found in tracked files.")
+    raise SystemExit(1 if hits else 0)
+
+
 def cmd_match(args: argparse.Namespace) -> None:
     from engine.buyer_matcher import BuyerMatcherAgent
     run = BuyerMatcherAgent(top=args.top).execute()
@@ -487,6 +501,7 @@ def main(argv: list[str] | None = None) -> None:
     dn.add_argument("--source", default="internal", choices=["internal", "daniels_law", "litigator"])
     dn.add_argument("--notes")
     dn.add_argument("--status", action="store_true")
+    sub.add_parser("pii-scan")
     mt = sub.add_parser("match")
     mt.add_argument("--top", type=int, default=50)
     args = parser.parse_args(argv)
@@ -494,7 +509,7 @@ def main(argv: list[str] | None = None) -> None:
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
      "stats": cmd_stats, "server": cmd_server, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
-     "dnc": cmd_dnc, "match": cmd_match}[args.cmd](args)
+     "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan}[args.cmd](args)
 
 
 if __name__ == "__main__":

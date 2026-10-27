@@ -77,9 +77,9 @@ All district codes per county, copied from the `<select name=district>` options 
 - **Detail page (GET permalink):** `https://taxrecords-nj.com/pub/cgi/m4.cgi?district=<d>&l02=<d><Join column with spaces replaced by _>`. Example: `m4.cgi?district=1213&l02=121300010____00004__01_____M` shows owner, mailing address, sq ft, year built, last sale and four years of tax-list history.
 - **Auth / cost:** none. **Pagination / limits:** no cap observed on Excel output. New Brunswick returned 8,027 rows in 2.4 s (951 KB ZIP), Woodbridge 29,601, Jersey City 64,836 in 9.2 s (7.6 MB ZIP). HTML pages have a "Next" button that posts `pageno`.
 - **Terms:** robots.txt is `Disallow: /`. There is a Daniel's Law statement and an "as is" disclaimer. No other ToS page exists; the homepage is only a list of county links.
-- **Camden quirk:** the HTML list output for Camden (`ctb04`) shows an empty Owner column, but the CSV export has names. 46 of 46 rows in block 10 had a name, for example `COSBY, DONNA M`.
+- **Camden quirk:** the HTML list output for Camden (`ctb04`) shows an empty Owner column, but the CSV export has names. 46 of 46 rows in block 10 had a name, for example `[individual]`.
 
-**Test 1: owner list, Union / Elizabeth, block 1.** `curl -X POST .../inf.cgi --data "ms_user=ctb20&passwd=&srch_type=1&select_cc=2004&district=2004&adv=1&out_type=1&ms_ln=50&p_loc=&owner=&block=1&lot=&qual="` returned `32 Records Found for District: 2004 ELIZABETH Data as of 10/23/26`. Rows: `1 | 1 | 2 | 1312-1322 MAGIE AVE | DURAND, ALEXIS - DURAND, MARIA`, `1 | 2 | 2 | 1308-1310 MAGIE AVE | TAE, JOHN W - TAE, RICHARD W`, `1 | 3 | 2 | 1304-1306 MAGIE AVE | LABAUT-ARAUJO, G - LABAUT, YUNIA`.
+**Test 1: owner list, Union / Elizabeth, block 1.** `curl -X POST .../inf.cgi --data "ms_user=ctb20&passwd=&srch_type=1&select_cc=2004&district=2004&adv=1&out_type=1&ms_ln=50&p_loc=&owner=&block=1&lot=&qual="` returned `32 Records Found for District: 2004 ELIZABETH Data as of 10/23/26`. Rows: `1 | 1 | 2 | [address] | [individual]`, `1 | 2 | 2 | [address] | [individual]`, `1 | 3 | 2 | [address] | [individual]`.
 
 **Test 2: other target counties.** Each was a single POST:
 
@@ -89,7 +89,7 @@ All district codes per county, copied from the `<select name=district>` options 
 | `ctb12`, `district=1225`, `block=10` | `3 Records ... WOODBRIDGE Data as of 10/23/26` (cemeteries) |
 | `ctb12`, `district=1205`, `p_loc=AMBOY` | `169 Records ... EDISON Data as of 10/23/26`, for example `692.01 | 1.01 | 4A | 1158 AMBOY AVE | HOGAN HOLDINGS CORP` and `... | 1096 AMBOY AVE | DREAM HOMES 1096 LLC` |
 | `ctb09`, `district=0906`, `p_loc=MONTGOMERY` | `426 Records ... JERSEY CITY Data as of 10/23/26`, for example `11605 | 1 | 4A | 30 MONTGOMERY STREET | 30 MONTGOMERY OWNER,LLC % LAMAR CO.` |
-| `ctb16`, `district=1608`, `p_loc=MARKET` | `334 Records ... PATERSON Data as of 10/23/26`, for example `4002 | 9 | 2 | 579 MARKET ST | SORIANO, AUSTRIA` |
+| `ctb16`, `district=1608`, `p_loc=MARKET` | `334 Records ... PATERSON Data as of 10/23/26`, for example `4002 | 9 | 2 | [address] | [individual]` |
 | `ctb02`, `district=0223`, `block=10` | `1 Records ... HACKENSACK Data as of 10/21/26`, `10 | 1.01 | 4A | 500 SO RIVER ST | SUP II RIVERFRONT PLAZA LLC` |
 | `ctb04`, `district=0408`, `block=10` | `46 Records ... CAMDEN CITY Data as of 10/21/26` |
 | `ctb07`, `district=0714`, `block=10` / `p_loc=BROAD` | **`0 Records Found for District: 0714  Data as of //`** |
@@ -105,7 +105,7 @@ All district codes per county, copied from the `<select name=district>` options 
 A Jersey City row from the full `0906` export (`0906ctb09152901.csv`, 64,836 rows, 0 blank owner names, 0 blank mailing addresses):
 
 ```
-"0906","702","3","","145 GRACE ST.","2","FRIAS, ALEXIS","145 GRACE ST., #2","JERSEY CITY, NJ  07307","3675","2005","18.4","892","45","","2026-10-15","","00134700","","660","","","","","7","","25X100","2S-BT-B+F-2U-G","0","0.0574","0","0","0","","000000","000000","","15957.39","18157.94","0","0","2026-09-16","10013","564","1","25","68340000","42","2026","FRIAS, ALEXIS & RAFAEL","145 GRACE ST., #2","JERSEY CITY, NJ  07307","190000","493400","0","683400","683400","2025",...
+"0906","702","3","","[address]","2","[individual]","[address]","JERSEY CITY, NJ  07307","3675","2005","18.4","892","45","","2026-10-15","","00134700","","660","","","","","7","","25X100","2S-BT-B+F-2U-G","0","0.0574","0","0","0","","000000","000000","","15957.39","18157.94","0","0","2026-09-16","10013","564","1","25","68340000","42","2026","[individual]","[address]","JERSEY CITY, NJ  07307","190000","493400","0","683400","683400","2025","..."
 ```
 
 Notes on the CSV:
@@ -124,7 +124,7 @@ This returned `834 Records Found for Download | Data as of 09/24/26`, then the Z
 ```
 "Municipality","Grantor's Name (Seller)","Grantor's Mailing Address","Grantor's City/State/Zip","Grantee's Name (Buyer)","Grantee's Mailing Address","Grantee's City/State/Zip","Property Location","Block","Lot","Qual","Property Class","Land Assmnt","Building Assmnt","Total Assmnt","Recorded Date","Deed Date","Book","Page","Sale Price","NU Code","Sq. Ft.","Cl. 4 Use","SR1A #","Yr. Built","StyDesc","Style","Latitude","Longitude",
 "2004","GREAT GATSBY REALTY LLC","1165 CHESTNUT ST","ELIZABETH, N J  07201","1165 CHESTNUT LLC","39 ELM ST","ELIZABETH, NJ  07208","1165 CHESTNUT ST","276","1","","2","138200","295300","433500","2026-07-20","2026-06-25","6625","2878","0","25","2080","","1111111","1890","","","0","0","","",
-"2004","MARINO, KENNETH & KATHRYN","1134-1138 KIPLING RD","ELIZABETH, N J  07208","BONET, LUIS & LILIBETH CASTRO","1134-1138 KIPLING RD","ELIZABETH, N J  07208","1134-1138 KIPLING RD","1","9","","2","283500","323700","607200","2026-01-05","2025-12-23","6606","2400","860000","32","2200","","7584577","1952","COLONIAL","CL","0","0","","",
+"2004","[individual]","[address]","ELIZABETH, N J  07208","[individual]","[address]","ELIZABETH, N J  07208","[address]","1","9","","2","283500","323700","607200","2026-01-05","2025-12-23","6606","2400","860000","32","2200","","7584577","1952","COLONIAL","CL","0","0","","",""
 ```
 
 **Deed database freshness per county**, from simple `srch_type=2` POSTs:
@@ -141,7 +141,7 @@ This returned `834 Records Found for Download | Data as of 09/24/26`, then the Z
 ### 3.2 tax1.co.monmouth.nj.us (same software, Monmouth only): **FALLBACK, Monmouth only**
 
 - `GET https://tax1.co.monmouth.nj.us/cgi-bin/prc6.cgi?menu=index&ms_user=monm&passwd=data&district=1301&mode=11`. The county dropdown offers only `<option value=1301>MONMOUTH`. The district dropdown follows whatever `district` you pass, which is why it lists Essex towns when you pass 0702.
-- `POST .../inf.cgi` with `ms_user=monm&passwd=data&srch_type=1&select_cc=1301&district=1301&adv=1&out_type=1&ms_ln=50&block=1` returned `89 Records Found for District: 1301 ABERDEEN Data as of 10/25/26`. Example rows: `1 | 2 | 1 | 39-41 ATLANTIC AVE | MATAWAN PROPERTY GROUP, LLC` and `1 | 3 | 2 | 43 ATLANTIC AVE | DIAZ, ERICA PITT`. A Monmouth deed Excel export (`srch_type=2&adv=2&out_type=3&sale_from=2026-06-01`) returned `148 Records ... Data as of 10/07/26`.
+- `POST .../inf.cgi` with `ms_user=monm&passwd=data&srch_type=1&select_cc=1301&district=1301&adv=1&out_type=1&ms_ln=50&block=1` returned `89 Records Found for District: 1301 ABERDEEN Data as of 10/25/26`. Example rows: `1 | 2 | 1 | 39-41 ATLANTIC AVE | MATAWAN PROPERTY GROUP, LLC` and `1 | 3 | 2 | [address] | [individual]`. A Monmouth deed Excel export (`srch_type=2&adv=2&out_type=3&sale_from=2026-06-01`) returned `148 Records ... Data as of 10/07/26`.
 - Other counties on this host with `monm`, or with `ms_user=ctb12` / `ctb07`, all returned 0 rows:
 
 | District | Result |
@@ -190,7 +190,7 @@ This returned `834 Records Found for Download | Data as of 09/24/26`, then the Z
 
 - Found through `https://www.arcgis.com/sharing/rest/search?q=(Newark OR Essex) parcels owner type:"Feature Service"`. Layer: `https://services1.arcgis.com/WAUuvHqqP3le2PMh/arcgis/rest/services/Newark_Parcels_with_Ownership/FeatureServer/0`, owner `dikidjievai_newgin`.
 - `lastEditDate` is 2021-11-23. A statistics query gives `max(MOD4_LASTUPDATE)` = 2020-07-31, `max(TENREBYR)` = 2019 and 48,672 rows. Fields include OWNERSNAME, OWNERADD1, OWNERADD2, DEEDBOOK, DEEDPAGE, SALESDATE and SALESPRICE.
-- Sample: `991 | 6.42 | C42 | 404-406 CHESTNUT ST | AVILA, DIANA B. | 404 CHESTNUT ST NEWARK, NJ | 06133/811 11/30/2004 $250,000`.
+- Sample: `991 | 6.42 | C42 | [address] | [individual] | [address], NJ | 06133/811 11/30/2004 $250,000`.
 - **How the client uses it:** it fills `owner_name` only when the current deed book and page (from NJGIN or MOD-IV) equal the snapshot's, meaning no recorded transfer since about 2020. On block 991, 20 of 30 parcels matched. Across the full Newark bulk pull, **25,085 of 46,675 parcels (54%) got a name**, including 17,472 of 31,000 class-2 residential parcels. `owner_name_source` records where each name came from. Recently traded parcels, which are exactly the flips, stay unnamed.
 
 ### 3.7 TaxDataHub (Essex's and Camden's "Record Search"): **BLOCKED (reCAPTCHA)**
@@ -277,28 +277,28 @@ Run with `python3 t_more.py`, `t_more2.py` and `t_flip.py`, which import the mod
 ```
 Newark bulk: 46675 parcels, owner_name filled from 2020 snapshot (deed unchanged): 25085 (54%); class-2 named 17472/31000; max sale date 2026-01-24; 36s
 0906 Jersey City (Hudson) location 'MONTGOMERY' 426 rows | first: 11604 2 MONTGOMERY ST. | CITY OF JERSEY CITY | 280 GROVE STREET JERSEY CITY, NJ 07302 | as of 2026-10-23
-1608 Paterson (Passaic) location 'MARKET' 334 rows | first: 4002 9 579 MARKET ST | SORIANO, AUSTRIA | 579 MARKET ST PATERSON NJ 07513 | as of 2026-10-23
+1608 Paterson (Passaic) location 'MARKET' 334 rows | first: 4002 9 [address] | [individual] | [address] | as of 2026-10-23
 0223 Hackensack (Bergen) location 'MAIN' 374 rows | first: 36.03 1 232 SO MAIN ST | MT.ZION BAPTIST CHURCH OF LODI TNSP | 25 E WESLEY ST SOUTH HACKENSACK NJ 07606 | as of 2026-10-21
 0408 Camden City (Camden) location 'ERIE' 183 rows | first: 1 1 75 ERIE ST | 75 ERIE ST, LLC | 1339 N FRONT STREET PHILADELPHIA, PA 19122 | as of 2026-10-21
 1205 Edison (Middlesex) location '1158 AMBOY' 1 rows | first: 692.01 1.01 1158 AMBOY AVE | HOGAN HOLDINGS CORP | 297 CENTRAL AVE METUCHEN, NJ 08840 | as of 2026-10-23
 1213 New Brunswick (Middlesex) location 'GEORGE ST' 111 rows | first: 8 4.01 335 GEORGE ST | RUTGERS, THE STATE UNIVERSITY | 33 KNIGHTSBRIDGE RD, FL3E PISCATAWAY, NJ 08854 | as of 2026-10-23
 
 0906 Jersey City (Hudson) deeds since 2026-06-28 315 rows; corp grantees 87 | max deed 2026-09-09 max recorded 2026-09-11 | as of 2026-09-11
-    e.g. 804 29 525 CENTRAL AVE. | WANG, YING -> 525 CENTRAL LLC | 61 MAPLE STREET, BOX 112, SUMMIT, NJ  07901 | 412621 2026-08-31 2026-09-04 NU 4 10009 516
+    e.g. 804 29 [address] | [individual] -> 525 CENTRAL LLC | [address], BOX 112, SUMMIT, NJ  07901 | 412621 2026-08-31 2026-09-04 NU 4 10009 516
 0223 Hackensack (Bergen) deeds since 2026-06-28 43 rows; corp grantees 8 | max deed 2026-08-17 max recorded 2026-08-26 | as of 2026-08-26
     e.g. 423 15 202 BERRY ST | AAIA RMK LLC -> 202 BERRY STREET LLC | 202 BERRY ST, HACKENSACK, NJ  07601 | 450000 2026-07-30 2026-08-26 NU None 5883 1462
 0408 Camden City (Camden) deeds since 2026-06-28 172 rows; corp grantees 76 | max deed 2026-08-25 max recorded 2026-08-31 | as of 2026-08-31
     e.g. 282 86 1453 SO 4TH ST | THE CITY OF CAMDEN -> HELPING OTHERS WITH MISSION CORP | 1451 S 4TH STREET, CAMDEN, NJ  08104 | 6000 2026-08-25 2026-08-31 NU 15 13176 749
 1608 Paterson (Passaic) deeds since 2026-06-28 447 rows; corp grantees 219 | max deed 2026-10-13 max recorded 2026-10-14 | as of 2026-10-14
-    e.g. 2102 5 250-254 6TH AVE | ROJAS PASCUAL -> 250 SIXTH AVE LLC | 250 254 6TH AVE, PATERSON NJ  07524 | 600000 2026-10-08 2026-10-14 NU None 5184 183
+    e.g. 2102 5 [address] | [individual] -> 250 SIXTH AVE LLC | [address], PATERSON NJ  07524 | 600000 2026-10-08 2026-10-14 NU None 5184 183
 2004 Elizabeth (Union) deeds since 2026-06-28 109 rows; corp grantees 40 | max deed 2026-09-17 max recorded 2026-09-24 | as of 2026-09-24
-    e.g. 430 9 440-442 ERICO AVE | BRITO-GOMEZ, AMAURY & DIAZ, MERCEDE -> SAINT MINA REALTY LLC | 440-442 ERICO AVE, ELIZABETH, N J  07202 | 1155000 2026-08-18 2026-08-28 NU None 6630 2703
+    e.g. 430 9 [address] | [individual] -> SAINT MINA REALTY LLC | [address], ELIZABETH, N J  07202 | 1155000 2026-08-18 2026-08-28 NU None 6630 2703
 
 Paterson deeds since 2024-10-26 3158 min deed 2024-10-26 max 2026-10-13
 buy->resell within 365d with higher price: 59
-  ('8202', '16', '') 31-35 E 36TH ST: 2026-02-25 THOMPSON DOROTHY B -> 15 LESLIE STREET LLC $450,000  ||  2026-10-01 15 LESLIE STREET LLC -> LEGACY COOP LLC $595,000
-  ('2713', '6', '') 311-313 E 23RD ST: 2026-05-18 ADAMO THOMAS SHERIFF -> 2026 E23 LLC $360,000  ||  2026-09-30 2026 E23 LLC -> VELARDE LUIS M D ET ALS $670,000
-  ('1213', '17', '') 230-232 SHERWOOD AVE: 2026-06-15 OTTILIO CATHERINE -> 5TH GEN HOLDINGS LLC $350,000  ||  2026-09-09 5TH GEN HOLDINGS LLC -> AHMED NASIR $460,000
+  ('8202', '16', '') [address]: 2026-02-25 [individual] -> 15 LESLIE STREET LLC $450,000  ||  2026-10-01 15 LESLIE STREET LLC -> LEGACY COOP LLC $595,000
+  ('2713', '6', '') [address]: 2026-05-18 [individual] -> 2026 E23 LLC $360,000  ||  2026-09-30 2026 E23 LLC -> [individual] $670,000
+  ('1213', '17', '') [address]: 2026-06-15 [individual] -> 5TH GEN HOLDINGS LLC $350,000  ||  2026-09-09 5TH GEN HOLDINGS LLC -> [individual] $460,000
 ```
 
 A short deed window can come back empty when it starts after the county's "Data as of" date. For example, Jersey City, Hackensack and Camden returned 0 rows for `since=2026-09-11`. Use windows of 60 days or more.
@@ -324,24 +324,24 @@ Woodbridge fetch_municipality_owners: 29601 parcels in one export; data_as_of=20
   district_code='1225' | block='1' | lot='2.02' | qual='' | prop_class='1' | property_location='119 WEST POND RD' | owner_name='JARAN PROP LLC C/O JJ ELEK' | owner_street='117 MAIN ST' | owner_city_state='WOODBRIDGE NJ' | owner_zip='07095' | assessed_total=72800 | year_built=None | sq_ft=None | last_sale_date='2006-12-26' | last_sale_price=400000 | deed_book='5772' | deed_page='85' | owner_name_source='county tax board MOD-IV (taxrecords-nj.com)' | source_url='https://taxrecords-nj.com/pub/cgi/m4.cgi?district=1225&l02=122500001____00002__02_____M'
 
 === Woodbridge fetch_recent_deeds(since=2025-10-26): 1210 row(s) ===
-  block='17.09' | lot='222' | qual='' | property_location='29 FAIRFIELD AVE' | grantor=None | grantee='AHMED, AZIZ' | grantee_address='29 FAIRFIELD AVE, FORDS, NJ 08863' | sale_price=1 | deed_date='2026-10-09' | recorded_date=None | nu_code='1' | deed_book='20154' | deed_page='485' | source='taxrecords-nj.com owner list last sale (grantor = prior tax-list owner)'
-  block='263.01' | lot='16.01' | qual='' | property_location='240 BUNNS LN' | grantor='KUSNIR, MILAN & KROCKO,M&KROCKOVA,L' | grantee='KROCKO, MICHAL & KROCKOVA, LUDMILA' | grantee_address='240 BUNNS LN, WOODBRIDGE, NJ 07095' | sale_price=1 | deed_date='2026-10-09' | recorded_date=None | nu_code='1' | deed_book='20154' | deed_page='175' | source='taxrecords-nj.com owner list last sale (grantor = prior tax-list owner)'
-  block='403.07' | lot='8' | qual='' | property_location='72 EDWARD ST' | grantor='CAPUTO, MICHAEL' | grantee='CAPUTO, MICHAEL&KISS-CAPUTO,MELISSA' | grantee_address='72 EDWARD ST, ISELIN, NJ 08830' | sale_price=1 | deed_date='2026-10-09' | recorded_date=None | nu_code='1' | deed_book='20153' | deed_page='1112' | source='taxrecords-nj.com owner list last sale (grantor = prior tax-list owner)'
-  block='252' | lot='100' | qual='C0119' | property_location='119 CRICKET LN' | grantor='DAMANIA, VISHAL H & SANCHITA' | grantee='CASTILLO-INOA, LUXI Y ANGELES' | grantee_address='119 CRICKET LN, WOODBRIDGE, NJ 07095' | sale_price=270000 | deed_date='2026-10-08' | recorded_date=None | nu_code='0' | deed_book='20153' | deed_page='1654' | source='taxrecords-nj.com owner list last sale (grantor = prior tax-list owner)'
+  block='17.09' | lot='222' | qual='' | property_location='[address]' | grantor=None | grantee='[individual]' | grantee_address='[address], FORDS, NJ 08863' | sale_price=1 | deed_date='2026-10-09' | recorded_date=None | nu_code='1' | deed_book='20154' | deed_page='485' | source='taxrecords-nj.com owner list last sale (grantor = prior tax-list owner)'
+  block='263.01' | lot='16.01' | qual='' | property_location='[address]' | grantor='[individual]' | grantee='[individual]' | grantee_address='[address], WOODBRIDGE, NJ 07095' | sale_price=1 | deed_date='2026-10-09' | recorded_date=None | nu_code='1' | deed_book='20154' | deed_page='175' | source='taxrecords-nj.com owner list last sale (grantor = prior tax-list owner)'
+  block='403.07' | lot='8' | qual='' | property_location='[address]' | grantor='[individual]' | grantee='[individual]' | grantee_address='[address], ISELIN, NJ 08830' | sale_price=1 | deed_date='2026-10-09' | recorded_date=None | nu_code='1' | deed_book='20153' | deed_page='1112' | source='taxrecords-nj.com owner list last sale (grantor = prior tax-list owner)'
+  block='252' | lot='100' | qual='C0119' | property_location='[address]' | grantor='[individual]' | grantee='[individual]' | grantee_address='[address], WOODBRIDGE, NJ 07095' | sale_price=270000 | deed_date='2026-10-08' | recorded_date=None | nu_code='0' | deed_book='20153' | deed_page='1654' | source='taxrecords-nj.com owner list last sale (grantor = prior tax-list owner)'
   by source: {'NJ Treasury statewide SR1A Sales2026.zip (names redacted)': 47, 'taxrecords-nj.com owner list last sale (grantor = prior tax-list owner)': 1163}
 
 === Elizabeth fetch_recent_deeds(since=2025-10-26, max_rows=4): 4 row(s) ===
-  block='355' | lot='41' | qual='' | property_location='1019-1021 GROVE ST' | grantor='SOUSA, FERNANDO & TERESA COSTA' | grantee='SOUSA, FERNANDO & TERESA CONCEICAO' | grantee_address='1019-1021 GROVE ST, ELIZABETH, N J  07202' | sale_price=1 | deed_date='2026-09-17' | recorded_date='2026-09-23' | nu_code='25' | deed_book='6633' | deed_page='2338' | source='taxrecords-nj.com Deed/Sr1a list (Excel export)'
-  block='263' | lot='16' | qual='' | property_location='1009 1/2 FLORA ST' | grantor='MAYNOR, EVELYN(ADM)' | grantee='GRANT,RICKY,LINDA & BRENT-MAYNOR,E' | grantee_address='914 UNION ST, LINDEN, N J  07036' | sale_price=1 | deed_date='2026-09-11' | recorded_date='2026-09-17' | nu_code='10' | deed_book='6632' | deed_page='198' | source='taxrecords-nj.com Deed/Sr1a list (Excel export)'
-  block='104' | lot='8' | qual='' | property_location='614-618 UNION AVE' | grantor='JABER, WASEELAH A' | grantee='JABER, ATA' | grantee_address='612 UNION AVE, ELIZABETH, N J  07208' | sale_price=1 | deed_date='2026-09-10' | recorded_date='2026-09-24' | nu_code='14' | deed_book='6633' | deed_page='289' | source='taxrecords-nj.com Deed/Sr1a list (Excel export)'
-  block='170' | lot='37' | qual='' | property_location='117 SAYRE ST' | grantor='GUERRERO, ROBERTH O' | grantee='SCOOBY DOO PAPA LLC' | grantee_address='117 SAYRE ST, ELIZABETH, N J  07208' | sale_price=10 | deed_date='2026-09-08' | recorded_date='2026-09-14' | nu_code='14' | deed_book='6632' | deed_page='2072' | source='taxrecords-nj.com Deed/Sr1a list (Excel export)'
+  block='355' | lot='41' | qual='' | property_location='[address]' | grantor='[individual]' | grantee='[individual]' | grantee_address='[address], ELIZABETH, N J  07202' | sale_price=1 | deed_date='2026-09-17' | recorded_date='2026-09-23' | nu_code='25' | deed_book='6633' | deed_page='2338' | source='taxrecords-nj.com Deed/Sr1a list (Excel export)'
+  block='263' | lot='16' | qual='' | property_location='[address]' | grantor='[individual]' | grantee='[individual]' | grantee_address='[address], LINDEN, N J  07036' | sale_price=1 | deed_date='2026-09-11' | recorded_date='2026-09-17' | nu_code='10' | deed_book='6632' | deed_page='198' | source='taxrecords-nj.com Deed/Sr1a list (Excel export)'
+  block='104' | lot='8' | qual='' | property_location='[address]' | grantor='[individual]' | grantee='[individual]' | grantee_address='[address], ELIZABETH, N J  07208' | sale_price=1 | deed_date='2026-09-10' | recorded_date='2026-09-24' | nu_code='14' | deed_book='6633' | deed_page='289' | source='taxrecords-nj.com Deed/Sr1a list (Excel export)'
+  block='170' | lot='37' | qual='' | property_location='[address]' | grantor='[individual]' | grantee='SCOOBY DOO PAPA LLC' | grantee_address='[address], ELIZABETH, N J  07208' | sale_price=10 | deed_date='2026-09-08' | recorded_date='2026-09-14' | nu_code='14' | deed_book='6632' | deed_page='2072' | source='taxrecords-nj.com Deed/Sr1a list (Excel export)'
 
 === Newark lookup_owner('991', '26'): 1 row(s) ===
-  district_code='0714' | block='991' | lot='26' | qual='' | prop_class='4A' | property_location='384-386 CHESTNUT ST' | owner_name='MARTINS, RENATO & ANA' | owner_street='382 386 CHESTNUT ST' | owner_city_state='NEWARK, NJ' | owner_zip='07105' | assessed_total=467300 | year_built=None | sq_ft=None | last_sale_date='2013-11-12' | last_sale_price=560000 | deed_book='12468' | deed_page='06025' | owner_name_source="Newark 2020 parcel snapshot (ArcGIS 'Newark Parcels with Ownership'); deed book/page unchanged since then" | source_url='https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0/query?where=PCL_MUN%3D%270714%27+AND+PCLBLOCK%3D%27991%27+AND+PCLLOT%3D%2726%27&outFields=%2A&returnGeometry=false&f=json'
+  district_code='0714' | block='991' | lot='26' | qual='' | prop_class='4A' | property_location='[address]' | owner_name='[individual]' | owner_street='[address]' | owner_city_state='NEWARK, NJ' | owner_zip='07105' | assessed_total=467300 | year_built=None | sq_ft=None | last_sale_date='2013-11-12' | last_sale_price=560000 | deed_book='12468' | deed_page='06025' | owner_name_source="Newark 2020 parcel snapshot (ArcGIS 'Newark Parcels with Ownership'); deed book/page unchanged since then" | source_url='https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0/query?where=PCL_MUN%3D%270714%27+AND+PCLBLOCK%3D%27991%27+AND+PCLLOT%3D%2726%27&outFields=%2A&returnGeometry=false&f=json'
 
 === Newark search_owner_by_location('CHESTNUT ST'): 193 row(s) ===
   district_code='0714' | block='935' | lot='48' | qual='' | prop_class='4A' | property_location='158 CHESTNUT ST' | owner_name=None | owner_street='158 CHESTNUT ST' | owner_city_state='NEWARK, NJ' | owner_zip='07105' | assessed_total=262600 | year_built=None | sq_ft=None | last_sale_date='2022-01-19' | last_sale_price=1 | deed_book='20220' | deed_page='11980' | owner_name_source=None | source_url='https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0/query?where=PCL_MUN%3D%270714%27+AND+UPPER%28PROP_LOC%29+LIKE+%27%25CHESTNUT+ST%25%27&outFields=%2A&returnGeometry=false&f=json'
-  district_code='0714' | block='919' | lot='43.29' | qual='' | prop_class='2' | property_location='116 CHESTNUT ST' | owner_name='COSTA, GERALDO M. & LINA V. COSTA' | owner_street='116 CHESTNUT ST' | owner_city_state='NEWARK, NJ' | owner_zip='07105-1103' | assessed_total=327400 | year_built=1999 | sq_ft=None | last_sale_date='2001-04-30' | last_sale_price=355000 | deed_book='05765' | deed_page='00635' | owner_name_source="Newark 2020 parcel snapshot (ArcGIS 'Newark Parcels with Ownership'); deed book/page unchanged since then" | source_url='https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0/query?where=PCL_MUN%3D%270714%27+AND+UPPER%28PROP_LOC%29+LIKE+%27%25CHESTNUT+ST%25%27&outFields=%2A&returnGeometry=false&f=json'
+  district_code='0714' | block='919' | lot='43.29' | qual='' | prop_class='2' | property_location='[address]' | owner_name='[individual]' | owner_street='[address]' | owner_city_state='NEWARK, NJ' | owner_zip='07105-1103' | assessed_total=327400 | year_built=1999 | sq_ft=None | last_sale_date='2001-04-30' | last_sale_price=355000 | deed_book='05765' | deed_page='00635' | owner_name_source="Newark 2020 parcel snapshot (ArcGIS 'Newark Parcels with Ownership'); deed book/page unchanged since then" | source_url='https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0/query?where=PCL_MUN%3D%270714%27+AND+UPPER%28PROP_LOC%29+LIKE+%27%25CHESTNUT+ST%25%27&outFields=%2A&returnGeometry=false&f=json'
   district_code='0714' | block='919' | lot='43.28' | qual='' | prop_class='2' | property_location='118 CHESTNUT ST' | owner_name=None | owner_street='67 ELMORA AVE' | owner_city_state='ELIZABETH, NJ' | owner_zip='07202' | assessed_total=324000 | year_built=1999 | sq_ft=None | last_sale_date='2024-09-23' | last_sale_price=533100 | deed_book='20240' | deed_page='74320' | owner_name_source=None | source_url='https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0/query?where=PCL_MUN%3D%270714%27+AND+UPPER%28PROP_LOC%29+LIKE+%27%25CHESTNUT+ST%25%27&outFields=%2A&returnGeometry=false&f=json'
 
 === Newark fetch_municipality_owners(max_rows=5) [MOD-IV via HTTP Range]: 5 row(s) ===

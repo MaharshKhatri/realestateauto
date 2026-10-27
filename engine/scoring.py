@@ -289,7 +289,7 @@ def engagement_adjustment(lead: Lead) -> tuple[float, list[str]]:
         why.append("callable phone on file (+4)")
     if lead.contact_attempts >= 6 and lead.status_stage in ("NEW", "SKIP_TRACE", "CONTACT_ATTEMPTED"):
         bonus -= 6
-        why.append(f"{lead.contact_attempts} attempts without a conversation (-6): switch to mail / door-knock")
+        why.append(f"{lead.contact_attempts} attempts without a conversation (-6): switch to a letter / another contact")
     return bonus, why
 
 
@@ -329,7 +329,7 @@ def strategy_brief(lead: Lead, sc: Score) -> str:
         days = (s.scheduled_auction_date - date.today()).days if s and s.scheduled_auction_date else None
         txt = "Pre-auction: at sheriff sale the owner loses the house and must chase any surplus through the court. "
         if days is not None and days >= 0:
-            txt += f"Sale {days_phrase(days)} — call and door-knock now. "
+            txt += f"Sale {days_phrase(days)} — call now and mail an urgent letter today. "
         if (meta.get("defendant_adjournments") or 0) >= 2:
             txt += ("Homeowner has used both statutory adjournments; check the current status before investing time. ")
         txt += ("Don't advise on postponing the sale yourself (a regulated 'distressed property service' under "

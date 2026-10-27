@@ -63,12 +63,12 @@ def test_money_with_space_thousands_separator():
 
 
 def test_defendant_cleanup_and_estates():
-    assert first_defendant("JULMALI HABIBUL; ET. AL.") == "JULMALI HABIBUL"
-    assert first_defendant("CLARK REINHARD A/K/A CLARK REIHARD; NANCY") == "CLARK REINHARD"
-    assert first_defendant("DOROTHEA BRADLEY, HER HEIRS, BENEFICIARIES, SUCCESSORS") == "DOROTHEA BRADLEY"
-    assert first_defendant("UNKNOWN HEIRS OF JOHN SMITH; ET AL") == "JOHN SMITH"
+    assert first_defendant("ALPHA TESTER; ET. AL.") == "ALPHA TESTER"
+    assert first_defendant("BRAVO EXAMPLE A/K/A BRAVO EXAMPEL; CASEY") == "BRAVO EXAMPLE"
+    assert first_defendant("CHARLIE SAMPLEY, HER HEIRS, BENEFICIARIES, SUCCESSORS") == "CHARLIE SAMPLEY"
+    assert first_defendant("UNKNOWN HEIRS OF QUINN SAMPLE; ET AL") == "QUINN SAMPLE"
     assert is_estate_defendant("ESTATE OF MARY JONES")
-    assert not is_estate_defendant("JULMALI HABIBUL; ET. AL.")
+    assert not is_estate_defendant("ALPHA TESTER; ET. AL.")
 
 
 def test_severity_peaks_near_sale():
@@ -78,6 +78,6 @@ def test_severity_peaks_near_sale():
 
 
 def test_comma_separated_defendants():
-    assert first_defendant("ROGER NELSON, CAVALRY SPV I LLC ASSIGNEE CITIBANK, NA, LINEAR MORTGAGE LLC") == "ROGER NELSON"
-    assert first_defendant("BRUMFIELD, PHILLIP J.; MARGARET BRUMFIELD") == "BRUMFIELD, PHILLIP J"
-    assert first_defendant("HARRY ORTIZ, EDNA ORTIZ, TD BANK, N.A") == "HARRY ORTIZ"
+    assert first_defendant("DELTA FIXTURE, CAVALRY SPV I LLC ASSIGNEE CITIBANK, NA, LINEAR MORTGAGE LLC") == "DELTA FIXTURE"
+    assert first_defendant("PLACER, GOLF J.; HOTEL PLACER") == "PLACER, GOLF J"
+    assert first_defendant("ECHO MOCKLEY, FOXTROT MOCKLEY, TD BANK, N.A") == "ECHO MOCKLEY"

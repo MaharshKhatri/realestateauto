@@ -112,7 +112,7 @@ def classify(facts: OccupancyFacts) -> FrfpaDecision:
     if facts.vacant_signal:
         return FrfpaDecision("EXEMPT_VACANT", False, "presumed",
                              "Sheriff listing / records show the property VACANT.",
-                             ["Confirm vacancy (drive-by or seller statement) and record it on the lead"])
+                             ["Confirm vacancy (seller/agent statement, photos or video walkthrough) and record it on the lead"])
     if is_estate(facts):
         if facts.is_absentee:
             return FrfpaDecision("EXEMPT_ESTATE", False, "presumed",

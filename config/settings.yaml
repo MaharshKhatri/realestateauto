@@ -8,7 +8,8 @@ operator:
   phone: ""
   email: ""
   home_base: "Edison, NJ"
-  has_car: true
+  has_car: false                    # 100% virtual: no driving, door-knocking or in-person inspections
+  virtual_only: true
   timezone: "America/New_York"
 
 compliance:
@@ -50,7 +51,7 @@ crm:
     SPOKE_NOT_INTERESTED: 45
     AGENT_WILL_PRESENT_LOI: 2
     OFFER_ACCEPTED: 1
-  max_attempts_no_contact: 8         # after this many no-answer/VM touches, park the lead (mail/door-knock instead)
+  max_attempts_no_contact: 8         # after this many no-answer/VM touches, park the lead (letter / agent / relative instead)
   sale_countdown_days: 21            # dashboard countdown window for sheriff sales
   call_queue_size: 40
 

@@ -115,7 +115,7 @@ def lead_facts(lead: Lead) -> dict[str, Any]:
 
 
 def speaking_name(raw: str | None) -> str:
-    """Owner-of-record text → how you'd say it on the phone: 'COLODNE, YETTA ESTATE OF' → 'Yetta Colodne'."""
+    """Owner-of-record text → how you'd say it on the phone: 'OSCARSON, PAPA ESTATE OF' → 'Papa Oscarson'."""
     from agents.scrapers.sheriff_sale_agent import first_defendant
     if not raw:
         return ""
@@ -292,7 +292,7 @@ def build_battle_card(lead: Lead, contact: Contact | None = None) -> BattleCard:
              "phone": format_phone(contact.phone) if contact and contact.phone else None,
              "phone_type": contact.phone_type if contact else None, "dnc": contact.dnc_status if contact else None,
              "email": contact.email if contact else None, "company": contact.company if contact else None}
-    compliance = ["Call 8am–9pm recipient time; never call a number marked DNC — mail or door-knock instead.",
+    compliance = ["Call 8am–9pm recipient time; never call a number marked DNC — send a letter instead.",
                   "Say your name, company, callback number and why you're calling in the first 30 seconds."]
     if f.get("owner_state") in TWO_PARTY_CONSENT_STATES:
         compliance.append(f"Owner is in {f['owner_state']} (all-party consent state): ask before recording the call.")

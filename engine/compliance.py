@@ -131,7 +131,7 @@ def can_call(session: Session, contact: Contact, now: datetime | None = None) ->
         return False, "no phone"
     status = classify_number(session, contact.phone, b2b=contact.contact_type == "LISTING_AGENT")
     if status == "dnc":
-        return False, "on a do-not-call list: mail or door-knock instead"
+        return False, "on a do-not-call list: send a letter instead"
     if not within_calling_hours(now):
         return False, "outside 8am–9pm Eastern"
     if status == "not_checked":

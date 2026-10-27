@@ -181,7 +181,7 @@ def format_phone(digits: str | None) -> str:
 
 
 def split_person_name(name: str | None) -> tuple[str, str]:
-    """('JOHN', 'SMITH') from 'SMITH, JOHN A' / 'John A. Smith Jr' / 'SMITH JOHN & MARY' (best effort)."""
+    """('QUINN', 'SAMPLE') from 'SAMPLE, QUINN A' / 'Quinn A. Sample Jr' / 'SAMPLE QUINN & MARY' (best effort)."""
     s = clean(name).upper()
     s = re.sub(r"\b(JR|SR|II|III|IV|ESQ|MD)\b\.?", "", s)
     people = [x.strip(" ,.") for x in re.split(r"\s*(?:&|\bAND\b|;|/)\s*", s) if x.strip(" ,.")]

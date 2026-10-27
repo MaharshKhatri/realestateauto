@@ -223,8 +223,8 @@ def is_estate_defendant(defendant: str | None) -> bool:
 
 
 def first_defendant(defendant: str) -> str:
-    """'JULMALI HABIBUL; ET. AL.' -> 'JULMALI HABIBUL'; 'CLARK REINHARD A/K/A ...; NANCY' -> 'CLARK REINHARD';
-    'DOROTHEA BRADLEY, HER HEIRS, BENEFICIARIES' -> 'DOROTHEA BRADLEY'."""
+    """'ALPHA TESTER; ET. AL.' -> 'ALPHA TESTER'; 'BRAVO EXAMPLE A/K/A ...; NANCY' -> 'BRAVO EXAMPLE';
+    'CHARLIE SAMPLEY, HER HEIRS, BENEFICIARIES' -> 'CHARLIE SAMPLEY'."""
     s = re.sub(r"^(?:THE\s+)?(?:UNKNOWN\s+)?(?:HEIRS|DEVISEES)[^,;]*?\bOF\s+", "", defendant.strip(), flags=re.I)
     s = re.sub(r"^(?:THE\s+)?ESTATE OF\s+", "", s, flags=re.I)
     # 'X, HIS UNKNOWN HEIRS, DEVISEES' / 'X HIS/HER HEIRS' / 'X DECEASEDM HIS HEIRS' / 'X, EXECUTRIX ...'
@@ -232,7 +232,7 @@ def first_defendant(defendant: str) -> str:
                  r"|,?\s*\b(?:DECEASED\w*|DEC'D)(?=\W|$)|,\s*(?:EXECUTOR|EXECUTRIX|ADMINISTRAT)", s, flags=re.I)[0]
     s = re.sub(r"\s+ESTATE OF$", "", s.strip(), flags=re.I)
     s = re.split(r";|\bA/K/A\b|\bAKA\b|\bF/K/A\b|\bAND\b|&", s, flags=re.I)[0]
-    # Comma-separated party lists ("ROGER NELSON, CAVALRY SPV I LLC, ..."): keep the first party. A lone
+    # Comma-separated party lists ("DELTA FIXTURE, CAVALRY SPV I LLC, ..."): keep the first party. A lone
     # surname before the first comma means "LAST, FIRST" order, so keep two segments.
     parts = [p.strip() for p in s.split(",") if p.strip()]
     if len(parts) > 1:

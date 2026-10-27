@@ -10,7 +10,7 @@ from tests.factories import add_contact, make_lead
 
 def test_playbook_a_sheriff_sale_owner(db):
     lead = make_lead(db, absentee=False)
-    add_contact(db, lead, name="John Smith")
+    add_contact(db, lead, name="Quinn Sample")
     card = build_battle_card(lead)
     assert card.playbook == "A"
     assert len(card.objections) >= 12
@@ -89,7 +89,7 @@ def test_gate_blocks_no_offer_and_assignment_before_contract(db):
 def test_generate_package_writes_md_html_pdf(db, tmp_path):
     lead = make_lead(db, vacant=True, year_built=1950)
     lead.occupancy_status, lead.occupancy_confirmed_at = "VACANT", datetime.now()
-    add_contact(db, lead, name="John Smith")
+    add_contact(db, lead, name="Quinn Sample")
     g = generate(db, lead, "psa", out_root=tmp_path)
     assert [p.suffix for p in g.paths] == [".md", ".html", ".pdf"]
     text = g.paths[0].read_text()
@@ -115,9 +115,9 @@ def test_estate_without_known_heir_asks_for_the_family(db):
     from agents.scrapers.sheriff_sale_agent import first_defendant
     from engine.contracts import seller_parties
     from engine.scripts import speaking_name
-    assert first_defendant("THAMES YOL KIM, HIS UNKNOWN HEIRS, DEVISEES AND PERSONAL REPRESENTATIVES") == "THAMES YOL KIM"
-    assert first_defendant("RALPH JACKMAN, DECEASEDM HIS HEIRS, DEVISEES") == "RALPH JACKMAN"
-    assert speaking_name("COLODNE, YETTA ESTATE OF") == "Yetta Colodne"
+    assert first_defendant("LIMA QUILL TESTMAN, HIS UNKNOWN HEIRS, DEVISEES AND PERSONAL REPRESENTATIVES") == "LIMA QUILL TESTMAN"
+    assert first_defendant("METRO FAKEMAN, DECEASEDM HIS HEIRS, DEVISEES") == "METRO FAKEMAN"
+    assert speaking_name("OSCARSON, PAPA ESTATE OF") == "Papa Oscarson"
     lead = make_lead(db, defendant="ROSE KIM, HER UNKNOWN HEIRS, DEVISEES", owner_name="ROSE KIM", is_estate_owned=True)
     card = build_battle_card(lead)
     assert card.playbook == "B" and card.opening.startswith("Hi, I'm trying to reach a family member of Rose Kim")

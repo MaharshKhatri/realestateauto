@@ -2,7 +2,7 @@ from engine.frfpa_classifier import COVERED_TRACKS, EXEMPT_TRACKS, OccupancyFact
 
 
 def facts(**kw):
-    base = {"in_foreclosure": True, "one_to_four": True, "owner_names": ["JOHN Q SMITH"], "defendant": "JOHN Q SMITH, ET AL"}
+    base = {"in_foreclosure": True, "one_to_four": True, "owner_names": ["QUINN Q SAMPLE"], "defendant": "QUINN Q SAMPLE, ET AL"}
     base.update(kw)
     return OccupancyFacts(**base)
 

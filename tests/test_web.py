@@ -16,7 +16,7 @@ def client(db, tmp_path, monkeypatch):
 
 def test_dashboard_tabs_and_lead_page(db, client):
     lead = make_lead(db, sheriff_days=6, vacant=True)
-    add_contact(db, lead, name="John Smith", phone="9735550001")
+    add_contact(db, lead, name="Quinn Sample", phone="9735550001")
     db.commit()
     d = client.get("/api/dashboard").json()
     assert d["funnel"]["NEW"] == 1 and d["kpis"]["sales_21d"] == 1 and d["call_queue"][0]["id"] == lead.id
@@ -59,7 +59,7 @@ def test_call_logging_occupancy_and_documents(db, client):
 def test_skiptrace_paste_and_dnc(db, client):
     lead = make_lead(db)
     db.commit()
-    r = client.post(f"/api/leads/{lead.id}/skiptrace", json={"text": "John Smith (201) 555-0177 Wireless"})
+    r = client.post(f"/api/leads/{lead.id}/skiptrace", json={"text": "Quinn Sample (201) 555-0177 Wireless"})
     assert r.status_code == 200 and any(c["phone"] == "2015550177" for c in r.json()["contacts"])
     assert client.post("/api/dnc", json={"phone": "2015550177"}).json()["phone"] == "2015550177"
     assert client.post("/api/dnc", json={"phone": "1"}).status_code == 400

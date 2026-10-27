@@ -205,7 +205,7 @@ class PipelineSelfImprovementAgent(BaseAgent):
             findings.append(f"{overdue} follow-up(s) are more than a day overdue — work the call queue first.")
         if len(calls) >= 20 and spoke / len(calls) < 0.1:
             findings.append(f"Connect rate {spoke / len(calls):.0%} on {len(calls)} calls: vary call times (evenings, "
-                            "Saturday mornings) and add letters/door-knocks for no-answer leads.")
+                            "Saturday mornings) and add letters (manage.py mail-merge) for no-answer leads.")
 
         # 4. Spread viability ---------------------------------------------------------------------
         vals = s.scalars(select(Valuation).where(Valuation.is_current.is_(True))).all()

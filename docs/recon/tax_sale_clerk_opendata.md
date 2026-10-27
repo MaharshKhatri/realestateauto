@@ -61,10 +61,10 @@ Any NJ subdomain serves this endpoint. 275 NJ sites in total. **91 of them are i
 *Clifton (Passaic). Sale held 10/15/2026. `previewItems`: 14 pages, **659 rows parsed of 659**. 342 Active / 317 Unavailable. Charge types: S 563, T 46, "T S" 41, O 5. Total face $1.22M, max $56,856, 68 rows over $5K.*
 ```
 certID   ADV     Yr    Block-Lot   Owner                              Type  Face        Status
-5698101  000001  2025  1.01 - 11   SANCHEZ, DAVID                     S     $1,074.89   Active
-5698106  000006  2025  1.13 - 21   GILLESPIE THOMAS WF T              S     $8,668.62   Active
+5698101  000001  2025  1.01 - 11   [individual]                       S     $1,074.89   Active
+5698106  000006  2025  1.13 - 21   [individual]                       S     $8,668.62   Active
 5698107  000007  2025  1.22 - 9    385 LAKEVIEW AVE CLIFTON LLC       T S   $20,457.41  Active
-popup(5698101) → Property Address "169 CROOKS AVE Clifton, NJ", current as of 09/15/2026
+popup(5698101) → Property Address "[address] Clifton, NJ", current as of 09/15/2026
 ```
 
 *East Orange (Essex). **Sale is 10/29/2026 (3 days out).** `previewItems`: 9 pages, **408 rows parsed of 408**. 290 Active / 118 Unavailable. Charge types: W 228, T 157, "T W" 23. Total face $3.54M, max $759,231, 107 rows over $5K. Top Active tax items, with addresses from the popup:*
@@ -73,13 +73,13 @@ ADV   Block-Lot   Owner                                Type  Face         Addres
 0278  563 - 20    KHUBANI ENTERPRISES                  T     $182,428.92  250 PROSPECT ST.
 0164  371 - 2     GUIDING STAR UNITED HOLY CHURCH OF   T     $97,821.66   400 DR. MLK JR., BLVD.
 0283  580 - 41    132 EAST ORANGE PORTFOLIO LLC        T     $74,040.45   444-50 PROSPECT STREET
-0002  12 - 2.06   MUHAMMAD, TARIQ                      T     $12,285.87   215 HOLLYWOOD AVE (as of 09/29/2026)
+0002  12 - 2.06   [individual]                         T     $12,285.87   [address] (as of 09/29/2026)
 ```
 
 *Paterson (Passaic). Sale held 12/10/2025. `auctionResults`: 20 pages, **956 rows parsed of 956** (liens sold, now under a 2-year redemption clock):*
 ```
 ADV   Yr    Block-Lot  Face       WinningBid  SoldTo
-0001  2025  101 - 7    $828.16    $1,500.00   0332     popup → 30 BELLE AVE, owner HARDY, JOE I (as of 11/12/2025)
+0001  2025  101 - 7    $828.16    $1,500.00   0332     popup → [address], owner [individual] (as of 11/12/2025)
 0017  2025  108 - 10   $2,506.23  $15,900.00  0566
 0027  2025  116 - 8    $535.38    $34,000.00  0566
 ```
@@ -167,9 +167,9 @@ Upcoming sales after today: Bloomingdale and Stratford (10/27), Washington Twp-B
 - **Camden City, assignment of municipal-held tax sale certificates.** These are legal-notice PDFs the city posts before Council votes (N.J.S.A. 54:5-114.2).
   - **Less than face value:** `https://www.camdennj.gov/wp-content/uploads/2026/03/LFV-March-2026-Legal-Notice.pdf`. Council vote 03/10/2026. 16 pages, Word-to-PDF, text layer OK. Fields: `Cert#, Property Address, Block, Lot, Property Owner, Winning Bid, Redemption Amount as of 03/10/2026`. **About 370 rows.** Sample:
     ```
-    89-62     930 Pearl Street      88   51   Gomez, Lucy                      $7,000.00   22,104.06
-    89-157    330 Cherry Street     244  17   Hernandez, Lydia                 $15,000.00  180,105.61
-    960132    937-939 So. 4th St    244  31   Estate of Richard Siaca, Sr.     $5,995.00   201,284.37
+    89-62     [address]             88   51   [individual]                     $7,000.00   22,104.06
+    89-157    [address]             244  17   [individual]                     $15,000.00  180,105.61
+    960132    [address]             244  31   [estate of an individual]        $5,995.00   201,284.37
     ```
     These are certificates from as far back as 1989 with redemption figures far above value. They are essentially abandoned or zombie properties, and some owners are estates.
   - **Full face value:** `https://www.camdennj.gov/wp-content/uploads/2026/08/August-2026-Full-Value-Publishing-1.pdf`. Vote 08/11/2026. 4 pages. Fields: `Cert#, Property Location, Block, Lot, Dimensions, Successful Bidder, Amount`. **About 63 rows.** Sample: `20-00542 408 WEBSTER STREET 467 19 28X95 ZION INVESTMENT GROUP LLC $28,739.60`. Owners are not listed; join on block/lot.
@@ -207,9 +207,9 @@ image:  GET https://clerk.ucnj.org/UCPA/Viewer?id=<docid>&dt=Foreclosure&in=<ins
 - Document types available: Deed, Mortgage, Assignment, Discharge, Release, Notice of Settlement, Federal Tax Lien, **Lis Pendens (7)**, **Foreclosure (17)**, Construction Lien, NUB, and others. Coverage: 06/01/1977 – 10/20/2026.
 - **30-day result:** **39 Foreclosure** filings, **7 Lis Pendens**, and 34 Lis Pendens Discharges, recorded 09/28–10/19/2026. Sample rows:
   ```
-  Foreclosure  Defendant LUGO, DENNIS                  09/28/2026  Complainant PENNY MAC LOAN SERVICES LLC   92/281
-  Foreclosure  Defendant ESTATE OF KRISTINA STRYKER    09/28/2026  Complainant U S BANK TRUST COMPANY N.A.   92/285
-  Foreclosure  Defendant FRENKEL, YEHOSHUA             09/30/2026  Complainant GB EQUITY LLC                 92/301
+  Foreclosure  Defendant [individual]                  09/28/2026  Complainant PENNY MAC LOAN SERVICES LLC   92/281
+  Foreclosure  Defendant [estate of an individual]     09/28/2026  Complainant U S BANK TRUST COMPANY N.A.   92/285
+  Foreclosure  Defendant [individual]                  09/30/2026  Complainant GB EQUITY LLC                 92/301
   Lis Pendens  Defendant 742 WESTFIELD REAL ESTATELLC  10/08/2026  Complainant FCR TL TRUST                  62/2594
   ```
   "FCR TL TRUST" is a tax-lien holder, so that row is a tax-lien foreclosure. "ESTATE OF …" defendants are probate leads.

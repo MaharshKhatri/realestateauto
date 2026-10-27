@@ -10,7 +10,7 @@ from db.repository import ensure_lead, upsert_contact, upsert_property, upsert_s
 _seq = iter(range(1, 10_000))
 
 
-def make_lead(db, *, sheriff_days: int | None = 20, upset: float | None = 150000, defendant: str = "JOHN Q SMITH",
+def make_lead(db, *, sheriff_days: int | None = 20, upset: float | None = 150000, defendant: str = "QUINN Q SAMPLE",
               absentee: bool | None = None, vacant: bool = False, verdict: str | None = "STRONG",
               assumptions: dict[str, Any] | None = None, stale_listing: bool = False, **prop_kw) -> Lead:
     n = next(_seq)
@@ -47,7 +47,7 @@ def make_lead(db, *, sheriff_days: int | None = 20, upset: float | None = 150000
     return lead
 
 
-def add_contact(db, lead: Lead, contact_type: str = "OWNER", name: str = "John Smith", phone: str | None = "9735551234",
+def add_contact(db, lead: Lead, contact_type: str = "OWNER", name: str = "Quinn Sample", phone: str | None = "9735551234",
                 **kw):
     c, _ = upsert_contact(db, lead=lead, contact_type=contact_type, source="test", name=name, phone=phone, **kw)
     db.flush()

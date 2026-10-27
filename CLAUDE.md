@@ -7,12 +7,34 @@ update this file in the same commit.
 ## Mission
 
 An autonomous, zero-budget deal-finding and underwriting system for a New Jersey real estate
-wholesaler (18-year-old operator, has a laptop, phone and car, no paid data). The software does
-the data harvesting, distress detection, owner lookup, comps, ARV/MAO underwriting and lead
-ranking. The operator spends their time talking to sellers, negotiating and closing.
+wholesaler (18-year-old operator, **laptop and phone only — no car**, no paid data). The software does
+the data harvesting, distress detection, owner lookup, comps, ARV/MAO underwriting, lead ranking,
+outreach drafting and disposition prep. The operator spends their time on the phone and e-mail with
+listing agents, sellers and buyers, negotiating and closing.
 
 Target counties (priority order): **Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden**.
 Target outcome: assignment fees of $15K–$40K per deal.
+
+## 100% Virtual / No-Car Operation Protocol (operator update 2026-10-27)
+
+The operator works only from a laptop and phone. Nothing in code, scripts or coaching may require
+driving for dollars, door-knocking or an in-person visit by the operator.
+
+- **Condition & occupancy, remotely:** listing photos/description, Google Street View + satellite links,
+  FEMA flood and NJ parcel links, and a photo / 3-minute video-walkthrough request to the seller,
+  tenant or listing agent (`engine/virtual_inspector.py`). Recorded answers go to `crm.confirm_occupancy`.
+- **Reaching owners without a phone:** letters (`engine/direct_mail.py`, `manage.py mail-merge`) and the
+  listing agent when the house is listed (stacked foreclosure + listing → agent phone, no skip trace).
+- **Listing agents first:** B2B offers on stale/distressed listings are the default first call of the day
+  (`READY_TO_CALL` queue, `engine/agent_outreach.py`); they need no skip-tracing and no driving.
+- **Buyers are the boots on the ground:** during the inspection period a matched cash buyer / JV partner
+  walks the property with the listing agent (lockbox showing) or seller and submits a bid
+  (`engine/disposition.py`, `buyer_bids`). Introduce them **truthfully** — "my buying partner / the
+  investor I may assign the contract to, as our agreement allows" — never as a "contractor" or
+  "renovation crew" when they are the assignee (Consumer Fraud Act: no misrepresentation). Our PSA lets
+  "Buyer and its contractors, lenders and assignees" inspect, and nothing is marketed before attorney
+  review ends.
+- Wording to avoid in generated text: "drive by", "door-knock", "stop by the house", "I'll come see it".
 
 ## 4-Sprint Master Architecture
 

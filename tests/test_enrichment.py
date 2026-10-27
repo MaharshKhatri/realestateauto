@@ -19,17 +19,17 @@ def test_phone_normalization():
 
 
 def test_split_person_name():
-    assert split_person_name("SMITH, JOHN Q") == ("John", "Smith")
+    assert split_person_name("SAMPLE, QUINN Q") == ("Quinn", "Sample")
     assert split_person_name("Maria L. Gonzalez Jr.") == ("Maria", "Gonzalez")
     assert split_person_name("ROBERT & LINDA JONES")[1] == "Jones"
 
 
 def test_defendant_parsing_roles():
-    parties = parse_defendants("MICHAEL SUSZYNSKI, INDIVIDUALLY AND AS ADMINISTRATOR OF THE ESTATE OF ADAM SUSZYNSKI, ET ALS.")
+    parties = parse_defendants("INDIA TESTWELL, INDIVIDUALLY AND AS ADMINISTRATOR OF THE ESTATE OF JULIETT TESTWELL, ET ALS.")
     roles = {p.role for p in parties}
     assert "HEIR_EXECUTOR" in roles and "DECEASED" in roles
-    plain = parse_defendants("ALTAGRACIA MATOS, ET AL")
-    assert [(p.name, p.role) for p in plain] == [("Altagracia Matos", "OWNER")]
+    plain = parse_defendants("KILO SAMPSON, ET AL")
+    assert [(p.name, p.role) for p in plain] == [("Kilo Sampson", "OWNER")]
     junk = parse_defendants("UNITED STATES OF AMERICA; STATE OF NEW JERSEY")
     assert not [p for p in junk if p.role in ("OWNER", "HEIR_EXECUTOR")]
 
@@ -52,13 +52,13 @@ def test_listing_advertisers_flatten_agent_and_office_phones():
     assert agent["phone_type"] == "wireless" and agent["company"] == "Best Realty" and agent["email"] == "pat@example.com"
 
 
-SAMPLE_PASTE = """John Q Smith
+SAMPLE_PASTE = """Quinn Q Sample
 Age 61
 Lives in Tampa, FL
 (813) 555-0142 - Wireless
 (973) 555-0199 Landline
 Email: jqsmith@example.com
-Possible Relatives: Mary Smith, Robert Smith
+Possible Relatives: Mary Sample, Robert Sample
 
 Associates: Someone Else
 """
@@ -70,12 +70,12 @@ def test_people_search_paste_parsing():
     assert "9735550199" in [p[0] for p in parsed["phones"]]
     assert parsed["emails"] == ["jqsmith@example.com"]
     assert parsed["age"] == 61
-    assert "Mary Smith" in parsed["relatives"]
+    assert "Mary Sample" in parsed["relatives"]
 
 
 def test_paste_import_creates_dnc_checked_contacts(db):
     lead = make_lead(db)
-    result = import_text(db, lead, SAMPLE_PASTE, name="John Q Smith", role="OWNER")
+    result = import_text(db, lead, SAMPLE_PASTE, name="Quinn Q Sample", role="OWNER")
     assert result["contacts_added"] >= 2
     db.refresh(lead)
     phones = [c for c in lead.contacts if c.phone]
@@ -84,9 +84,9 @@ def test_paste_import_creates_dnc_checked_contacts(db):
 
 
 def test_search_links_are_manual_urls():
-    links = search_links("John", "Smith", "Newark", "NJ", street="1 Test St", street_city="Newark, NJ")
-    assert links["truepeoplesearch"].startswith("https://www.truepeoplesearch.com/results?name=John%20Smith")
-    assert "john-smith" in links["fastpeoplesearch"] and "address_search" in links
+    links = search_links("Quinn", "Sample", "Newark", "NJ", street="1 Test St", street_city="Newark, NJ")
+    assert links["truepeoplesearch"].startswith("https://www.truepeoplesearch.com/results?name=Quinn%20Sample")
+    assert "quinn-sample" in links["fastpeoplesearch"] and "address_search" in links
 
 
 def test_municipal_layer_fixtures_normalize():

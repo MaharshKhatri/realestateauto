@@ -13,7 +13,7 @@ def test_preview_rows_have_owner_amount_status():
     rows = parse_rows((RA / "preview_eastorange.html").read_text(), "preview")
     assert len(rows) == 3
     r = rows[1]
-    assert (r.block, r.lot, r.owner, r.charge_type, r.face, r.status) == ("12", "2.06", "MUHAMMAD, TARIQ", "T", 12285.87, "Active")
+    assert (r.block, r.lot, r.owner, r.charge_type, r.face, r.status) == ("12", "2.06", "METROMAN, ALPHALEY", "T", 12285.87, "Active")
 
 
 def test_results_rows_have_bid_and_bidder():
