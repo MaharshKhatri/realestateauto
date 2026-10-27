@@ -21,3 +21,6 @@ config/settings.local.yaml
 logs/*.log
 
 data/imports/
+
+# Generated deal documents (LOI/PSA/deal sheets name the seller) — never commit.
+deals/

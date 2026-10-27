@@ -22,14 +22,16 @@ UNIT_WORDS = r"(?:UNIT|APT|APARTMENT|STE|SUITE|#|FL|FLOOR|BLDG)"
 
 ENTITY_PATTERNS = re.compile(
     r"\b(LLC|L\.L\.C|INC|INCORPORATED|CORP|CORPORATION|CO\b|COMPANY|LP|L\.P|LLP|LTD|TRUST|TRUSTEE|"
-    r"TR\b|HOLDINGS|PROPERTIES|REALTY|INVESTMENTS?|CAPITAL|VENTURES?|GROUP|PARTNERS|ASSOCIATES|"
-    r"MANAGEMENT|MGMT|DEVELOPMENT|BANK|MORTGAGE|FUNDING|ASSOCIATION|ASSN|CHURCH|AUTHORITY|HOUSING|"
+    r"TR\b|HOLDINGS|PROPERTIES|REALTY|INVESTMENTS?|CAPITAL|VENTURES?|GROUP|PARTNERS|PARTNERSHIP|LIMITED|ASSOCIATES|"
+    r"MANAGEMENT|MGMT|DEVELOPMENT|BANK|MORTGAGE|FUNDING|ASSOCIATION|ASSOC|ASSN|CONDOMINIUM|CONDO|CO-?OP|"
+    r"CHURCH|AUTHORITY|HOUSING|"
     r"ENTERPRISES?|SERIES|FUND)\b")
 ESTATE_PATTERNS = re.compile(
     r"\b(ESTATE OF|EST OF|EST\b|ESTATE|EXECUTOR|EXECUTRIX|EXR|EXRS|EXTRX|ADMINISTRATOR|ADMR|ADMX|"
     r"HEIRS|DECEASED|DEC'D|DECD|C/O)\b")
 GOVT_PATTERNS = re.compile(r"\b(CITY OF|TOWNSHIP OF|BOROUGH OF|COUNTY OF|STATE OF|HOUSING AUTHORITY|"
-                           r"BOARD OF EDUCATION|REDEVELOPMENT)\b")
+                           r"BOARD OF EDUCATION|REDEVELOPMENT|UNITED STATES|INTERNAL REVENUE|DEPARTMENT OF|"
+                           r"DIVISION OF|SECRETARY OF|COMMISSIONER)\b")
 
 LENDER_PATTERNS = re.compile(
     r"\b(BANK|MORTGAGE|FEDERAL NATIONAL|FANNIE MAE|FREDDIE MAC|SECRETARY OF HOUSING|SAVINGS|LOAN SERVIC|"
@@ -163,3 +165,33 @@ def money(text: str | None) -> float | None:
         return float(m.group(1).replace(",", ""))
     except ValueError:
         return None
+
+
+PHONE_RE = re.compile(r"(?<!\d)(?:\+?1[\s.-]?)?\(?([2-9]\d{2})\)?[\s.-]?([2-9]\d{2})[\s.-]?(\d{4})(?!\d)")
+
+
+def normalize_phone(value: str | None) -> str | None:
+    """'(908) 208-7376' / '+1 908.208.7376' -> '9082087376' (US 10-digit), else None."""
+    m = PHONE_RE.search(value or "")
+    return "".join(m.groups()) if m else None
+
+
+def format_phone(digits: str | None) -> str:
+    return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}" if digits and len(digits) == 10 else (digits or "")
+
+
+def split_person_name(name: str | None) -> tuple[str, str]:
+    """('JOHN', 'SMITH') from 'SMITH, JOHN A' / 'John A. Smith Jr' / 'SMITH JOHN & MARY' (best effort)."""
+    s = clean(name).upper()
+    s = re.sub(r"\b(JR|SR|II|III|IV|ESQ|MD)\b\.?", "", s)
+    s = re.split(r"\s*(?:&|\bAND\b|;|/)\s*", s)[0].strip(" ,.")
+    if not s:
+        return "", ""
+    if "," in s:
+        last, _, rest = s.partition(",")
+        first = rest.strip().split(" ")[0] if rest.strip() else ""
+        return first.title(), last.strip().title()
+    parts = [p for p in s.replace(".", " ").split() if p]
+    if len(parts) == 1:
+        return "", parts[0].title()
+    return parts[0].title(), parts[-1].title()

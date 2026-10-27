@@ -11,6 +11,32 @@ operator:
   has_car: true
   timezone: "America/New_York"
 
+compliance:
+  licensed_real_estate: false        # unlicensed: no referral/finder fees (N.J.S.A. 45:15-3); equity-rescue = free referral
+  nj_telemarketer_registration: ""   # Division of Consumer Affairs registration no. (N.J.S.A. 56:8-121) once filed
+  wholesaler_disclosure: >-
+    I'm a real estate investor, not a licensed agent, and I don't represent you. If we reach an agreement,
+    I may buy the property myself or assign my contract to another investor, and your attorney reviews
+    everything before it's binding.
+  frfpa_min_pct_fmv: 0.82
+  attorney_review_business_days: 3
+  frfpa_cancellation_business_days: 10
+
+crm:
+  # Days until the next touch, by call outcome (business-hours follow-up queue).
+  followup_days:
+    NO_ANSWER: 2
+    LEFT_VM: 3
+    WRONG_NUMBER: 0
+    SPOKE_WARM_FOLLOWUP: 4
+    SPOKE_NEEDS_OFFER: 1
+    SPOKE_NOT_INTERESTED: 45
+    AGENT_WILL_PRESENT_LOI: 2
+    OFFER_ACCEPTED: 1
+  max_attempts_no_contact: 8         # after this many no-answer/VM touches, park the lead (mail/door-knock instead)
+  sale_countdown_days: 21            # dashboard countdown window for sheriff sales
+  call_queue_size: 40
+
 markets:
   # Priority order. Names match CivilView / NJGIN county names.
   counties: [Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden]

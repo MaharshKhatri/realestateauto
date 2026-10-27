@@ -36,7 +36,7 @@ from typing import Any, Iterator
 from sqlalchemy import select
 
 from agents.base import AgentContext, BaseAgent
-from agents.scrapers.nj_tax_assessment_agent import mailing_key
+from agents.scrapers.nj_tax_assessment_agent import address_mailing_key, mailing_key
 from core.config import DATA_DIR
 from core.text import clean, is_entity, is_estate, is_government, is_lender, is_servicer_mailing, mailing_state
 from db.models import CashBuyer, Property, SignalType
@@ -201,7 +201,8 @@ class OwnerEnrichmentAgent(BaseAgent):
                      "(see docs/nj_data_sources.md §5) to fill owner names for absentee leads.")
             return
         props = {p.parcel_id: p for p in ctx.session.scalars(select(Property))}
-        buyers_by_key = {b.mailing_key: b for b in ctx.session.scalars(select(CashBuyer)) if b.mailing_key}
+        buyers_by_key = {address_mailing_key(b.mailing_address): b for b in ctx.session.scalars(select(CashBuyer))
+                         if b.mailing_address}
         for path in files:
             matched = named_buyers = 0
             try:
@@ -300,7 +301,8 @@ class OwnerEnrichmentAgent(BaseAgent):
         for d in deeds:
             if d["grantee"] and is_arms_length(d) and not is_government(d["grantee"]):
                 by_grantee[d["grantee"]].append(d)
-        buyers_by_key = {b.mailing_key: b for b in ctx.session.scalars(select(CashBuyer)) if b.mailing_key}
+        buyers_by_key = {address_mailing_key(b.mailing_address): b for b in ctx.session.scalars(select(CashBuyer))
+                         if b.mailing_address}
         created = 0
         for grantee, ds in by_grantee.items():
             if not (is_entity(grantee) or len(ds) >= 2 or grantee in flips_by_grantee):

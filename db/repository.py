@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db.models import (CashBuyer, DeedTransfer, DistressSignal, Lead, LeadStage, Listing, Property,
+from db.models import (CashBuyer, Contact, DeedTransfer, DistressSignal, Lead, LeadStage, Listing, Property,
                        utcnow)
 
 
@@ -145,3 +145,27 @@ def upsert_listing(session: Session, *, source: str, source_ref: str, **fields: 
     listing.last_seen_at = utcnow()
     session.flush()
     return listing, created
+
+
+def upsert_contact(session: Session, *, lead: Lead | None, contact_type: str, source: str, name: str | None = None,
+                   phone: str | None = None, email: str | None = None, **fields: Any) -> tuple[Contact, bool]:
+    """Contacts are keyed on (lead, type, name, phone, email); a later source can raise confidence."""
+    email = (email or "").strip().lower() or None
+    contact = session.scalar(select(Contact).where(
+        Contact.lead_id == (lead.id if lead else None), Contact.contact_type == contact_type,
+        Contact.name.is_(name) if name is None else Contact.name == name,
+        Contact.phone.is_(phone) if phone is None else Contact.phone == phone,
+        Contact.email.is_(email) if email is None else Contact.email == email))
+    created = contact is None
+    if created:
+        contact = Contact(lead=lead, property_id=lead.property_id if lead else None, contact_type=contact_type,
+                          name=name, phone=phone, email=email, source=source, raw_json={})
+        session.add(contact)
+    for k, v in fields.items():
+        if not hasattr(Contact, k) or v is None:
+            continue
+        if k == "confidence_score":
+            v = max(v, contact.confidence_score or 0)
+        setattr(contact, k, v)
+    session.flush()
+    return contact, created

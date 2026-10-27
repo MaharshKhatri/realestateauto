@@ -57,6 +57,38 @@ class LeadStage(StrEnum):
     DO_NOT_CONTACT = "DO_NOT_CONTACT"
 
 
+class Occupancy(StrEnum):
+    """Who lives in the property — drives FRFPA applicability (N.J.S.A. 46:10B-54)."""
+    UNKNOWN = "UNKNOWN"
+    OWNER_OCCUPIED = "OWNER_OCCUPIED"
+    HEIR_OCCUPIED = "HEIR_OCCUPIED"          # an heir/devisee (now an owner) lives there
+    TENANT_OCCUPIED = "TENANT_OCCUPIED"
+    VACANT = "VACANT"
+
+
+class ContactType(StrEnum):
+    OWNER = "OWNER"
+    HEIR_EXECUTOR = "HEIR_EXECUTOR"
+    LISTING_AGENT = "LISTING_AGENT"
+    REGISTERED_AGENT = "REGISTERED_AGENT"
+    ENTITY_PRINCIPAL = "ENTITY_PRINCIPAL"     # individual sharing an entity owner's mailing address
+    RELATIVE = "RELATIVE"                     # co-defendant / co-owner / relative named on records
+    BUYER = "BUYER"
+
+
+class CallOutcome(StrEnum):
+    NO_ANSWER = "NO_ANSWER"
+    LEFT_VM = "LEFT_VM"
+    WRONG_NUMBER = "WRONG_NUMBER"
+    SPOKE_WARM_FOLLOWUP = "SPOKE_WARM_FOLLOWUP"
+    SPOKE_NEEDS_OFFER = "SPOKE_NEEDS_OFFER"
+    SPOKE_NOT_INTERESTED = "SPOKE_NOT_INTERESTED"
+    AGENT_WILL_PRESENT_LOI = "AGENT_WILL_PRESENT_LOI"
+    OFFER_ACCEPTED = "OFFER_ACCEPTED"
+    DEAD = "DEAD"
+    DNC = "DNC"
+
+
 class RehabTier(StrEnum):
     LIGHT = "LIGHT"
     MEDIUM = "MEDIUM"
@@ -211,10 +243,26 @@ class Lead(Base):
     ai_strategy_brief: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     outcome: Mapped[str | None] = mapped_column(String(48))   # feeds self-improvement (closed/dead reason)
+    # Occupancy drives FRFPA. Underwriting may *presume* it from data; only an operator-confirmed value
+    # (with its source, e.g. "seller said on 10/27 call") unlocks a below-82% contract.
+    occupancy_status: Mapped[str] = mapped_column(String(20), default=Occupancy.UNKNOWN)
+    occupancy_source: Mapped[str | None] = mapped_column(String(200))
+    occupancy_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    frfpa_track: Mapped[str | None] = mapped_column(String(40), index=True)
+    contact_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime)
+    offer_amount: Mapped[float | None] = mapped_column(Float)
+    contract_date: Mapped[date | None] = mapped_column(Date)          # fully signed contract delivered to both
+    attorney_review_ends: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     property: Mapped[Property] = relationship(back_populates="lead")
+    contacts: Mapped[list[Contact]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    interactions: Mapped[list[Interaction]] = relationship(back_populates="lead", cascade="all, delete-orphan",
+                                                           order_by="Interaction.occurred_at.desc()")
+    buyer_matches: Mapped[list[BuyerMatch]] = relationship(back_populates="lead", cascade="all, delete-orphan",
+                                                           order_by="BuyerMatch.rank")
 
 
 class CashBuyer(Base):
@@ -344,3 +392,86 @@ class SwarmState(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+
+class Contact(Base):
+    """A person/entity we can reach about a lead: owner, heir/executor, listing agent, registered agent."""
+    __tablename__ = "contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    property_id: Mapped[int | None] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    contact_type: Mapped[str] = mapped_column(String(20), index=True)
+    name: Mapped[str | None] = mapped_column(String(200))
+    phone: Mapped[str | None] = mapped_column(String(20), index=True)       # E.164-ish: 10 digits
+    phone_type: Mapped[str | None] = mapped_column(String(20))              # wireless / landline / office / unknown
+    dnc_status: Mapped[str | None] = mapped_column(String(20))              # clear / dnc / not_checked / exempt_b2b
+    email: Mapped[str | None] = mapped_column(String(120))
+    mailing_address: Mapped[str | None] = mapped_column(String(250))
+    company: Mapped[str | None] = mapped_column(String(200))
+    source: Mapped[str] = mapped_column(String(60))
+    confidence_score: Mapped[float] = mapped_column(Float, default=0.5)
+    notes: Mapped[str | None] = mapped_column(Text)
+    raw_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    lead: Mapped[Lead | None] = relationship(back_populates="contacts")
+
+    __table_args__ = (UniqueConstraint("lead_id", "contact_type", "name", "phone", "email",
+                                       name="uq_contact_natural_key"),)
+
+
+class Interaction(Base):
+    """Call/text/email/visit log entry. Outcomes feed follow-up scheduling and the learner."""
+    __tablename__ = "interactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
+    channel: Mapped[str] = mapped_column(String(16), default="call")
+    outcome: Mapped[str] = mapped_column(String(32))
+    notes: Mapped[str | None] = mapped_column(Text)
+    debrief_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    next_followup_at: Mapped[datetime | None] = mapped_column(DateTime)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+    lead: Mapped[Lead] = relationship(back_populates="interactions")
+
+
+class DncEntry(Base):
+    """Numbers we must not cold call: FTC registry download, internal requests, Daniel's Law, wrong numbers."""
+    __tablename__ = "dnc_entries"
+
+    phone: Mapped[str] = mapped_column(String(10), primary_key=True)
+    source: Mapped[str] = mapped_column(String(24), primary_key=True)   # ftc | internal | daniels_law | litigator
+    list_date: Mapped[date | None] = mapped_column(Date)                # FTC data must be <= 31 days old
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    notes: Mapped[str | None] = mapped_column(String(200))
+
+
+class BuyerMatch(Base):
+    __tablename__ = "buyer_matches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    buyer_id: Mapped[int] = mapped_column(ForeignKey("cash_buyers.id", ondelete="CASCADE"), index=True)
+    rank: Mapped[int] = mapped_column(Integer)
+    score: Mapped[float] = mapped_column(Float)
+    reasons: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    matched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    lead: Mapped[Lead] = relationship(back_populates="buyer_matches")
+    buyer: Mapped[CashBuyer] = relationship()
+
+
+class GeneratedDocument(Base):
+    __tablename__ = "generated_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    doc_type: Mapped[str] = mapped_column(String(32))
+    path: Mapped[str] = mapped_column(String(400))
+    price: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

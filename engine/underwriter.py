@@ -23,11 +23,13 @@ from sqlalchemy.orm import Session
 
 from agents.base import AgentContext, BaseAgent
 from agents.scrapers.njgis_client import NJGISClient, estimate_sqft, years_owned
+from agents.scrapers.sheriff_sale_agent import first_defendant
 from core.config import settings
-from db.models import Lead, Property, SignalType, Valuation, utcnow
+from db.models import DistressSignal, Lead, Property, SignalType, Valuation, utcnow
 from engine import rehab as rehab_model
 from engine.comps import PublicRecordComps, ValueResult
 from engine.equity import estimate_equity
+from engine.frfpa_classifier import FrfpaDecision, OccupancyFacts, classify, covered_track
 
 log = logging.getLogger(__name__)
 
@@ -84,17 +86,30 @@ def assignment_fee_for(arv: float, buyer_max: float, debt: float | None, cfg: di
 FRFPA_FMV_FLOOR = 0.82   # N.J.S.A. 46:10B-64: owner must receive >= 82% of fair market value
 
 
-def frfpa_applies(prop: Property) -> bool:
-    """Foreclosure Rescue Fraud Prevention Act risk: owner-occupied 1-4 family in foreclosure.
+def occupancy_facts(prop: Property) -> OccupancyFacts:
+    signals = prop.active_signals
+    sheriff = next((s for s in signals if s.signal_type == SignalType.SHERIFF_SALE), None)
+    lead = prop.lead
+    names = [n for n in (prop.owner_name, first_defendant(sheriff.defendant) if sheriff and sheriff.defendant else None) if n]
+    confirmed = lead.occupancy_status if lead and lead.occupancy_confirmed_at and lead.occupancy_status else None
+    return OccupancyFacts(
+        in_foreclosure=any(s.signal_type in (SignalType.SHERIFF_SALE, SignalType.LIS_PENDENS) for s in signals),
+        one_to_four=prop.property_class == "2" or (prop.dwellings or 1) <= 4,
+        owner_names=names, defendant=sheriff.defendant if sheriff else None,
+        vacant_signal=any(s.signal_type == SignalType.VACANT for s in signals),
+        estate_signal=bool(prop.is_estate_owned) or any(s.signal_type in (SignalType.ESTATE_OWNER, SignalType.PROBATE)
+                                                        for s in signals),
+        is_absentee=prop.is_absentee, confirmed_occupancy=confirmed,
+        confirmed_source=lead.occupancy_source if lead else None)
 
-    Owner occupancy is unknown when the mailing address is missing; we assume occupied (the
-    conservative reading). Whether a plain wholesale purchase is covered is unsettled — treat
-    these leads as covered until a NJ attorney says otherwise (docs/recon/legal_rules.md §4).
-    """
-    in_foreclosure = any(s.signal_type in (SignalType.SHERIFF_SALE, SignalType.LIS_PENDENS) for s in prop.active_signals)
-    one_to_four = prop.property_class == "2" or (prop.dwellings or 1) <= 4
-    owner_occupied = prop.is_absentee is not True and not prop.is_corporate_owned
-    return in_foreclosure and one_to_four and owner_occupied
+
+def frfpa_decision(prop: Property) -> FrfpaDecision:
+    return classify(occupancy_facts(prop))
+
+
+def frfpa_applies(prop: Property) -> bool:
+    """True when the lead must be priced and contracted as FRFPA-covered (see engine/frfpa_classifier.py)."""
+    return frfpa_decision(prop).applies
 
 
 def offer_math(*, arv: float, repairs: float, annual_taxes: float | None, debt: float | None,
@@ -236,9 +251,29 @@ class Underwriter:
             as_is_to_arv=(result.as_is / result.arv) if result.as_is and result.arv else None,
             units=prop.dwellings)
         as_is = min(result.as_is or 0, result.arv) or None
-        frfpa = frfpa_applies(prop)
+        decision = frfpa_decision(prop)
+        frfpa = decision.applies
         om = offer_math(arv=result.arv, repairs=rehab.cost, annual_taxes=prop.annual_taxes, debt=debt, cfg=self.cfg,
                         frfpa=frfpa, fmv=as_is)
+        track_info: dict[str, Any] = {}
+        if frfpa and om.verdict == "FRFPA_BLOCKED" and as_is:
+            ct = covered_track(arv=om.arv, fmv=as_is, repairs=om.repairs, debt=debt,
+                               aggressive_pct=float(self.cfg.get("mao_pct_aggressive", 0.75)),
+                               min_fee=float(self.cfg.get("min_assignment_fee", 10000)))
+            om.verdict = ct.track
+            om.flags.extend(ct.notes)
+            track_info = {"compliant_offer": ct.compliant_offer, "track_buyer_price": ct.buyer_price,
+                          "track_fee": ct.fee, "equity_at_risk": ct.equity_at_risk}
+            if ct.track == "WORKABLE_82_PCT_FLOOR":
+                om.anchor_offer = ct.compliant_offer
+                om.assignment_fee = ct.fee
+        exempt_scenario = None
+        if frfpa:   # what the deal looks like if occupancy verification shows FRFPA does not apply
+            ex = offer_math(arv=result.arv, repairs=rehab.cost, annual_taxes=prop.annual_taxes, debt=debt, cfg=self.cfg)
+            exempt_scenario = {"verdict": ex.verdict, "mao_conservative": ex.mao_conservative,
+                               "anchor_offer": ex.anchor_offer, "fee": ex.assignment_fee}
+        if prop.lead:
+            prop.lead.frfpa_track = decision.track
         conf = confidence(result, sqft_known, int(self.cfg.get("min_comps", 3)))
         as_is = min(as_is or 0, om.arv) or None
         equity = estimate_equity(as_is, prop.last_sale_price, prop.last_sale_date, known_debt=debt)
@@ -261,7 +296,10 @@ class Underwriter:
                 "comp_notes": result.notes, "renovated_comps": result.renovated_count,
                 "distressed_comps": result.distressed_count, "dispersion": result.dispersion,
                 "radius_miles": result.radius_used, "valued_on": date.today().isoformat(),
-                "frfpa_applies": frfpa, "frfpa_floor": om.frfpa_floor,
+                "frfpa_applies": frfpa, "frfpa_floor": om.frfpa_floor, "frfpa_track": decision.track,
+                "frfpa_confidence": decision.confidence, "frfpa_basis": decision.basis,
+                "verify_before_contract": decision.verify_before_contract, "exempt_scenario": exempt_scenario,
+                **track_info,
             })
         session.add(val)
         prop.estimated_value = as_is
@@ -281,6 +319,11 @@ def inputs_changed(prop: Property, val: Valuation) -> bool:
         return True
     if prop.sqft and val.sqft_used != prop.sqft:
         return True
+    lead = prop.lead
+    if lead and lead.occupancy_confirmed_at and lead.occupancy_confirmed_at > val.calculated_at:
+        return True
+    if (val.assumptions_json or {}).get("frfpa_track") != frfpa_decision(prop).track:
+        return True
     return any(s.first_seen_at > val.calculated_at for s in prop.active_signals)
 
 
@@ -291,10 +334,20 @@ class UnderwriterAgent(BaseAgent):
     def run(self, ctx: AgentContext) -> None:
         top = int(self.options.get("top", 15))
         stale_days = int(self.options.get("stale_days", 7))
-        underwriter = Underwriter(listing_provider=self.options.get("listing_provider") or _default_listing_provider())
-        leads = ctx.session.scalars(
-            select(Lead).where(Lead.status_stage.notin_(["DEAD", "DO_NOT_CONTACT", "CLOSED"]))
-            .order_by(Lead.priority_rank_score.desc(), Lead.motivation_score.desc()).limit(top)).all()
+        scope = self.options.get("scope", "top")      # top | valued | sheriff
+        listing = None if self.options.get("public_only") else (
+            self.options.get("listing_provider") or _default_listing_provider())
+        underwriter = Underwriter(listing_provider=listing)
+        q = select(Lead).where(Lead.status_stage.notin_(["DEAD", "DO_NOT_CONTACT", "CLOSED"]))
+        if scope == "valued":
+            q = q.join(Valuation, Valuation.property_id == Lead.property_id).where(Valuation.is_current.is_(True))
+        elif scope == "sheriff":
+            q = q.join(DistressSignal, DistressSignal.property_id == Lead.property_id).where(
+                DistressSignal.signal_type == SignalType.SHERIFF_SALE, DistressSignal.active.is_(True))
+        q = q.order_by(Lead.priority_rank_score.desc(), Lead.motivation_score.desc())
+        if scope == "top":
+            q = q.limit(top)
+        leads = list(dict.fromkeys(ctx.session.scalars(q).all()))
         self.verdicts: dict[str, int] = {}
         self.tried: set[int] = set()
         for lead in leads:

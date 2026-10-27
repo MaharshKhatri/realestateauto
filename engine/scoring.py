@@ -23,8 +23,10 @@ from db.models import Lead, Property, ScoringWeights, SignalType, utcnow
 log = logging.getLogger(__name__)
 
 TERMINAL = {"DEAD", "DO_NOT_CONTACT", "CLOSED"}
-NON_DEAL_PRIORITY_FACTOR = {"PASS": 0.5, "FRFPA_BLOCKED": 0.6, "SHORT_SALE_ONLY": 0.75}
-VERDICT_POINTS = {"STRONG": 45, "WORKABLE": 33, "TIGHT": 18, "SHORT_SALE_ONLY": 8, "FRFPA_BLOCKED": 5, "PASS": 0}
+NON_DEAL_PRIORITY_FACTOR = {"PASS": 0.5, "FRFPA_BLOCKED": 0.6, "EQUITY_RESCUE_REFERRAL": 0.65, "SHORT_SALE_ONLY": 0.75}
+VERDICT_POINTS = {"STRONG": 45, "WORKABLE": 33, "WORKABLE_82_PCT_FLOOR": 28, "TIGHT": 18, "SHORT_SALE_ONLY": 8,
+                  "EQUITY_RESCUE_REFERRAL": 8, "FRFPA_BLOCKED": 5, "PASS": 0}
+NO_OFFER_VERDICTS = {"FRFPA_BLOCKED", "PASS", "EQUITY_RESCUE_REFERRAL"}
 
 
 @dataclass
@@ -271,6 +273,9 @@ class LeadScoringAgent(BaseAgent):
 
 
 def apply_score(lead: Lead, version: int, weights: dict[str, Any]) -> Score:
+    from engine.underwriter import frfpa_decision   # local import: underwriter imports this module
+    if any(s.signal_type in (SignalType.SHERIFF_SALE, SignalType.LIS_PENDENS) for s in lead.property.active_signals):
+        lead.frfpa_track = frfpa_decision(lead.property).track
     sc = score_property(lead.property, weights, lead.primary_source)
     lead.motivation_score, lead.deal_viability_score, lead.priority_rank_score = sc.motivation, sc.viability, sc.priority
     lead.score_breakdown_json = {"factors": sc.factors, "reasons": sc.reasons,
@@ -300,19 +305,25 @@ def strategy_brief(lead: Lead, sc: Score) -> str:
         if days is not None and days >= 0:
             txt += f"Sale {days_phrase(days)} — call and door-knock now. "
         if (meta.get("defendant_adjournments") or 0) >= 2:
-            txt += ("Homeowner has already used their statutory adjournments; only a plaintiff adjournment, court "
-                    "stay, bankruptcy or payoff moves this date — confirm the current status before investing time. ")
-        else:
-            txt += "Homeowner can still request a statutory adjournment to buy time to close with you. "
+            txt += ("Homeowner has used both statutory adjournments; check the current status before investing time. ")
+        txt += ("Don't advise on postponing the sale yourself (a regulated 'distressed property service' under "
+                "FRFPA) — point them to the sheriff's office, their attorney or a free HUD-approved counselor. ")
         parts.append(txt.strip())
         if val and val.verdict == "SHORT_SALE_ONLY":
             parts.append("Debt exceeds MAO: pitch a short sale (lender approval) or pass; don't promise a number above MAO.")
-        if val and (val.assumptions_json or {}).get("frfpa_applies"):
-            floor = (val.assumptions_json or {}).get("frfpa_floor")
-            parts.append(f"FRFPA applies (owner-occupied foreclosure): any offer must be ≥ 82% of FMV ({_fmt_money(floor)}), "
-                         "use the FRFPA contract (notarized, 14-pt bold, 10-business-day cancellation) and close at an "
-                         "attorney/title office. Don't say you can stop or postpone the foreclosure."
-                         + (" MAO is below that floor: offer a listing referral or short sale instead." if val.verdict == "FRFPA_BLOCKED" else ""))
+        a = (val.assumptions_json or {}) if val else {}
+        if a.get("frfpa_applies"):
+            parts.append(f"FRFPA ({a.get('frfpa_track')}): {a.get('frfpa_basis')} Any offer ≥ 82% of FMV "
+                         f"({_fmt_money(a.get('frfpa_floor'))}); attorney-drafted FRFPA contract with 10-business-day "
+                         "cancellation; close at an attorney/title office.")
+            if a.get("verify_before_contract"):
+                parts.append("Verify: " + "; ".join(a["verify_before_contract"]) + ".")
+            ex = a.get("exempt_scenario") or {}
+            if ex and a.get("frfpa_track") == "ESTATE_VERIFY_OCCUPANCY":
+                parts.append(f"If nobody lives there it is exempt: {ex.get('verdict')} at MAO {_fmt_money(ex.get('mao_conservative'))}.")
+        elif a.get("verify_before_contract"):
+            parts.append(f"FRFPA exempt ({a.get('frfpa_track')}, {a.get('frfpa_confidence')}): {a.get('frfpa_basis')} "
+                         "Before a contract: " + "; ".join(a["verify_before_contract"]) + ".")
     elif "stale_listing" in f:
         parts.append("Listed property: call the listing agent with an as-is cash offer near the anchor; "
                      "ask about seller motivation, days on market and price history.")
@@ -324,7 +335,16 @@ def strategy_brief(lead: Lead, sc: Score) -> str:
                      "hassle-free sale; owner name pending lookup, use the mailing address for a letter.")
     elif "absentee" in f:
         parts.append("Absentee landlord with long tenure: likely high equity and tenant fatigue; mail + call.")
-    if val and val.verdict in ("FRFPA_BLOCKED", "PASS"):
+    if val and val.verdict == "WORKABLE_82_PCT_FLOOR":
+        a = val.assumptions_json or {}
+        parts.append(f"Compliant offer {_fmt_money(a.get('compliant_offer'))} (82% of FMV); light-rehab/wholetail buyer "
+                     f"at {_fmt_money(a.get('track_buyer_price'))} leaves ~{_fmt_money(a.get('track_fee'))}.")
+    elif val and val.verdict == "EQUITY_RESCUE_REFERRAL":
+        a = val.assumptions_json or {}
+        parts.append(f"Equity at risk ~{_fmt_money(a.get('equity_at_risk'))}: the owner's best outcome is a market sale "
+                     "with a listing agent before the auction. Unlicensed, you can't take a referral fee (N.J.S.A. "
+                     "45:15-3) — refer for goodwill or get licensed.")
+    elif val and val.verdict in ("FRFPA_BLOCKED", "PASS"):
         parts.append("No compliant wholesale offer at today's numbers — offer a listing-agent referral, or revisit "
                      "if the repair estimate drops after a walkthrough.")
     elif val and val.mao_conservative:

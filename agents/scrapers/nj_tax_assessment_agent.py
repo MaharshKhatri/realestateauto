@@ -171,16 +171,25 @@ UNIT_RE = re.compile(r"[,\s]+(?:#|UNIT|STE|SUITE|APT)\s*\S+$")
 
 
 def mailing_key(street: str | None, city_state: str | None) -> str:
-    """Merge variants: '25 ALLIK WAY, #101' / '25 ALLIK WAY UNIT 101' / 'ROAD' vs 'RD'."""
+    """Merge variants: '25 ALLIK WAY, #101' / '25 ALLIK WAY UNIT 101' / 'ROAD' vs 'RD'; city with or without
+    state and ZIP ('JERSEY CITY, NJ' == 'JERSEY CITY, N.J. 07306' == 'JERSEY CITY')."""
     s = normalize_street(street)
     unit = ""
     m = re.search(r"(?:#|UNIT|STE|SUITE|APT)\s*([A-Z0-9-]+)$", s)
     if m:
         unit = m.group(1)
         s = UNIT_RE.sub("", s)
-    city = re.sub(r"[^A-Z ]", " ", clean(city_state).upper())
-    city = re.sub(r"\s+", " ", city).strip()
-    return f"{s}|{unit}|{city}"
+    city = clean(city_state).upper()
+    city = re.sub(r"[\s,]+\d{5}(?:-?\d{4})?\s*$", "", city)          # trailing ZIP
+    city = re.sub(r"[\s,]+N\.?\s?J\.?\s*$|[\s,]+[A-Z]{2}\.?\s*$", "", city)  # trailing state
+    city = re.sub(r"[^A-Z ]", " ", city)
+    return f"{s}|{unit}|{re.sub(r'\s+', ' ', city).strip()}"
+
+
+def address_mailing_key(mailing_address: str | None) -> str | None:
+    """Key for a stored 'STREET, CITY, ST ZIP' string."""
+    street, _, rest = (mailing_address or "").partition(", ")
+    return mailing_key(street, rest) if street else None
 
 
 def buyer_reliability(count: int, volume: float, last_purchase: date | None, towns: int) -> float:

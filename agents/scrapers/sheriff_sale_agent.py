@@ -26,7 +26,7 @@ from agents.base import AgentContext, BaseAgent
 from agents.scrapers.njgis_client import NJGISClient, feature_to_property
 from core.dates import parse_us_date
 from core.http import FetchError, PoliteSession
-from core.text import clean, normalize_street, parse_one_line_address, strip_et_al
+from core.text import clean, muni_base, normalize_street, parse_one_line_address, strip_et_al
 from db.models import DistressSignal, SignalType, utcnow
 from db.repository import ensure_lead, upsert_property, upsert_signal
 
@@ -368,6 +368,8 @@ class SheriffSaleAgent(BaseAgent):
         city_names = sorted({w for m in munis for w in [m, re.sub(r"\s+(TWP|CITY|BORO|TOWN|VILLAGE)$", "", m)]},
                             key=len, reverse=True)
         parsed = parse_one_line_address(address, known_cities=city_names)
+        if parsed:
+            d["parsed_city"] = parsed.city
         mun = None
         for hint in (d.get("municipality_hint"), parsed.city if parsed else None):
             if hint:
@@ -412,7 +414,10 @@ class SheriffSaleAgent(BaseAgent):
             ctx.bump("parcel_unmatched")
         data["county"] = listing.county
         if parsed:
-            data["city"] = parsed.city.title()
+            data["city"] = (d.get("parsed_city") or parsed.city).title()
+            if feature and data.get("municipality") and not data["city"].upper().endswith(muni_base(data["municipality"])):
+                # Without the town list the street/city boundary is ambiguous; trust the matched parcel's town.
+                data["city"] = data["city"] if d.get("parsed_city") else muni_base(data["municipality"]).title()
             data["zip_code"] = parsed.zip
         if not data.get("street_address") and parsed:
             data["street_address"] = parsed.street
