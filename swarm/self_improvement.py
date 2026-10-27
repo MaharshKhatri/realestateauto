@@ -21,6 +21,7 @@ from collections import Counter, defaultdict
 from datetime import timedelta
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 from agents.base import AgentContext, BaseAgent
@@ -197,6 +198,7 @@ class PipelineSelfImprovementAgent(BaseAgent):
                      f"follow-up {offers_out}; stacked distress 2x {stacks.get(2, 0)}, 3x {stacks.get(3, 0)}, "
                      f"4x+ {stacks.get(4, 0)}")
         sections["Contact readiness & CRM"] = lines
+        sections["Guardrails, fast track & money"] = self._phase4(s, findings)
         if ready_now < 50:
             findings.append(f"Only {ready_now} deals are ready to call. Underwrite more stale listings "
                             "(swarm run underwriter --opt scope=stale_listing) and refresh listing agents.")
@@ -288,6 +290,44 @@ class PipelineSelfImprovementAgent(BaseAgent):
         for n in notes:
             ctx.note(n)
         write_report(sections, findings, actions)
+
+    def _phase4(self, s: Session, findings: list[str]) -> list[str]:
+        """Outlier guard coverage, listed-foreclosure follow-through, closing deadlines and the money picture."""
+        from engine import closing_coordinator as cc
+        from engine import finance
+        from engine.fast_track import listed_foreclosures
+        cur = s.scalars(select(Valuation).where(Valuation.is_current.is_(True))).all()
+        guarded = [v for v in cur if (v.assumptions_json or {}).get("outlier_guard") is not None]
+        capped = sum(1 for v in guarded if v.assumptions_json["outlier_guard"].get("capped"))
+        nonres = sum(1 for v in guarded if v.assumptions_json["outlier_guard"].get("non_residential"))
+        big = sum(1 for v in cur if (v.arv_estimate or 0) > 1_800_000 and v.verdict in DEAL_VERDICTS)
+        listed = listed_foreclosures(s)
+        actionable = [r for r in listed if r.agent and r.track not in ("NO_OFFER", "EQUITY_MONITOR")]
+        untouched = [r for r in actionable if not r.last_outreach]
+        alerts = cc.alerts(s)
+        sm = finance.summary(s)
+        if len(guarded) < len(cur):
+            findings.append(f"{len(cur) - len(guarded)} valuations haven't been through the outlier guard — run "
+                            "python -m swarm.orchestrator run outlier_guard.")
+        if big:
+            findings.append(f"{big} offer-verdict valuations still above $1.8M ARV — review their comps by hand.")
+        if untouched:
+            soon = [r for r in untouched if r.days_to_sale is not None and 0 < r.days_to_sale <= 14]
+            findings.append(f"{len(untouched)} listed foreclosures with an agent haven't been contacted"
+                            + (f" ({len(soon)} with a sale within 14 days)" if soon else "") +
+                            " — python manage.py today, Block 1.")
+        overdue = [a for a in alerts if a.overdue]
+        if overdue:
+            findings.append(f"{len(overdue)} closing milestone(s) overdue — python manage.py closing.")
+        return [
+            f"- Outlier guard: {len(guarded)}/{len(cur)} valuations checked; {capped} ARVs capped to a benchmark, "
+            f"{nonres} non-residential parcels (PASS / unit-of-a-larger-parcel); {big} offer-verdict ARVs above $1.8M",
+            f"- Listed foreclosures: {len(listed)} ({len(actionable)} actionable with an agent, {len(untouched)} not yet "
+            "contacted)",
+            f"- Closing: {len(cc.pipeline(s))} open files, {len(alerts)} milestones due soon ({len(overdue)} overdue)",
+            f"- Money {sm.year}: fees {sm.income:,.0f}, net {sm.net:,.0f}, tax reserve {sm.tax_reserve:,.0f}, "
+            f"weighted pipeline {sm.pipeline_projected:,.0f}",
+        ]
 
     def _expansion(self, ctx: AgentContext, sections: dict[str, list[str]]) -> list[str]:
         cfg = settings()

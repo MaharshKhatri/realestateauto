@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sell Your New Jersey House As-Is</title>
+  <meta name="description" content="New Jersey real estate investors buying houses as-is: no repairs, no cleanout, no commissions. Oil tanks, code violations, tenants and estates are fine.">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header class="top"><div class="wrap">
+    <a class="brand" href="index.html" data-cfg="company">NJ House Buyers</a>
+    <nav><a href="#how">How it works</a><a href="#faq">Questions</a><a href="buyers.html">Investors</a></nav>
+  </div></header>
+
+  <main class="wrap">
+    <div class="hero grid">
+      <div>
+        <h1>Sell your New Jersey house as-is</h1>
+        <p class="lead">We're local real estate investors buying houses in Middlesex, Union, Essex, Hudson, Passaic, Bergen
+          and Camden counties. No repairs, no cleanout, no showings, no agent commissions — you pick the closing date.</p>
+        <ul class="points">
+          <li><b>No agent commission</b>You pay only your normal seller costs (your attorney and New Jersey's realty
+            transfer fee) unless we agree otherwise in writing.</li>
+          <li><b>No repairs, no cleanout</b>Take what you want and leave the rest. We buy the house in its current condition.</li>
+          <li><b>Hard situations are fine</b>Buried oil tank, code violations, tenants in place, an estate in probate,
+            a house that's been vacant for years — tell us, and we'll factor it into a written offer.</li>
+          <li><b>Your attorney reviews everything</b>New Jersey contracts include a 3-business-day attorney review. If
+            it's your home and it's in foreclosure, you also get a 10-business-day right to cancel.</li>
+        </ul>
+        <p class="fine"><b>Who we are:</b> <span data-cfg="company">We</span> are real estate investors acting as
+          principals — not licensed real estate agents, and we don't represent you. If we agree on a price we may buy
+          the house ourselves or assign our contract to another investor; the price and terms we agree with you don't
+          change. We can't stop or postpone a foreclosure. Free help: HUD-approved housing counseling 1-800-569-4287 ·
+          Legal Services of New Jersey 1-888-576-5529.</p>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">Get a written as-is offer</h2>
+        <form id="seller-form" data-kind="seller" novalidate>
+          <input type="hidden" name="form_type" value="seller">
+          <div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+          <label for="address">Property address</label>
+          <input id="address" name="address" type="text" required autocomplete="street-address" placeholder="123 Main St">
+          <div class="row2">
+            <div><label for="city">Town</label><input id="city" name="city" type="text" autocomplete="address-level2"></div>
+            <div><label for="zip">ZIP</label><input id="zip" name="zip" type="text" inputmode="numeric" maxlength="5" autocomplete="postal-code"></div>
+          </div>
+          <label for="county">County</label>
+          <select id="county" name="county" required><option value="">Choose…</option></select>
+          <label>What's going on? (check any)</label>
+          <div class="checks">
+            <label><input type="checkbox" name="situation" value="behind_on_payments"> Behind on payments / foreclosure</label>
+            <label><input type="checkbox" name="situation" value="inherited"> Inherited / estate</label>
+            <label><input type="checkbox" name="situation" value="tenant"> Tenant or landlord issues</label>
+            <label><input type="checkbox" name="situation" value="repairs"> Needs repairs</label>
+            <label><input type="checkbox" name="situation" value="code_violations"> Code violations / oil tank</label>
+            <label><input type="checkbox" name="situation" value="vacant"> Vacant</label>
+            <label><input type="checkbox" name="situation" value="relocating"> Relocating</label>
+            <label><input type="checkbox" name="situation" value="other"> Something else</label>
+          </div>
+          <label for="occupancy">Who lives there now?</label>
+          <select id="occupancy" name="occupancy"><option value="">Choose…</option><option value="owner">I do (or my family)</option>
+            <option value="tenant">Tenants</option><option value="vacant">Nobody — it's vacant</option></select>
+          <label for="timeline">When would you like to sell?</label>
+          <select id="timeline" name="timeline"><option value="">Choose…</option><option>As soon as possible</option>
+            <option>Within 1–3 months</option><option>3–6 months</option><option>Just exploring</option></select>
+          <label for="notes">Anything else we should know? (optional)</label>
+          <textarea id="notes" name="notes" maxlength="1500"></textarea>
+          <div class="row2">
+            <div><label for="name">Your name</label><input id="name" name="name" type="text" required autocomplete="name"></div>
+            <div><label for="phone">Phone</label><input id="phone" name="phone" type="tel" autocomplete="tel"></div>
+          </div>
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" autocomplete="email">
+          <label class="consent"><input type="checkbox" name="consent" value="yes"> <span data-cfg="consent_seller">I agree that you may call or text me at the number I entered about selling my property. Consent is not a condition of any purchase. Reply STOP to opt out.</span></label>
+          <button class="cta" type="submit">Get my offer</button>
+          <div class="msg" role="status"></div>
+          <p class="fine">We only use your information to respond about your property. We don't sell it.</p>
+        </form>
+      </div>
+    </div>
+
+    <section class="band" id="how">
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="card"><h3>1. Tell us about the house</h3><p>A few details here, then a short call. Photos or a quick video
+          walk-through help us give you a firm number without a visit.</p></div>
+        <div class="card"><h3>2. Get a written offer</h3><p>An as-is cash offer in writing. No obligation — compare it with
+          listing the house or any other option you have.</p></div>
+        <div class="card"><h3>3. Close on your date</h3><p>Your attorney reviews the contract. We close through a New Jersey
+          title company or attorney; title work usually takes a few weeks.</p></div>
+      </div>
+    </section>
+
+    <section class="band" id="faq">
+      <h2>Questions people ask</h2>
+      <div class="card">
+        <p><b>Will you pay full retail price?</b><br>No — an investor's as-is offer is usually below what a fully repaired
+          house would sell for on the market. If your house is in good shape and you have time, listing it with an agent
+          may net you more; we'll tell you honestly if we think so.</p>
+        <p><b>My house is in foreclosure. Can you help?</b><br>We can make an offer to buy it. We can't stop, postpone or
+          negotiate your foreclosure, and we're not a substitute for legal advice — call a HUD-approved counselor
+          (1-800-569-4287) or Legal Services of New Jersey (1-888-576-5529), both free. If it's your home, New Jersey's
+          Foreclosure Rescue Fraud Prevention Act protects you: an attorney-drafted contract, at least 82% of fair market
+          value, and 10 business days to cancel.</p>
+        <p><b>Do you buy with tenants in place?</b><br>Yes. Leases and security deposits transfer at closing under New Jersey law.</p>
+        <p><b>Are you agents?</b><br>No. We're investors buying for ourselves (or assigning our contract to another investor).
+          We don't represent you, and you should have your own attorney.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer><div class="wrap">
+    <div><b data-cfg="company"></b> · <span data-cfg="phone"></span> · <span data-cfg="email"></span></div>
+    <div data-cfg="mailing_address"></div>
+    <p class="fine">Real estate investors, not licensed real estate brokers or agents. Not affiliated with any government agency or lender.</p>
+  </div></footer>
+  <script src="config.js"></script>
+  <script src="site.js"></script>
+</body>
+</html>

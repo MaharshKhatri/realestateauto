@@ -18,7 +18,7 @@ from typing import Any
 from core.config import CACHE_DIR
 from core.geo import haversine_miles
 from core.text import muni_base
-from engine.comps import Comp, ValueResult, iqr_filter, value_from_metric
+from engine.comps import Comp, CompHygiene, ValueResult, iqr_filter, value_from_metric
 
 log = logging.getLogger(__name__)
 
@@ -133,7 +133,9 @@ class ListingComps:
         return f"{(prop.street_address or '').title()}, {town}, NJ {prop.zip_code or ''}".strip()
 
     # -- valuation ----------------------------------------------------------------------------
-    def value(self, *, prop, sqft: int, cfg: dict) -> ValueResult:
+    def value(self, *, prop, sqft: int, cfg: dict, value_hint: float | None = None,
+              hygiene: CompHygiene | None = None) -> ValueResult:
+        hygiene = hygiene or CompHygiene.from_settings()
         line = self.address_line(prop)
         subject = self.lookup_subject(line)
         if subject:
@@ -160,8 +162,10 @@ class ListingComps:
             comps: list[Comp] = []
             for r in rows:
                 price, area = r.get("sold_price"), r.get("sqft")
-                if not price or not area or price < 40000 or area < 400:
+                if not price or not area or area < 400:
                     continue
+                if not hygiene.price_ok(price, value_hint) or not hygiene.ppsf_ok(price, area):
+                    continue        # non-arm's-length / package price or an impossible $/sqft
                 if (r.get("property_type") or "").lower() not in allowed:
                     continue
                 if not (sqft * (1 - tol) <= area <= sqft * (1 + tol)):

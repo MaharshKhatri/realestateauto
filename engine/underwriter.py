@@ -193,6 +193,80 @@ def cross_check(listing: ValueResult, public: ValueResult) -> ValueResult:
     return listing
 
 
+# -- outlier guard ---------------------------------------------------------------------------------
+@dataclass
+class GuardResult:
+    arv: float
+    as_is: float | None
+    capped: bool = False
+    non_residential: bool = False
+    benchmark: str | None = None
+    original_arv: float | None = None
+    flags: list[str] = field(default_factory=list)
+
+    def to_json(self) -> dict[str, Any]:
+        return {"capped": self.capped, "non_residential": self.non_residential, "benchmark": self.benchmark,
+                "original_arv": self.original_arv}
+
+
+def guard_cfg() -> dict[str, Any]:
+    g = {"residential_classes": ["2"], "max_arv_to_ask": 1.6, "max_arv_to_equalized": 3.5,
+         "benchmark_multiple": 1.25, "max_arv_per_sqft": 850, "confidence_cap": 40,
+         "non_residential_confidence_cap": 20}
+    g.update(dict(settings().deal.get("outlier_guard") or {}))
+    return g
+
+
+def outlier_guard(*, arv: float, as_is: float | None, prop_class: str | None, ask: float | None,
+                  equalized: float | None, sqft: float | None, sqft_known: bool,
+                  cfg: dict[str, Any] | None = None) -> GuardResult:
+    """Last line of defence against absurd residential ARVs (package-deed comps, a condo master parcel matched
+    to one unit, commercial parcels valued off house sales).
+
+    Benchmarks, in order of trust: the live asking price (ARV > 1.6x ask -> 1.25x ask), else the subject's
+    equalized assessment (ARV > 3.5x -> 1.25x), and always the $/sqft ceiling when the living area is known.
+    """
+    g = cfg or guard_cfg()
+    out = GuardResult(arv=arv, as_is=as_is, original_arv=arv)
+    klass = (prop_class or "2").strip().upper()
+    out.non_residential = klass not in {str(c).upper() for c in g["residential_classes"]}
+    caps: list[tuple[str, float, str]] = []
+    mult = float(g["benchmark_multiple"])
+    if ask:
+        if arv > float(g["max_arv_to_ask"]) * ask:
+            caps.append(("asking price", mult * ask, f"comp ARV ${arv:,.0f} is {arv / ask:.1f}x the ${ask:,.0f} ask"))
+    elif equalized and arv > float(g["max_arv_to_equalized"]) * equalized:
+        caps.append(("equalized assessment", mult * equalized,
+                     f"comp ARV ${arv:,.0f} is {arv / equalized:.1f}x the ${equalized:,.0f} equalized assessment"))
+    if out.non_residential and not ask and equalized and arv > equalized:
+        caps.append(("equalized assessment (non-residential)", equalized,
+                     f"house comps can't value a class {klass} parcel"))
+    if sqft_known and sqft and arv / sqft > float(g["max_arv_per_sqft"]):
+        caps.append(("$/sqft ceiling", float(g["max_arv_per_sqft"]) * sqft,
+                     f"comp ARV is ${arv / sqft:,.0f}/sqft on {sqft:,.0f} sqft"))
+    if caps:
+        name, value, why = min(caps, key=lambda c: c[1])
+        value = round(value, -3)
+        out.capped, out.benchmark, out.arv = True, name, value
+        out.as_is = round(as_is * value / arv, -3) if as_is else None
+        out.flags.append(f"OUTLIER_CAPPED: {why}; ARV capped to ${value:,.0f} from the {name} — re-check comps, "
+                         "get photos and a sold-comp opinion before offering")
+    if out.non_residential:
+        out.flags.append(f"NON_RESIDENTIAL: property class {klass} is not a 1–4 family home"
+                         + (" — the listing is probably one unit of a larger parcel; value it from unit sales"
+                            if ask else " — not a wholesale target; refer to a commercial broker"))
+    return out
+
+
+def guarded_confidence(conf: float, guard: GuardResult, cfg: dict[str, Any] | None = None) -> float:
+    g = cfg or guard_cfg()
+    if guard.non_residential:
+        conf = min(conf, float(g["non_residential_confidence_cap"]))
+    if guard.capped:
+        conf = min(conf * 0.5, float(g["confidence_cap"]))
+    return round(conf, 1)
+
+
 class Underwriter:
     def __init__(self, gis: NJGISClient | None = None, listing_provider: Any | None = None):
         self.gis = gis or NJGISClient()
@@ -202,13 +276,15 @@ class Underwriter:
 
     def value(self, prop: Property) -> tuple[ValueResult, int, bool]:
         cfg = self.cfg
+        self._equalized: float | None = None
         sqft_known = bool(prop.sqft)
         sqft = prop.sqft or estimate_sqft(prop.building_desc, prop.dwellings,
                                           settings().get("rehab", {}).get("default_sqft_per_unit", 1400))
         result: ValueResult | None = None
+        ask = asking_price(prop)
         if self.listing_provider is not None and prop.lat and prop.lon:
             try:
-                result = self.listing_provider.value(prop=prop, sqft=sqft, cfg=cfg)
+                result = self.listing_provider.value(prop=prop, sqft=sqft, cfg=cfg, value_hint=ask)
             except Exception as exc:  # noqa: BLE001 - fall back to public records
                 log.warning("listing comps failed for %s: %s", prop.parcel_id, exc)
                 result = None
@@ -224,7 +300,8 @@ class Underwriter:
                 radius=cfg.get("comp_radius_miles", 0.5), fallback_radius=cfg.get("comp_radius_fallback_miles", 1.0),
                 months=int(cfg.get("public_record_comp_months", 24)), appreciation=cfg.get("annual_appreciation", 0.05),
                 min_comps=int(cfg.get("min_comps", 3)), renovated_pct=cfg.get("renovated_percentile", 0.70),
-                distressed_pct=cfg.get("distressed_percentile", 0.30))
+                distressed_pct=cfg.get("distressed_percentile", 0.30), value_hint=ask)
+            self._equalized = public.subject_equalized
             if not public.arv:
                 public = None
         if result is None:
@@ -238,6 +315,10 @@ class Underwriter:
         if not result.arv:
             log.info("no valuation for %s: %s", prop.parcel_id, "; ".join(result.notes))
             return None
+        guard = outlier_guard(arv=result.arv, as_is=result.as_is, prop_class=prop.property_class,
+                              ask=asking_price(prop), equalized=self._equalized or self.equalized_value(prop),
+                              sqft=sqft, sqft_known=sqft_known)
+        result.arv, result.as_is = guard.arv, guard.as_is
         signals = {s.signal_type for s in prop.active_signals}
         sheriff = next((s for s in prop.active_signals if s.signal_type == SignalType.SHERIFF_SALE), None)
         debt = sheriff.amount_owed if sheriff and sheriff.amount_owed else None
@@ -252,8 +333,8 @@ class Underwriter:
             units=prop.dwellings)
         as_is = min(result.as_is or 0, result.arv) or None
         om, decision, frfpa_fields = decide_offer(prop, arv=result.arv, repairs=rehab.cost, as_is=as_is, debt=debt,
-                                                  cfg=self.cfg)
-        conf = confidence(result, sqft_known, int(self.cfg.get("min_comps", 3)))
+                                                  cfg=self.cfg, guard=guard)
+        conf = guarded_confidence(confidence(result, sqft_known, int(self.cfg.get("min_comps", 3))), guard)
         as_is = min(as_is or 0, om.arv) or None
         equity = estimate_equity(as_is, prop.last_sale_price, prop.last_sale_date, known_debt=debt)
 
@@ -275,6 +356,7 @@ class Underwriter:
                 "comp_notes": result.notes, "renovated_comps": result.renovated_count,
                 "distressed_comps": result.distressed_count, "dispersion": result.dispersion,
                 "radius_miles": result.radius_used, "valued_on": date.today().isoformat(), **frfpa_fields,
+                "outlier_guard": guard.to_json(), "subject_equalized": self._equalized,
                 "listing": listing_gap(asking_price(prop), om.mao_conservative, om.mao_aggressive, om.arv),
             })
         session.add(val)
@@ -283,13 +365,31 @@ class Underwriter:
         session.flush()
         return val
 
+    def equalized_value(self, prop: Property) -> float | None:
+        """Assessed value x the town's sale/assessment ratio (cached per town)."""
+        if not (prop.assessed_total and prop.mun_code):
+            return None
+        from engine.market import muni_stats
+        try:
+            ratio = muni_stats(self.gis, prop.mun_code, prop.municipality or "").median_ratio
+        except Exception as exc:  # noqa: BLE001 - the guard still has the ask and $/sqft benchmarks
+            log.info("town ratio unavailable for %s: %s", prop.mun_code, exc)
+            return None
+        return round(prop.assessed_total * ratio, -2) if ratio else None
+
 
 def decide_offer(prop: Property, *, arv: float, repairs: float, as_is: float | None, debt: float | None,
-                 cfg: dict[str, Any]) -> tuple[OfferMath, FrfpaDecision, dict[str, Any]]:
+                 cfg: dict[str, Any], guard: GuardResult | None = None
+                 ) -> tuple[OfferMath, FrfpaDecision, dict[str, Any]]:
     """Offer math + FRFPA track for already-valued inputs (shared by underwrite() and reprice())."""
     decision = frfpa_decision(prop)
     frfpa = decision.applies
     om = offer_math(arv=arv, repairs=repairs, annual_taxes=prop.annual_taxes, debt=debt, cfg=cfg, frfpa=frfpa, fmv=as_is)
+    if guard is not None:
+        om.flags = guard.flags + om.flags
+        if guard.non_residential and not asking_price(prop):
+            om.verdict = "PASS"          # commercial / mixed-use parcel: no wholesale offer from house comps
+            om.anchor_offer = None
     track_info: dict[str, Any] = {}
     if frfpa and om.verdict == "FRFPA_BLOCKED" and as_is:
         ct = covered_track(arv=om.arv, fmv=as_is, repairs=om.repairs, debt=debt,
@@ -370,8 +470,13 @@ def reprice(session: Session, prop: Property) -> Valuation | None:
     arv = a.get("arv_before_tax_drag") or cur.arv_estimate
     cfg = dict(settings().deal)
     debt = known_debt(prop)
+    g = a.get("outlier_guard") or {}
+    guard = GuardResult(arv=arv, as_is=cur.as_is_value, capped=bool(g.get("capped")),
+                        non_residential=bool(g.get("non_residential")), benchmark=g.get("benchmark"),
+                        original_arv=g.get("original_arv"),
+                        flags=[f for f in (a.get("flags") or []) if f.startswith(("OUTLIER_CAPPED", "NON_RESIDENTIAL"))])
     om, _, fields = decide_offer(prop, arv=arv, repairs=cur.est_repair_cost or 0, as_is=cur.as_is_value, debt=debt,
-                                 cfg=cfg)
+                                 cfg=cfg, guard=guard)
     for k in FRFPA_FIELDS:
         a.pop(k, None)
     a.update(fields)

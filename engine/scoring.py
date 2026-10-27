@@ -76,6 +76,7 @@ SIGNAL_FAMILIES = {
     SignalType.TAX_DELINQUENT: "tax", SignalType.TAX_SALE_CERTIFICATE: "tax",
     SignalType.ESTATE_OWNER: "estate", SignalType.PROBATE: "estate",
     SignalType.VACANT: "vacant", SignalType.CODE_VIOLATION: "code", SignalType.PORTFOLIO_OWNER: "portfolio",
+    SignalType.INBOUND_LEAD: "inbound",
 }
 
 
@@ -154,6 +155,11 @@ def motivation_factors(prop: Property, today: date | None = None) -> tuple[dict[
     if by_type.get(SignalType.VACANT):
         f["vacant"] = 1.0
         reasons.append("Vacant")
+    if by_type.get(SignalType.INBOUND_LEAD):
+        meta = by_type[SignalType.INBOUND_LEAD][0].raw_metadata_json or {}
+        f["inbound_inquiry"] = 1.0
+        reasons.insert(0, "Owner contacted us through the website" + (
+            f" ({', '.join(meta.get('situation') or [])})" if meta.get("situation") else ""))
 
     tenure = years_owned(prop.last_sale_date)
     if prop.is_out_of_state or by_type.get(SignalType.OUT_OF_STATE_OWNER):
@@ -362,6 +368,12 @@ def engagement_adjustment(lead: Lead) -> tuple[float, list[str]]:
 READY_VERDICTS = {"STRONG", "WORKABLE", "WORKABLE_82_PCT_FLOOR", "TIGHT"}
 
 
+def valuation_suspect(val: Any) -> bool:
+    """The underwriter's outlier guard capped this ARV or the parcel is not a 1–4 family home."""
+    g = ((val.assumptions_json or {}).get("outlier_guard") or {}) if val is not None else {}
+    return bool(g.get("capped") or g.get("non_residential"))
+
+
 def ready_to_call(lead: Lead) -> tuple[bool, str | None]:
     """An underwritten deal with an offer path AND someone reachable right now (phone or listing-agent e-mail)."""
     if lead.status_stage in TERMINAL:
@@ -370,8 +382,8 @@ def ready_to_call(lead: Lead) -> tuple[bool, str | None]:
     if val is None:
         return False, None
     gap = listing_terms(lead.property)
-    if gap.get("valuation_conflict"):
-        return False, None          # ARV far above ask: re-check comps before anyone calls with a number
+    if gap.get("valuation_conflict") or valuation_suspect(val):
+        return False, None          # ARV far above ask / capped outlier: re-check comps before anyone calls
     if val.verdict in NO_OFFER_VERDICTS or val.verdict == "SHORT_SALE_ONLY":
         return False, None
     if gap.get("list_price"):

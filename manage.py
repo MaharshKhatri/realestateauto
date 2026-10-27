@@ -2,6 +2,7 @@
 """Operator CLI.
 
     python manage.py init                     create/upgrade the database
+    python manage.py today                    START HERE: the 2-hour daily checklist from live records
     python manage.py briefing [--top 15]      Daily Action Briefing: (A) ready to call (B) sheriff/estate spreads (C) stacked
     python manage.py lead <id>                everything about one lead
     python manage.py underwrite [--top 15]    comps / ARV / MAO for the top leads
@@ -26,11 +27,18 @@
     python manage.py buyer-hotzones [--top 10]   where cash buyers pay the most + our deals in those pockets
     python manage.py walkthrough <lead> [--invite BUYER] [--walked BUYER] [--when 2026-11-02T11:00]
     python manage.py bid <lead> [--buyer B --amount 470k --emd 5k] [--accept BID --assignee "ABC LLC"]
+    python manage.py fast-track [--packets] [--script LEAD] [--portfolios 20] [--portfolio-letters 20]
+    python manage.py closing [<lead> [--done EMD_DEPOSITED] [--title-email] [--close --fee 22.5k] [--disapproved]]
+    python manage.py finance [--add-income 22.5k --lead ID | --add-expense 120 --category mail --desc ...]
+    python manage.py partners [--county Essex]
+    python manage.py inbound [--ingest submissions.json]   website seller leads / buyer registrations
+    python manage.py site --build site_dist [--endpoint https://formspree.io/f/...]   static funnel for free hosting
     python manage.py swarm <args...>          passthrough to `python -m swarm.orchestrator`
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections import Counter
 from datetime import date, timedelta
@@ -206,7 +214,29 @@ def reach_text(row: dict) -> str:
     return f"{who}\n{line}".strip()
 
 
+def print_listed_foreclosures(rows: list[dict], title: str) -> None:
+    t = Table(box=box.SIMPLE_HEAVY, header_style="bold red", title_justify="left", title=title)
+    for col, kw in [("Lead", {"justify": "right"}), ("Property", {"max_width": 34}), ("Sale", {}),
+                    ("Upset", {"justify": "right"}), ("Ask", {"justify": "right"}), ("DOM", {"justify": "right"}),
+                    ("Track", {"max_width": 26}), ("Offer", {"justify": "right"}), ("Listing agent", {"max_width": 30})]:
+        t.add_column(col, **kw)
+    for r in rows:
+        days = r.get("days_to_sale")
+        sale = (f"{r['sale_date'][5:]} [bold]{'TODAY' if days == 0 else str(days) + 'd'}[/bold]"
+                if r.get("sale_date") else "—")
+        agent = r.get("agent") or {}
+        t.add_row(str(r["lead_id"]), f"{r['address']}\n[dim]{r['county']}[/dim]", sale, short_money(r.get("upset")),
+                  short_money(r.get("list_price")), str(r.get("dom") or "?"), r["track_label"],
+                  f"{short_money(r['anchor'])}/{short_money(r['best'])}" if r.get("anchor") else "—",
+                  f"{agent.get('name') or ''}\n{agent.get('phone_display') or agent.get('email') or '[dim]no contact[/dim]'}")
+    console.print(t)
+
+
 def print_briefing_sections(s, brief, top: int) -> None:
+    lf = brief.listed_rows(s, 10)
+    if lf:
+        print_listed_foreclosures(lf, f"(0) Listed foreclosures — sheriff sale + MLS listing, call the agent first "
+                                      f"({len(lf)} shown)")
     a = brief.ready_rows(s, top)
     t = Table(box=box.SIMPLE_HEAVY, header_style="bold green", title_justify="left",
               title=f"(A) Ready to call now — top {len(a)} underwritten deals with a live phone / agent e-mail")
@@ -551,10 +581,12 @@ def cmd_agent_blast(args: argparse.Namespace) -> None:
         index, packets = ao.write_batch(s, args.top, Path(args.out) if args.out else None)
         t = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", title_justify="left",
                   title=f"{len(packets)} listing-agent packets (review before sending)")
-        for col in ("Lead", "Listing", "DOM", "Ask", "Anchor / best", "75% ÷ ask", "Agent", "Reach", "Kind"):
+        for col in ("Lead", "Listing", "DOM", "Ask", "Sale / upset", "Anchor / best", "75% ÷ ask", "Agent", "Reach",
+                    "Kind"):
             t.add_column(col)
         for p in packets:
             t.add_row(str(p.lead_id), p.address[:38], str(p.dom or "?"), short_money(p.list_price),
+                      f"{p.sale_date[5:]} ({p.days_to_sale}d)\n{short_money(p.upset)}" if p.sale_date else "—",
                       f"{short_money(p.anchor)} / {short_money(p.best)}", pct(p.list_to_mao_75),
                       f"{p.agent_name[:22]}\n[dim]{(p.brokerage or '')[:26]}[/dim]",
                       (p.agent_email or "") + ("\n" + format_phone(p.agent_phone) if p.agent_phone else ""), p.kind)
@@ -745,6 +777,283 @@ def cmd_bid(args: argparse.Namespace) -> None:
         console.print(t)
 
 
+def cmd_fast_track(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from engine import fast_track as ft
+    init_db()
+    with session_scope() as s:
+        if args.script:
+            lead = s.get(Lead, args.script)
+            if lead is None or not ft.is_listed_foreclosure(lead.property):
+                console.print(f"[red]lead {args.script} is not a listed foreclosure[/red]")
+                return
+            lf = ft.listed_foreclosure(s, lead)
+            sc = ft.agent_script(lf)
+            console.print(Panel(sc["opening"], title=f"Listing-agent script — {lf.address} ({ft.TRACK_LABEL[lf.track]})"))
+            for q in sc["questions"]:
+                console.print(f"  ? {q}")
+            console.print(Panel(sc["offer"], title="Offer line", border_style="green"))
+            console.print(f"[bold]Close:[/bold] {sc['close']}\n[dim]{sc['disclosure']}[/dim]")
+            for n in sc["never_say"]:
+                console.print(f"  [red]never:[/red] {n}")
+            return
+        rows = [lf.to_dict() for lf in ft.listed_foreclosures(s)]
+        rows = rows[: args.top]
+        print_listed_foreclosures(rows, f"Listed foreclosures — {len(rows)} (sheriff sale + MLS listing)")
+        for r in rows:
+            if r["reasons"]:
+                console.print(f"  #{r['lead_id']} {r['track_label']}: {r['reasons'][0]}")
+        if args.packets:
+            made = 0
+            for r in rows:
+                if r["agent"] and r["track"] in ("CASH_OFFER", "FRFPA_FLOOR_OFFER", "CONFIRM_OCCUPANCY", "SHORT_SALE"):
+                    pk = ft.build_packet(s, s.get(Lead, r["lead_id"]))
+                    made += 1
+                    console.print(f"  packet #{r['lead_id']} ({pk.kind}): {pk.subject}"
+                                  + (f" → {pk.loi_files.get('pdf')}" if pk.loi_files else ""))
+            console.print(f"{made} urgent agent packets ready — send from the cockpit (Fast Track) or "
+                          "python manage.py agent-blast --mark-sent <lead>.")
+        if args.portfolios:
+            for p in ft.portfolios(s, args.portfolios):
+                who = p.owner or "owner (name not on record)"
+                console.print(f"[bold cyan]{who}[/bold cyan] — {p.size} properties, {p.deal_count} with an offer verdict"
+                              + (f", phone {p.phone['phone_display']}" if p.phone else ", mail only"))
+                for x in p.properties[:6]:
+                    console.print(f"   #{x['lead_id']} {x['address']}, {x['town']} · {', '.join(x['signals'])} · "
+                                  f"{x['verdict'] or 'not valued'}")
+            if args.top_script:
+                top = ft.portfolios(s, 1)
+                if top:
+                    console.print(Panel(ft.portfolio_script(top[0])["opening"], title="Portfolio call opener"))
+        if args.portfolio_letters:
+            out, letters = ft.write_portfolio_batch(s, args.portfolio_letters,
+                                                    Path(args.out) if args.out else None)
+            console.print(f"{len(letters)} portfolio letters → {out} (then mail-merge --mark-mailed {out})")
+
+
+def cmd_closing(args: argparse.Namespace) -> None:
+    from engine import closing_coordinator as cc
+    init_db()
+    with session_scope() as s:
+        if args.id is None:
+            for a in cc.alerts(s):
+                console.print(f"[{'red' if a.overdue else 'yellow'}]{'OVERDUE' if a.overdue else 'due'} "
+                              f"{a.due_date:%a %b %d}[/] lead #{a.lead_id} {a.address}: {a.label}")
+            t = Table(box=box.SIMPLE, title="Open closing files")
+            for col in ("Lead", "Property", "Stage", "Contract", "Progress", "Next step", "Due"):
+                t.add_column(col)
+            for r in cc.pipeline(s):
+                t.add_row(str(r["lead_id"]), r["address"], r["stage"], money(r["contract_price"]),
+                          f"{r['done']}/{r['total']}", r["next"] or "—",
+                          (f"[red]{r['next_due']}[/red]" if r["overdue"] else r["next_due"]) or "—")
+            console.print(t)
+            return
+        lead = s.get(Lead, args.id)
+        if lead is None:
+            console.print(f"[red]lead {args.id} not found[/red]")
+            return
+        try:
+            if args.disapproved:
+                cc.record_disapproval(s, lead, args.notes or "")
+                console.print("Contract disapproved during attorney review: file closed, lead back to NEGOTIATING.")
+                return
+            if not cc.milestones(s, lead):
+                cc.open_file(s, lead)
+            for note in cc.sync(s, lead):
+                console.print(f"[green]{note}[/green]")
+            if args.done:
+                cc.complete(s, lead, args.done.upper(), args.notes or "")
+            if args.close:
+                if not args.fee:
+                    console.print("[red]--close needs --fee (the assignment fee actually received)[/red]")
+                    return
+                cc.close_deal(s, lead, money_arg(args.fee), date.fromisoformat(args.date) if args.date else None)
+                console.print(f"Closed — {money(money_arg(args.fee))} booked as income.")
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return
+        t = Table(box=box.SIMPLE, title=f"Closing file — lead #{lead.id}")
+        for col in ("#", "Milestone", "Due", "Status", "Notes"):
+            t.add_column(col)
+        for m in cc.milestones(s, lead):
+            style = {"done": "green", "cancelled": "dim", "waived": "dim"}.get(m.status, "red" if m.due_date and
+                                                                                 m.due_date < date.today() else "")
+            t.add_row(str(m.sequence), cc.LABELS[m.milestone], f"{m.due_date:%a %b %d}" if m.due_date else "—",
+                      f"[{style}]{m.status}[/{style}]" if style else m.status, (m.notes or "")[-60:])
+        console.print(t)
+        if args.title_email:
+            partner = None
+            if args.partner:
+                data = cc.partners()
+                partner = next((p for r in (data.get("regions") or {}).values() for p in r.get("title_agencies") or []
+                                if args.partner.lower() in p.get("name", "").lower()), None)
+            e = cc.title_order_email(lead, partner, args.structure)
+            console.print(Panel(f"To: {e['to']} {e['email_to']}\nSubject: {e['subject']}\n\n{e['body']}",
+                                title="Title order e-mail"))
+            if e["partner"]:
+                console.print(f"[dim]{e['partner'].get('phone') or ''} · {e['partner'].get('website') or ''} — confirm "
+                              "they insure assignments / double closes before ordering.[/dim]")
+
+
+def cmd_finance(args: argparse.Namespace) -> None:
+    from engine import finance
+    init_db()
+    with session_scope() as s:
+        try:
+            if args.add_income:
+                finance.add_entry(s, kind="income", category=args.category or "assignment_fee",
+                                  amount=money_arg(args.add_income), description=args.desc, lead_id=args.lead,
+                                  entry_date=date.fromisoformat(args.date) if args.date else None)
+            if args.add_expense:
+                finance.add_entry(s, kind="expense", category=args.category or "other",
+                                  amount=money_arg(args.add_expense), description=args.desc, lead_id=args.lead,
+                                  entry_date=date.fromisoformat(args.date) if args.date else None)
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return
+        sm = finance.summary(s, args.year)
+        console.print(Panel.fit(
+            f"Income {money(sm.income)} · expenses {money(sm.expenses)} · net [bold]{money(sm.net)}[/bold]\n"
+            f"Tax reserve ({sm.reserve_rate:.0%}): [bold yellow]{money(sm.tax_reserve)}[/bold yellow] · "
+            f"self-employment tax alone ≈ {money(sm.self_employment_tax_estimate)}\n"
+            f"Projected pipeline (probability-weighted): {money(sm.pipeline_projected)}"
+            + (f"\nNext estimated-tax due date: {sm.next_due['date']} — set aside {money(sm.next_due['set_aside'])} "
+               "from this period" if sm.next_due else ""), title=f"Money — {sm.year}"))
+        for q in sm.quarters:
+            console.print(f"  due {q.due_date}: period net {money(q.period_net)} → set aside {money(q.set_aside)}")
+        for x in sm.pipeline[:10]:
+            console.print(f"  #{x['lead_id']} {x['address']} · {x['stage'].lower()} · fee {money(x['expected_fee'])} "
+                          f"x {x['probability']:.0%} = {money(x['weighted'])}")
+        for n in sm.notes:
+            console.print(f"[dim]• {n}[/dim]")
+
+
+def cmd_partners(args: argparse.Namespace) -> None:
+    from engine import closing_coordinator as cc
+    data = cc.partners()
+    for name, region in (data.get("regions") or {}).items():
+        if args.county and cc.region_for(args.county) != name:
+            continue
+        console.print(f"[bold]{name.title()} NJ[/bold] ({', '.join(region.get('counties') or [])})")
+        for kind in ("title_agencies", "closing_attorneys"):
+            for p in region.get(kind) or []:
+                ev = f" — “{p['investor_evidence']}”" if p.get("investor_evidence") else ""
+                console.print(f"  {'title' if kind == 'title_agencies' else 'attorney'}: {p['name']}, {p.get('city', '')} "
+                              f"{p.get('phone', '')}{ev}")
+    console.print(f"[dim]Verified {data.get('verified_on')} from each firm's own page — call to confirm assignments / "
+                  "double closes, and check licenses (NAIC lookup) before you use them.[/dim]")
+
+
+def cmd_inbound(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from engine import inbound
+    init_db()
+    gis = None
+    if not args.offline:
+        from agents.scrapers.njgis_client import NJGISClient
+        gis = NJGISClient()
+    with session_scope() as s:
+        if not args.ingest:
+            rows = s.execute(select(Lead.id, Property.street_address, Property.city, Lead.status_stage)
+                             .join(Property, Lead.property_id == Property.id)
+                             .where(Lead.primary_source == inbound.SOURCE).order_by(Lead.id.desc()).limit(25)).all()
+            for r in rows:
+                console.print(f"#{r[0]} {r[1]}, {r[2]} · {r[3].lower()}")
+            buyers = s.scalars(select(CashBuyer).where(CashBuyer.source == inbound.SOURCE)).all()
+            console.print(f"{len(rows)} web seller leads, {len(buyers)} registered buyers. "
+                          "Ingest a form export: python manage.py inbound --ingest submissions.json")
+            return
+        out = inbound.ingest_file(s, Path(args.ingest), gis=gis, underwrite=not args.no_underwrite)
+        for r in out["sellers"]:
+            console.print(f"[green]seller lead #{r['lead_id']}[/green] ({'new' if r['created'] else 'existing'}) "
+                          f"parcel {'matched' if r['matched_parcel'] else 'unmatched'} · "
+                          f"{r['verdict'] or 'not valued yet'}" + (f" · {'; '.join(r['notes'])}" if r["notes"] else ""))
+            console.print(Panel(r["response_email"], title="Draft reply (e-mail)"))
+            if r["response_sms"]:
+                console.print(f"  SMS: {r['response_sms']}")
+        for b in out["buyers"]:
+            console.print(f"[cyan]buyer #{b['buyer_id']}[/cyan] {b['name']} ({'new' if b['created'] else 'updated'}) — matched "
+                          "against current deals")
+        for e in out["errors"]:
+            console.print(f"[red]skipped:[/red] {e}")
+
+
+def cmd_site(args: argparse.Namespace) -> None:
+    import shutil
+    from pathlib import Path
+
+    from engine.inbound import site_config
+    src = Path(__file__).resolve().parent / "site"
+    out = Path(args.build)
+    out.mkdir(parents=True, exist_ok=True)
+    for f in ("index.html", "buyers.html", "site.css", "site.js"):
+        shutil.copy2(src / f, out / f)
+    cfg = site_config(args.endpoint, args.buyer_endpoint)
+    (out / "config.js").write_text("window.SITE_CONFIG = " + json.dumps(cfg, indent=1) + ";\n", encoding="utf-8")
+    missing = [k for k in ("company", "phone", "email", "mailing_address") if not cfg[k]]
+    console.print(f"Static site → {out} (mode: {cfg['mode']}). Upload the folder to GitHub Pages / Netlify / Vercel.")
+    if missing:
+        console.print(f"[yellow]Set operator {', '.join(missing)} in config/settings.local.yaml first — the pages show "
+                      "your contact details and the forms need somewhere to go.[/yellow]")
+
+
+def cmd_today(args: argparse.Namespace) -> None:
+    from engine.today import today
+    init_db()
+    with session_scope() as s:
+        t = today(s)
+        console.print(Panel.fit(f"[bold]Today — {t['date']}[/bold]: 2 focused hours. Work the blocks in order; log "
+                                "every touch (cockpit → lead → Log call, or manage.py call).", border_style="cyan"))
+        d = t["deadlines"]
+        for a in d["closing"]:
+            console.print(f"[{'red' if a['overdue'] else 'yellow'}]DEADLINE[/] {a['due_date']} lead #{a['lead_id']} "
+                          f"{a['address']}: {a['label']}")
+        for f in d["followups"]:
+            console.print(f"[yellow]FOLLOW-UP[/yellow] lead #{f['lead_id']} {f['address']} ({f['stage'].lower()}, last: "
+                          f"{(f['last'] or '—').lower()})")
+        b1, b2, b3, b4 = t["blocks"]
+        console.print(f"\n[bold red]BLOCK 1 ({b1['minutes']} min) — {b1['title']}[/bold red]")
+        for r in b1["rows"]:
+            a = r["agent"] or {}
+            console.print(f"  #{r['lead_id']} [bold]{r['address']}[/bold] · sale {r['sale_date']} "
+                          f"([bold]{r['days_to_sale']}d[/bold]) · upset {short_money(r['upset'])} · ask "
+                          f"{short_money(r['list_price'])} · {r['dom'] or '?'} DOM · {r['track_label']}")
+            console.print(f"     agent {a.get('name')} {a.get('phone_display') or ''} {a.get('email') or ''} · "
+                          f"offer {short_money(r['anchor'])}/{short_money(r['best'])} · script: {r['cli']}")
+        if not b1["rows"]:
+            console.print(f"  [dim]{b1['empty']}[/dim]")
+        console.print(f"\n[bold green]BLOCK 2 ({b2['minutes']} min) — {b2['title']}[/bold green]")
+        for r in b2["rows"]:
+            console.print(f"  #{r['lead_id']} {r['address']}, {r['town']} · ask {short_money(r.get('ask'))} vs MAO 70 "
+                          f"{short_money(r['mao_70'])} (gap {short_money(r['gap_to_ask'])}) · {r.get('who') or ''} "
+                          f"{r.get('phone_display') or r.get('email') or ''}")
+        if not b2["rows"]:
+            console.print(f"  [dim]{b2['empty']}[/dim]")
+        console.print(f"\n[bold yellow]BLOCK 3 ({b3['minutes']} min) — {b3['title']}[/bold yellow]")
+        for r in b3["rows"]:
+            console.print(f"  #{r['lead_id']} {r['address']} · {r['kind']} · sale {r['sale_date']} · spread "
+                          f"{short_money(r['spread'])} · look up: {r['target']} ({r['role'].lower()})")
+            for name, url in list(r["links"].items())[:3]:
+                console.print(f"     {name}: {url}")
+        console.print("  [dim]Paste what you find: python manage.py skiptrace --lead <id> --paste <file> "
+                      "(or the cockpit's Skip-trace box).[/dim]" if b3["rows"] else f"  [dim]{b3['empty']}[/dim]")
+        console.print(f"\n[bold cyan]BLOCK 4 ({b4['minutes']} min) — {b4['title']}[/bold cyan]")
+        for r in b4["rows"]:
+            rec = r["recent"]
+            console.print(f"  buyer #{r['buyer_id']} [bold]{r['name']}[/bold]{' (flipper)' if r['flipper'] else ''} · "
+                          f"{r['purchases_in_towns']} buys there · recent {rec['address']}, {rec['town']} "
+                          f"{money(rec['price'])} ({rec['date']}) · {r['phone_display'] or r['email'] or 'find a phone:'}")
+            if not (r["phone_display"] or r["email"]):
+                for name, url in r["links"].items():
+                    console.print(f"     {name}: {url}")
+            console.print(f"     script: python manage.py script <lead> --buyer {r['buyer_id']}  ·  “{r['opening'][:150]}…”")
+        if not b4["rows"]:
+            console.print(f"  [dim]{b4['empty']}[/dim]")
+        console.print(Panel(t["reminder"], title="Every call", border_style="yellow"))
+
+
 def money_arg(text: str) -> float:
     t = text.strip().lower().replace("$", "").replace(",", "")
     mult = 1_000 if t.endswith("k") else 1_000_000 if t.endswith("m") else 1
@@ -861,6 +1170,44 @@ def main(argv: list[str] | None = None) -> None:
     bd.add_argument("--structure", default="assignment", choices=["assignment", "jv"])
     bd.add_argument("--split", type=float, help="JV partner share in percent")
     bd.add_argument("--assignee", help="legal name/entity of the assignee (required for unnamed buyers)")
+    fs = sub.add_parser("fast-track", help="listed foreclosures (sheriff sale + MLS) and portfolio owners")
+    fs.add_argument("--top", type=int, default=30)
+    fs.add_argument("--script", type=int, metavar="LEAD", help="listing-agent script for one listed foreclosure")
+    fs.add_argument("--packets", action="store_true", help="build urgent e-mail/SMS/LOI packets for the queue")
+    fs.add_argument("--portfolios", type=int, default=0, metavar="N", help="show the top N portfolio owners")
+    fs.add_argument("--top-script", action="store_true", help="with --portfolios: print the call opener for #1")
+    fs.add_argument("--portfolio-letters", type=int, default=0, metavar="N", help="one letter per portfolio owner")
+    fs.add_argument("--out")
+    cl = sub.add_parser("closing", help="contract-to-close milestones, title order e-mail, close a deal")
+    cl.add_argument("id", type=int, nargs="?")
+    cl.add_argument("--done", metavar="MILESTONE", help="mark a milestone done (e.g. EMD_DEPOSITED)")
+    cl.add_argument("--notes")
+    cl.add_argument("--disapproved", action="store_true", help="an attorney disapproved during review")
+    cl.add_argument("--title-email", action="store_true")
+    cl.add_argument("--partner", help="title agency name (default: preferred / best in the county's region)")
+    cl.add_argument("--structure", default="assignment", choices=["assignment", "double_close"])
+    cl.add_argument("--close", action="store_true", help="closed and paid")
+    cl.add_argument("--fee", help="assignment fee received, e.g. 22.5k")
+    cl.add_argument("--date", help="YYYY-MM-DD")
+    fi = sub.add_parser("finance", help="income, expenses, pipeline and the quarterly tax reserve")
+    fi.add_argument("--year", type=int)
+    fi.add_argument("--add-income")
+    fi.add_argument("--add-expense")
+    fi.add_argument("--category")
+    fi.add_argument("--desc")
+    fi.add_argument("--lead", type=int)
+    fi.add_argument("--date")
+    pa = sub.add_parser("partners", help="NJ title agencies and closing attorneys (config/nj_closing_partners.yaml)")
+    pa.add_argument("--county")
+    ib = sub.add_parser("inbound", help="website seller / buyer submissions (list or --ingest an export)")
+    ib.add_argument("--ingest", metavar="FILE", help="Formspree/webhook JSON or CSV export, or a 'key: value' e-mail")
+    ib.add_argument("--no-underwrite", action="store_true")
+    ib.add_argument("--offline", action="store_true", help="skip the NJGIN parcel lookup")
+    si = sub.add_parser("site", help="build the static seller/buyer site for free hosting")
+    si.add_argument("--build", required=True, metavar="DIR")
+    si.add_argument("--endpoint", help="form endpoint for the seller form (e.g. a Formspree URL)")
+    si.add_argument("--buyer-endpoint", help="separate endpoint for the buyer form (default: --endpoint)")
+    sub.add_parser("today", help="the 2-hour daily checklist (listed foreclosures, ready calls, skip-trace, buyers)")
     args = parser.parse_args(argv)
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
@@ -868,7 +1215,9 @@ def main(argv: list[str] | None = None) -> None:
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
      "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,
      "mail-merge": cmd_mail_merge, "inspect": cmd_inspect, "stack": cmd_stack, "buyer-hotzones": cmd_buyer_hotzones,
-     "walkthrough": cmd_walkthrough, "bid": cmd_bid}[args.cmd](args)
+     "walkthrough": cmd_walkthrough, "bid": cmd_bid, "fast-track": cmd_fast_track, "closing": cmd_closing,
+     "finance": cmd_finance, "partners": cmd_partners, "inbound": cmd_inbound, "site": cmd_site,
+     "today": cmd_today}[args.cmd](args)
 
 
 if __name__ == "__main__":

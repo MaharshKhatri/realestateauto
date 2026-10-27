@@ -8,11 +8,13 @@ writes the call script, logs the call, drafts the paperwork and matches the deal
 spends their time on the phone and e-mail. It is built for a **laptop-and-phone operator with no car**:
 condition checks, owner outreach and buyer walkthroughs are all done remotely.
 
+> **Operator? Start with [`PLAYBOOK.md`](PLAYBOOK.md)** and run `python manage.py today` every morning.
+>
 > **Read `CLAUDE.md` first** — it is the architecture memory and the NJ legal rulebook the code
 > enforces (attorney review, tax sale certificates, sheriff-sale adjournments, the Foreclosure Rescue
 > Fraud Prevention Act 82%-of-FMV floor, Consumer Fraud Act disclosures, TCPA/DNC, Daniel's Law).
 
-## What it does today (Phases 1–3)
+## What it does today (Phases 1–4)
 
 | Component | Source (all free) | Output |
 |---|---|---|
@@ -37,6 +39,11 @@ condition checks, owner outreach and buyer walkthroughs are all done remotely.
 | `engine/virtual_inspector.py` | lead + listing text | Street View / satellite / FEMA / listing links, condition flags (roof, water, wiring, oil tank…), remote checklist, photo/video request |
 | `engine/direct_mail.py` | leads without a phone | Pre-auction, compassionate-estate and tired-landlord letters → PDF + Click2Mail CSV, suppression list, proof mode |
 | `engine/disposition.py` | recorded cash-buyer purchases | Buyer hotzones (town + product + price band) with our deals in each, remote walkthrough plans/scripts, buyer bids → assignment/JV auto-fill |
+| `engine/valuation_guard.py` + comp hygiene | every valuation | Package-deed and band filters on comps, ARV capped against the ask / equalized assessment / $-per-sqft, commercial parcels PASS |
+| `engine/fast_track.py` | sheriff sales also on the MLS; portfolio owners | Listed-foreclosure queue with honest tracks (cash / FRFPA floor / confirm occupancy / short sale), urgent agent script + LOI packet with countdown; multi-address landlord scripts and letters |
+| `engine/closing_coordinator.py` + `engine/finance.py` | contracts, sourced partner directory | 8 NJ contract-to-close milestones on business days, title order e-mail, ledger, pipeline and the 28% quarterly tax reserve |
+| `site/` + `engine/inbound.py` | your own web pages | Seller "sell as-is" page and cash-buyer registration (local, tunnel or free static hosting) → leads with consent, underwriting and a drafted reply; buyers matched to deals |
+| `manage.py today` | DB | The 2-hour daily checklist: deadlines, 5 listed foreclosures, 15 ready calls, 10 skip-traces, 5 cash buyers |
 
 ## Quickstart
 
@@ -98,7 +105,12 @@ Set `WHOLESALING_DATABASE_URL` to a Postgres URL (e.g. a free Supabase project) 
 - **Buyer hotzones** reflect the deed data on file: Union County's export currently covers Elizabeth only, and
   NJGIN mailing-cluster buyers carry no names (Daniel's Law) — load more county deed exports to widen them.
 
+- **Listed foreclosures are mostly short sales.** Of the ~50 sheriff-sale properties also on the MLS, most owe more
+  than an investor can pay; the fast track labels each one honestly and only a handful are straight cash offers.
+- **Title / attorney directory** entries were checked on each firm's own website on the date in the file; investor
+  claims are their marketing — call to confirm and check licenses.
+
 ## Roadmap
 
-Sprint 4 — clerk lis pendens, NJ permits, paid skip-trace adapters, outcome-trained scoring, valuation sanity
-checks · Sprint 5 — attorney-reviewed templates, closing coordinator. See `CLAUDE.md`.
+Sprint 5 — clerk lis pendens, NJ permits, paid skip-trace adapters, outcome-trained scoring · Sprint 6 — buyer list
+growth, deal sheets to matched buyers, attorney-reviewed templates, proof-of-funds tracking. See `CLAUDE.md`.

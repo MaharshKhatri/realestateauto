@@ -61,8 +61,11 @@ def person_names(session: Session) -> set[tuple[str, str]]:
 
 
 def tracked_files(root: Path = ROOT) -> list[Path]:
-    res = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True)
-    return [root / p for p in res.stdout.splitlines() if Path(p).suffix.lower() not in SKIP_SUFFIXES]
+    """Files git tracks plus new files it would commit (untracked, not ignored) — scan before `git add`."""
+    res = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=root,
+                         capture_output=True, text=True, check=True)
+    return [root / p for p in dict.fromkeys(res.stdout.splitlines())
+            if Path(p).suffix.lower() not in SKIP_SUFFIXES and (root / p).is_file()]
 
 
 def scan(session: Session, files: list[Path] | None = None) -> list[Hit]:

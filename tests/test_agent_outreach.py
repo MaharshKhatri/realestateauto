@@ -47,11 +47,12 @@ def test_packet_wording_and_loi(db, tmp_path, postal):
 
 
 def test_frfpa_presumed_exempt_listing_becomes_inquiry(db, postal):
-    # A listed foreclosure with unconfirmed occupancy: the LOI gate blocks a below-floor price, so we ask first.
+    # A listed foreclosure with unconfirmed occupancy: the urgent fast-track packet asks who lives there first.
     lead = make_lead(db, absentee=True, stale_listing=True, list_price=360_000)
     add_contact(db, lead, contact_type="LISTING_AGENT", name="Pat Agent", phone="9735550100", email="pat@broker.test")
     p = ao.build_packet(lead, generate_loi=False, session=db)
-    assert p.kind == "inquiry" and p.anchor is None and "vacant" in p.email_body
+    assert p.kind == "inquiry" and p.anchor is None and p.track == "CONFIRM_OCCUPANCY"
+    assert "living there" in p.email_body and p.email_body.count("Hi Pat") == 1
     assert ao.record_sent(db, lead, p, "email") == lead.status_stage            # an inquiry is not an offer
     assert lead.next_followup_at is not None
 

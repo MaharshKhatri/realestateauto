@@ -27,6 +27,7 @@ compliance:
 contracts:
   earnest_money: 1000                # seller-side deposit, held in escrow by the title company/attorney
   inspection_business_days: 10       # due-diligence window after attorney review ends
+  deposit_business_days: 3           # PSA: seller-side deposit due this many business days after attorney review
   closing_days: 30                   # target closing, calendar days after attorney review ends
   loi_valid_days: 5
   assignee_deposit: 5000             # non-refundable deposit from the end buyer on assignment
@@ -119,6 +120,21 @@ deal:
   annual_appreciation: 0.05          # time-adjusts older public-record comps
   high_tax_drag_threshold: 0.025     # effective tax rate (annual taxes / ARV) above this hurts buyer demand
   tax_drag_arv_haircut_per_pct: 0.02 # ARV haircut per 1 pt of effective tax rate above threshold
+  outlier_guard:                     # engine/comps.py CompHygiene + engine/underwriter.py outlier_guard()
+    comp_min_price: 40000            # below: non-arm's-length (family, $1 deeds)
+    comp_max_price: 2500000          # above: package / commercial deed on a house parcel ...
+    high_value_subject: 1200000      # ... unless the subject's equalized value or ask is above this
+    comp_ppsf_min: 60                # NJ class 2 $/sqft sanity band (when living area is known)
+    comp_ppsf_max: 850
+    comp_ratio_min: 0.5              # comp sale / its equalized assessment (above ~2x: new construction
+    comp_ratio_max: 2.0              # on a teardown lot, not a fixer comp)
+    residential_classes: ["2"]
+    max_arv_to_ask: 1.6              # ARV above 1.6x a live ask -> capped to benchmark_multiple x ask
+    max_arv_to_equalized: 3.5        # ARV above 3.5x equalized assessment -> capped to benchmark_multiple x it
+    benchmark_multiple: 1.25
+    max_arv_per_sqft: 850
+    confidence_cap: 40               # capped valuations are screening guesses
+    non_residential_confidence_cap: 20
 
 rehab:
   light_per_sqft: 25
@@ -157,6 +173,7 @@ scoring:
     stack_3x: 18                     # tax, estate, vacant, code, portfolio) — stacked distress converts best
     stack_4x: 25
     portfolio_owner: 10              # owner/mailing holds 2+ distressed or absentee leads: one call, several houses
+    inbound_inquiry: 45              # the owner asked us for an offer through the website (engine/inbound.py)
   listing_striking_distance: {viability: 15, viability_close: 22, priority: 8}   # mao_75 >= 75% / 90% of ask + agent
   priority_mix: {motivation: 0.55, viability: 0.45}
 
@@ -182,5 +199,8 @@ agents:
     signal_stacker: "55 6 * * *"
     lead_scoring: "0 7 * * *"
     underwriter: "15 7 * * *"
+    outlier_guard: "25 7 * * *"
+    fast_track: "30 7 * * *"
+    closing_alerts: "0 8 * * 1-5"
     buyer_matcher: "35 7 * * *"
     self_improvement: "45 7 * * *"

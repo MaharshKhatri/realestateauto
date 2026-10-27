@@ -43,8 +43,9 @@ driving for dollars, door-knocking or an in-person visit by the operator.
 | **1. Data & Valuation Swarm** | DB layer, live NJ scrapers (sheriff sales, MOD-IV absentee/out-of-state, mailing-cluster cash buyers, stale listings, tax-sale import), owner/deed import + flip detection, comps/ARV/MAO underwriter with NJ tax drag + FRFPA floor, explainable scoring, swarm orchestrator, self-improvement log, daily briefing CLI | **Done (Phase 1)** |
 | **2. Contacts, FRFPA Tracks, Call Scripts, Deal Docs & CRM Cockpit** | Contacts table + enrichment (listing agents, foreclosure defendants/heirs/executors, municipal ArcGIS owner layers, mailing cross-reference, entity lookup links), skip-trace export/paste/import, DNC guard (FTC/internal/Daniel's Law, calling hours), FRFPA occupancy classifier + covered-deal tracks (82% floor / equity-rescue referral), battle cards (playbooks A–E, 12+ objections), LOI/PSA/assignment/JV/deal-sheet generator with compliance gates, CRM (call log → stage → follow-up → rescore → coach), local web cockpit, buyer matcher, contact-readiness audit | **Done (Phase 2)** |
 | **3. Virtual B2B Deal Machine, Signal Stacking, Virtual Inspection & Remote Disposition** | PII scrub of tracked files (`pii-scan`), all stale listings underwritten (listing-only condos via MLS type), list-to-MAO gap + striking distance, READY_TO_CALL queue, listing-agent LOI blast (email/SMS/LOI, SMTP 25/day, 48h follow-up), signal stacker (listed distress, portfolio owners, tax-sale local match) with [Nx STACKED] badges, virtual inspector dossier, direct-mail merge (Click2Mail CSV, Daniel's Law suppression), buyer hotzones, remote walkthroughs + buyer_bids → assignment/JV auto-fill, briefing A/B/C, four cockpit tabs | **Done (Phase 3)** |
-| **4. Lead Sources & Learning at Scale** | Union + Essex clerk lis-pendens agents (names → parcels via owner lists), NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), outcome-driven weight re-fits once calls are logged, valuation sanity checks for whole-complex / commercial parcels | Next |
-| **5. Closing Coordinator** | Buyer list growth (more county deed exports), attorney-reviewed templates replacing the drafts, title/closing milestone tracker, proof-of-funds tracking on bids | Planned |
+| **4. Sanity Guard, Listed-Foreclosure Fast Track, Closing Coordinator, Inbound Funnel & Daily Execution** | Comp hygiene + ARV outlier guard (package deeds, price/$-sqft/ratio bands, ask/assessment/$-sqft caps, non-residential PASS) and the `outlier_guard` agent over every valuation; listed-foreclosure sniper queue with honest tracks + urgent agent packets, portfolio-owner scripts/letters; NJ contract-to-close milestones, sourced title/attorney directory, title order e-mail, ledger + 28% tax reserve; `site/` seller + buyer funnel with consent capture and inbound ingest; `manage.py today` + cockpit Today home + `PLAYBOOK.md` | **Done (Phase 4)** |
+| **5. Lead Sources & Learning at Scale** | Union + Essex clerk lis-pendens agents (names → parcels via owner lists), NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), outcome-driven weight re-fits once calls are logged | Next |
+| **6. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
 
 ## Directory structure
 
@@ -53,17 +54,23 @@ CLAUDE.md                     ← you are here
 manage.py                     ← operator CLI (rich): briefing (A ready-to-call / B sheriff+estate spreads / C stacked),
                                 lead, underwrite, buyers, stats, server, queue, script, call, occupancy, contract, docs,
                                 skiptrace, dnc (+ --suppress-address), match, pii-scan, agent-blast, mail-merge,
-                                inspect, stack, buyer-hotzones, walkthrough, bid, swarm passthrough
+                                inspect, stack, buyer-hotzones, walkthrough, bid, today, fast-track, closing, finance,
+                                partners, inbound, site, swarm passthrough
+PLAYBOOK.md                   ← operator's step-by-step guide: setup, daily 2-hour routine, first agent calls, contract →
+                                attorney review → assignment → paid, taxes
 config/settings.yaml          ← all tunables (counties/towns, MAO %, fees, rehab $/sqft, scoring weights, cron)
 config/sources/               ← source directories (realauction_nj.yaml: 91 tax-sale sites in target counties)
+config/nj_closing_partners.yaml ← NJ title agencies / closing attorneys checked on their own pages (source URL each),
+                                county → region, verification resources, quarterly-tax dates and rates (with sources)
 core/                         ← config loader, polite HTTP client (per-host rate limit, retries, disk cache,
                                 host stats), text/address utils (postal_title), NJ business days, geo, ZIP (ZCTA)
                                 resolver; pii_scan.py (DB names in git-tracked files → `manage.py pii-scan`)
 db/database.py                ← engine/session factory, create + additive migrations, init lock (thread-safe)
 db/models.py                  ← ORM: properties, distress_signals, valuations, leads (+ occupancy, FRFPA track, CRM
                                 fields, ready_to_call), contacts, interactions, dnc_entries, mail_suppressions,
-                                buyer_matches, buyer_bids, generated_documents, cash_buyers, deed_transfers, listings,
-                                agent_runs, scoring_weights, swarm_state
+                                buyer_matches, buyer_bids, closing_milestones, financial_ledger, generated_documents,
+                                cash_buyers (+ web registration fields), deed_transfers, listings, agent_runs,
+                                scoring_weights, swarm_state
 db/repository.py              ← idempotent upserts keyed on natural keys; parcel_id = COUNTY-MUN-BLOCK-LOT[-QUAL]
 agents/base.py                ← BaseAgent: agent_runs bookkeeping, checkpoints, fault isolation
 agents/scrapers/
@@ -85,12 +92,23 @@ agents/enrichment/
 engine/
   market.py                   ← per-town sale/assessment ratio, median price, pre-1980 share (from NJGIN)
   equity.py                   ← purchase-money mortgage amortization → likely equity / free-and-clear
-  comps.py                    ← public-record comps (equalized assessment ratio method) + percentile math
+  comps.py                    ← public-record comps (equalized assessment ratio method) + percentile math;
+                                CompHygiene (package deeds, price / $-sqft / sale-to-assessment bands)
   listing_comps.py            ← homeharvest sold comps ($/sqft method) + subject record lookup, disk cache
   homeharvest_provider.py     ← normalized wrapper around homeharvest (throttled; ProviderBlocked fallback)
   rehab.py                    ← NJ rehab tiers ($25/$50/$85 per sqft + age bumps + roof/HVAC buffer)
-  underwriter.py              ← ARV/as-is → tax drag → rehab → fee → MAO 70/75 → anchor → FRFPA → verdict;
-                                listing_gap (ask ÷ MAO, striking distance, ARV-vs-ask valuation conflict)
+  underwriter.py              ← ARV/as-is → outlier guard → tax drag → rehab → fee → MAO 70/75 → anchor → FRFPA →
+                                verdict; listing_gap (ask ÷ MAO, striking distance, ARV-vs-ask valuation conflict)
+  valuation_guard.py          ← OutlierGuardAgent: re-cleans stored comps + subject guard on every valuation offline;
+                                live re-underwrite for thin comp sets (COMPS_NEED_REFRESH)
+  fast_track.py               ← listed foreclosures (sheriff sale + MLS): honest tracks, urgent agent script/packet,
+                                countdown; portfolio owners: summaries, multi-address script, one letter per owner
+  closing_coordinator.py      ← 8 NJ contract-to-close milestones (+ FRFPA recording), business-day deadlines, review
+                                gate, disapproval, title order e-mail, partner picker, ClosingAlertsAgent
+  finance.py                  ← ledger (income/expense categories), pipeline weighting, 28% reserve, quarterly dates
+  inbound.py                  ← web seller / buyer submissions (local API, Formspree/webhook export, mailto text) →
+                                lead + consent + underwrite + reply draft / cash_buyers + matching; site config
+  today.py                    ← the 2-hour daily checklist (deadlines, 4 blocks) for CLI + cockpit home
   scoring.py                  ← motivation / viability / priority with reasons (+ CRM engagement, stack bonus,
                                 striking-distance boost); ready_to_call(); strategy brief
   briefing.py                 ← briefing sections shared by CLI + cockpit (ready, high-spread, stacked, counts)
@@ -109,8 +127,12 @@ engine/
   crm.py                      ← log_call, follow-up cadence, confirm_occupancy (re-price), record_contract, queues
   debrief.py / ai.py          ← rule-based post-call coach; optional Claude note (redacted payload, opt-in)
   buyer_matcher.py            ← top-5 recorded cash buyers per top deal (geography, price, units, rehab, recency)
-web/app.py + web/static/      ← local cockpit (FastAPI, 127.0.0.1 only, Host/Origin guard): dashboard, battle station,
-                                Ready to Call, Agent LOI Blast, Inspector & Mail, Walkthroughs & Bids
+web/app.py + web/static/      ← local cockpit (FastAPI, 127.0.0.1 only, Host/Origin guard): Today (home), dashboard,
+                                battle station, Fast Track, Ready to Call, Agent LOI Blast, Inspector & Mail,
+                                Walkthroughs & Bids, Closing & Money; serves site/ at /site/* (web.public_hosts may
+                                reach only /site/* and POST /api/inbound/*)
+site/                         ← static seller page + cash-buyer registration (site.js reads generated config.js;
+                                `manage.py site --build` for GitHub Pages / Netlify); config.js + site_dist/ ignored
 swarm/orchestrator.py         ← `python -m swarm.orchestrator` (list | run | job | run-all | daemon | status)
 swarm/self_improvement.py     ← audits health/coverage/spreads → logs/swarm_intelligence.md; tunes weights;
                                 auto-adds high-spread towns (swarm_state.auto_expansion)
@@ -276,6 +298,36 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   accepting fills the assignment (or JV) with the buyer's legal name — unnamed mailing-cluster buyers must
   give one first; other open bids become backups.
 
+### Phase 4 operating rules — enforced in code
+- **Valuation guard** (`engine/comps.py`, `engine/underwriter.py::outlier_guard`, `engine/valuation_guard.py`):
+  comps drop package deeds (one price + deed date on 2+ parcels — NJGIN's sales code shows "A" on them, so it
+  can't be trusted), prices outside $40K–$2.5M (cap lifted when the subject's equalized value or ask is > $1.2M),
+  $/sqft outside $60–850 when the area is stated, and sale-to-equalized-assessment outside 0.5–2.0. The subject
+  ARV is capped to 1.25× a live ask when above 1.6× ask, else to 1.25× the equalized assessment when above 3.5×
+  it, and always to $850/sqft of known living area (OUTLIER_CAPPED, confidence ≤ 40). Non-class-2 parcels are
+  NON_RESIDENTIAL: PASS when unlisted (valued at the equalized assessment), unit-of-a-larger-parcel when listed.
+  Capped / non-residential valuations are never READY_TO_CALL and never get an agent offer.
+- **Listed foreclosures** (`engine/fast_track.py`): tracks follow the numbers — CASH_OFFER (exempt, deal verdict,
+  best ≥ 60% of ask), FRFPA_FLOOR_OFFER (≥ 82% FMV, attorney-drafted), CONFIRM_OCCUPANCY (presumed exemption),
+  SHORT_SALE (a cash offer the agent submits to the lender — the short-sale negotiation stays with the agent and the
+  seller's attorney), EQUITY_MONITOR (no lowball), NO_OFFER. Scripts and packets never offer to stop, postpone or
+  negotiate the sale, never imply paying the agent, always disclose investor / assignment.
+- **Closing** (`engine/closing_coordinator.py`): recording a contract opens 8 milestones (+ FRFPA recording) with
+  NJ-business-day deadlines; attorney review concludes the business day after its deadline unless a disapproval is
+  recorded (which voids the contract and cancels the file); walkthrough / assignment steps refuse to complete while
+  review is open. Closing books the fee once (idempotent ledger key).
+- **Money** (`engine/finance.py`): 28% of net profit is reserved; due dates, thresholds and SE-tax factors come from
+  `config/nj_closing_partners.yaml` with their IRS / NJ sources — update them every January. Not tax advice.
+- **Inbound** (`engine/inbound.py`, `site/`): pages make only provable claims (no testimonials, no timelines, the
+  seller pays normal seller costs incl. the realty transfer fee) and carry the investor / assignment / attorney-review
+  / foreclosure-help disclosures. A phone is called only with the form's consent checkbox; that consent covers a
+  National-registry number for this inquiry, but internal / Daniel's Law stops always win. Honeypot field rejects bots.
+  `web.public_hosts` (a tunnel) can reach only `/site/*` and `POST /api/inbound/*`. Static mode sends submissions to
+  a third-party form service (Formspree) — the operator's account holds them until exported and ingested.
+- **Partners** (`config/nj_closing_partners.yaml`): only firms verified on their own page with a source URL; "investor"
+  claims are quoted evidence, not endorsements — confirm assignment / double-close insurance by phone and check
+  licenses (NAIC / DOBI) before use.
+
 ## Coding standards
 
 - **No placeholders, mock data or TODO stubs in shipped code.** Every scraper is tested live from
@@ -304,14 +356,15 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
 - `swarm/orchestrator.py` holds the registry (`AGENTS`), dependency order and cron schedules
   (from `config/settings.yaml`). Modes:
   - `python -m swarm.orchestrator run-all` — run the full pipeline once (scrape ∥ → owner enrichment →
-    contact enrichment [municipal_owners → listing_agents → owner_resolver → signal_stacker] → score → underwrite → re-score →
-    buyer_matcher → self-improve).
+    contact enrichment [municipal_owners → listing_agents → owner_resolver → signal_stacker] → score → underwrite →
+    outlier_guard → re-score → fast_track → buyer_matcher → closing_alerts → self-improve).
   - `python -m swarm.orchestrator run <agent>` — run one agent.
   - `python -m swarm.orchestrator daemon` — APScheduler loop using the cron schedules.
   - `python -m swarm.orchestrator status` — recent runs and health.
 - The **Self-Improvement & Alpha Discovery Agent** runs last in every pipeline: audits scraper
   success rates, data coverage, contact readiness (top-100 leads with a callable phone), ready-to-call and
-  stacked-distress counts, agent LOIs awaiting follow-up, buyer-match
+  stacked-distress counts, agent LOIs awaiting follow-up, outlier-guard coverage, listed foreclosures not yet
+  contacted, overdue closing milestones, the money picture, buyer-match
   coverage, DNC freshness, call outcomes, comp coverage and spread viability, writes findings to
   `logs/swarm_intelligence.md`, tunes the scoring weights stored in `scoring_weights`,
   and proposes adjacent municipalities with better spread-to-ARV ratios.
@@ -321,6 +374,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
 ```bash
 pip install -e ".[dev]"                     # install
 python manage.py init                       # create/upgrade the database
+python manage.py today                      # START HERE every day: deadlines + 4 blocks from live records
 python -m swarm.orchestrator run-all        # full live pipeline (scrape ∥ → enrich → score → underwrite → re-score → improve)
 python manage.py briefing                   # daily action briefing (top 15 leads)
 python manage.py underwrite --top 15        # (re)underwrite the top leads
@@ -341,6 +395,13 @@ python manage.py stack                      # signal stacker (listed distress, p
 python manage.py buyer-hotzones             # where cash buyers pay the most + our deals there
 python manage.py walkthrough <id> --invite <buyer>   # after attorney review: remote buyer walkthroughs
 python manage.py bid <id> --buyer <b> --amount 470k --emd 5k ; bid <id> --accept <bid> [--assignee "ABC LLC"]
-python manage.py pii-scan                   # before every push: DB names in tracked files → exit 1
+python manage.py fast-track [--packets] [--script <id>] [--portfolios 20] [--portfolio-letters 20]
+python manage.py closing [<id> --done EMD_DEPOSITED | --title-email | --close --fee 22.5k | --disapproved]
+python manage.py finance [--add-expense 120 --category mail]   # ledger, pipeline, 28% tax reserve, due dates
+python manage.py partners --county Essex    # sourced NJ title agencies / closing attorneys
+python manage.py inbound --ingest export.json   # Formspree / webhook / mailto submissions → leads / buyers
+python manage.py site --build site_dist --endpoint <form URL>   # static funnel for free hosting
+python -m swarm.orchestrator run outlier_guard  # re-check every valuation (comp hygiene + ARV guard)
+python manage.py pii-scan                   # before every commit: DB names in tracked + new files → exit 1
 pytest                                      # tests
 ```

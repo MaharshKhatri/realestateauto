@@ -24,3 +24,7 @@ data/imports/
 
 # Generated deal documents (LOI/PSA/deal sheets name the seller) — never commit.
 deals/
+
+# Generated inbound-site config / static build (operator contact details)
+site/config.js
+site_dist/

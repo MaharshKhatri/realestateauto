@@ -54,11 +54,16 @@ async function route() {
   const [path, query] = hash.slice(1).split("?");
   const params = new URLSearchParams(query || "");
   try {
-    const section = (path.match(/^\/(ready|agents|inspect|dispo|lead)/) || [])[1] || "dash";
+    const section = path === "/" || path === "" ? "today"
+      : (path.match(/^\/(ready|agents|inspect|dispo|lead|fast|closing)/) || [])[1] || "dash";
     document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === section));
     const m = path.match(/^\/lead\/(\d+)/);
     if (m) return await renderLead(+m[1], params.get("contact"));
+    if (path === "/" || path === "") return await renderToday();
     if (path === "/ready") return await renderReady();
+    if (path === "/fast") return await renderFast();
+    const cl = path.match(/^\/closing(?:\/(\d+))?/);
+    if (cl) return await renderClosing(cl[1] ? +cl[1] : null);
     if (path === "/agents") return await renderAgents();
     const ins = path.match(/^\/inspect(?:\/(\d+))?/);
     if (ins) return await renderInspect(ins[1] ? +ins[1] : null);
@@ -73,7 +78,7 @@ async function route() {
 window.addEventListener("hashchange", route);
 $("#search").addEventListener("submit", (e) => {
   e.preventDefault();
-  location.hash = `#/?tab=all&q=${encodeURIComponent($("#q").value)}`;
+  location.hash = `#/dashboard?tab=all&q=${encodeURIComponent($("#q").value)}`;
 });
 
 function statusBar(dnc) {
@@ -177,12 +182,12 @@ async function renderLead(id, contactId) {
   const sel = contactId ? +contactId : null;
   app.innerHTML = `
     <div class="row spread" style="margin-bottom:12px">
-      <div><a href="#/">← Dashboard</a>
+      <div><a href="#/dashboard">← Dashboard</a>
         <h1>${esc(L.address)}, ${esc(L.town)} <span class="muted">${esc(L.county)} · ${esc(L.zip || "")}</span></h1>
         <div class="row">${verdictPill(L.verdict)} <span class="pill">${label(L.stage)}</span>
           <span class="pill acc">priority ${L.priority}</span> ${L.days_to_sale !== null ? daysBadge(L.days_to_sale) + " sale " + day(L.sale_date) : ""}
           <span class="pill">playbook ${esc(d.playbook)}</span> ${L.next_followup_at ? `<span class="pill warn">next touch ${fmtDate(L.next_followup_at)}</span>` : ""}
-          ${stackPill(L.badge)} <a class="btn" href="#/inspect/${L.id}">Virtual inspection</a> <a class="btn" href="#/dispo/${L.id}">Walkthroughs &amp; bids</a></div>
+          ${stackPill(L.badge)} <a class="btn" href="#/inspect/${L.id}">Virtual inspection</a> <a class="btn" href="#/dispo/${L.id}">Walkthroughs &amp; bids</a> <a class="btn" href="#/closing/${L.id}">Closing file</a></div>
       </div>
     </div>
     <div class="grid g-lead">
@@ -707,6 +712,193 @@ async function renderDispo(id) {
       ${Object.entries(data.files).map(([e, u]) => `<a href="${esc(u)}" target="_blank">${e}</a>`).join(" · ")}</div>`;
     toast("Bid accepted — document generated.");
   }));
+}
+
+
+// -- Phase 4: fast track ---------------------------------------------------------------------------
+const TRACK_CLS = { CASH_OFFER: "good", FRFPA_FLOOR_OFFER: "acc", CONFIRM_OCCUPANCY: "warn", SHORT_SALE: "warn",
+  EQUITY_MONITOR: "vio", NO_OFFER: "bad" };
+function countdown(r) {
+  if (!r.sale_date) return "—";
+  return `${daysBadge(r.days_to_sale)} <span class="muted">${day(r.sale_date)}</span>`;
+}
+async function renderFast() {
+  const { data: d } = await api("/api/fast-track?portfolios=20");
+  const withAgent = d.listed.filter((r) => r.agent);
+  app.innerHTML = `
+    <div class="card"><div class="row spread"><h2>Listed foreclosures — sheriff sale + MLS listing</h2>
+      <span class="muted">${d.listed.length} listed · ${withAgent.length} with a listing agent · call these first</span></div>
+      <p class="muted">The seller already wants to sell, the auction date is fixed, and the agent earns nothing if it goes to the sale.
+        Each track is what the numbers honestly support. Never offer to stop or postpone the sale or to negotiate with the lender.</p>
+      <div class="tablewrap" style="max-height:none"><table><thead><tr><th>Property</th><th>Sale</th><th class="num">Upset</th>
+        <th class="num">Ask</th><th class="num">DOM</th><th>Track</th><th class="num">Offer</th><th>Listing agent</th><th></th></tr></thead>
+      <tbody>${d.listed.map((r, i) => `<tr>
+        <td><a href="#/lead/${r.lead_id}"><b>${esc(r.address)}</b></a><br><span class="muted">${esc(r.county)} · ${label(r.verdict || "not valued")}</span></td>
+        <td>${countdown(r)}</td><td class="num">${kmoney(r.upset)}</td><td class="num">${kmoney(r.list_price)}</td>
+        <td class="num">${r.dom ?? "?"}</td>
+        <td><span class="pill ${TRACK_CLS[r.track] || ""}">${esc(r.track_label)}</span><br><span class="muted" style="font-size:12px">${esc(r.reasons[0] || "")}</span></td>
+        <td class="num">${r.anchor ? kmoney(r.anchor) + " / " + kmoney(r.best) : "—"}</td>
+        <td>${r.agent ? `${esc(r.agent.name || "")}<br><span class="mono">${esc(r.agent.phone_display || "")}</span><br><span class="muted">${esc(r.agent.email || "")}</span>` : '<span class="muted">no agent contact</span>'}
+          ${r.last_outreach ? `<br><span class="pill good">sent ${fmtDate(r.last_outreach)}</span>` : ""}</td>
+        <td><div class="btns">
+          <button class="btn" data-script="${i}">Script</button>
+          ${r.agent && r.track !== "NO_OFFER" && r.track !== "EQUITY_MONITOR" ? `<button class="btn primary" data-pkt="${i}">Packet + LOI</button>` : ""}
+        </div></td></tr>
+        <tr id="sc-${i}" hidden><td colspan="9"><div class="script objection-resp">
+          <p><b>Opening:</b> ${esc(r.script.opening)}</p><ul>${r.script.questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ul>
+          <p><b>Offer:</b> ${esc(r.script.offer)}</p><p><b>Close:</b> ${esc(r.script.close)}</p>
+          <p class="muted">${esc(r.script.disclosure)}</p>
+          <p class="flag">Never: ${r.script.never_say.map(esc).join(" · ")}</p>
+          <div id="pk-${i}"></div></div></td></tr>`).join("") || '<tr><td colspan="9" class="muted">No listed foreclosures — run the signal stacker (manage.py stack).</td></tr>'}</tbody></table></div></div>
+    <div class="card"><h2>Portfolio owners — one call or letter, every address</h2>
+      ${d.portfolios.map((p, i) => `<div class="contact"><div class="row spread"><b>${esc(p.owner || "Owner (name not on record)")}</b>
+        <span class="muted">${p.size} properties · ${p.deal_count} with an offer verdict · ${p.phone ? esc(p.phone.phone_display) : "mail only"}</span></div>
+        <ul>${p.properties.slice(0, 6).map((x) => `<li><a href="#/lead/${x.lead_id}">${esc(x.address)}</a>, ${esc(x.town)} <span class="muted">${x.signals.map(label).join(", ")} · ${label(x.verdict || "not valued")}</span></li>`).join("")}</ul>
+        <details><summary>Call script</summary><p>${esc(p.script.opening)}</p><ul>${p.script.questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ul>
+        <p class="muted">${esc(p.script.disclosure)}</p></details></div>`).join("") || '<p class="muted">No portfolio owners yet.</p>'}
+      <p class="muted">Letters: <code>python manage.py fast-track --portfolio-letters 20</code></p></div>`;
+  const L = d.listed;
+  app.querySelectorAll("[data-script]").forEach((b) => b.addEventListener("click", () => {
+    const row = $(`#sc-${b.dataset.script}`); row.hidden = !row.hidden;
+  }));
+  app.querySelectorAll("[data-pkt]").forEach((b) => b.addEventListener("click", async () => {
+    const i = +b.dataset.pkt, r = L[i];
+    $(`#sc-${i}`).hidden = false;
+    try {
+      const { data } = await post(`/api/fast-track/${r.lead_id}/packet`, {});
+      const p = data.packet;
+      $(`#pk-${i}`).innerHTML = `<h3>${label(p.kind)} packet</h3><pre class="pre">${esc(p.subject)}\n\n${esc(p.email_body)}</pre>
+        <p><b>SMS:</b> ${esc(p.sms_text)}</p>${p.warnings.length ? `<ul>${p.warnings.map((w) => `<li class="flag">${esc(w)}</li>`).join("")}</ul>` : ""}
+        <div class="btns">${p.mailto ? `<a class="btn" href="${esc(p.mailto)}">Open e-mail</a>` : ""}
+        ${data.files.pdf ? `<a class="btn" href="${esc(data.files.pdf)}" target="_blank">LOI PDF</a>` : ""}
+        <button class="btn good" data-mark="${r.lead_id}">Mark sent</button></div>`;
+      $(`#pk-${i} [data-mark]`).addEventListener("click", async () => {
+        try { const { data: s } = await post(`/api/agent-outreach/${r.lead_id}/send`, { channel: "email" });
+          toast(`Logged: ${label(s.stage)}, follow-up ${fmtDate(s.followup_at)}`); } catch (e) { toast(e.message, true); }
+      });
+    } catch (e) { toast(e.message, true); }
+  }));
+}
+
+
+// -- Phase 4: closing coordinator + money ----------------------------------------------------------
+async function renderClosing(id) {
+  if (id) {
+    const { data: c } = await api(`/api/closing/${id}`);
+    if (!c.open) { app.innerHTML = `<a href="#/lead/${id}">← Lead #${id}</a><div class="card">${esc(c.reason)}</div>`; return; }
+    const e = c.title_email;
+    app.innerHTML = `<a href="#/lead/${id}">← Lead #${id}</a> · <a href="#/closing">All closing files</a>
+      <h1>Closing file — lead #${id}</h1>
+      <div class="grid g-dash">
+        <div class="card"><h2>NJ contract-to-close milestones</h2>${(c.notes || []).map((n) => `<p class="good">${esc(n)}</p>`).join("")}
+          <table><thead><tr><th>#</th><th>Milestone</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>
+          ${c.milestones.map((m) => `<tr><td>${m.sequence}</td><td>${esc(m.label)}${m.notes ? `<br><span class="muted">${esc(m.notes)}</span>` : ""}</td>
+            <td>${day(m.due_date)}</td><td><span class="pill ${m.status === "done" ? "good" : m.overdue ? "bad" : m.status === "cancelled" ? "" : "warn"}">${m.overdue ? "overdue" : label(m.status)}</span></td>
+            <td>${m.status === "pending" && m.key !== "CLOSED_PAID" ? `<button class="btn" data-done="${m.key}">Done</button>` : ""}</td></tr>`).join("")}</tbody></table>
+          <form id="close-form" class="row" style="margin-top:10px"><input type="number" id="close-fee" placeholder="fee received $" style="max-width:180px">
+            <button class="btn good">Closed &amp; paid</button></form>
+          <button class="btn bad" id="disapproved" style="margin-top:8px">Attorney disapproved</button></div>
+        <div class="card"><h2>Title order e-mail</h2>
+          <p class="muted">${e.partner && e.partner.name ? `${esc(e.partner.name)} · ${esc(e.partner.phone || "")} · <a href="${esc(e.partner.website || "#")}" target="_blank" rel="noopener noreferrer">site ↗</a>
+            ${e.partner.investor_evidence ? `<br>“${esc(e.partner.investor_evidence)}”` : ""}<br>Confirm they insure assignments / double closes before ordering.` : "Pick a title agency in config/nj_closing_partners.yaml."}</p>
+          <pre class="pre">Subject: ${esc(e.subject)}\n\n${esc(e.body)}</pre><button class="btn" id="copy-title">Copy</button></div>
+      </div>`;
+    app.querySelectorAll("[data-done]").forEach((b) => b.addEventListener("click", async () => {
+      const notes = prompt(`Notes for "${b.dataset.done}" (optional):`) || "";
+      try { await post(`/api/closing/${id}/milestones/${b.dataset.done}`, { notes }); renderClosing(id); } catch (err) { toast(err.message, true); }
+    }));
+    $("#copy-title").addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(`Subject: ${e.subject}\n\n${e.body}`); toast("Copied."); } catch { toast("Clipboard blocked.", true); }
+    });
+    $("#close-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      if (!$("#close-fee").value) return;
+      try { await post(`/api/closing/${id}/close`, { fee: +$("#close-fee").value }); toast("Closed — fee booked."); renderClosing(id); } catch (err) { toast(err.message, true); }
+    });
+    $("#disapproved").addEventListener("click", async () => {
+      if (!confirm("An attorney disapproved during review? The contract is void and the file closes.")) return;
+      await post(`/api/closing/${id}/disapproved`, { notes: prompt("Notes:") || "" }); renderClosing(id);
+    });
+    return;
+  }
+  const [{ data: o }, { data: f }] = await Promise.all([api("/api/closing"), api("/api/finance")]);
+  app.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><b>${money(f.income)}</b><span>fees ${f.year}</span></div>
+      <div class="kpi"><b>${money(f.net)}</b><span>net after ${money(f.expenses)} expenses</span></div>
+      <div class="kpi"><b>${money(f.tax_reserve)}</b><span>tax reserve (${Math.round(f.reserve_rate * 100)}%)</span></div>
+      <div class="kpi"><b>${money(f.pipeline_projected)}</b><span>pipeline (probability-weighted)</span></div>
+      <div class="kpi"><b>${f.next_due ? day(f.next_due.date) : "—"}</b><span>next estimated tax ${f.next_due ? "· set aside " + money(f.next_due.set_aside) : ""}</span></div>
+    </div>
+    <div class="grid g-dash">
+      <div>
+        <div class="card"><h2>Deadlines</h2><ul>${o.alerts.map((a) => `<li><a href="#/closing/${a.lead_id}">${esc(a.address)}</a> — ${esc(a.label)}
+          <span class="pill ${a.overdue ? "bad" : "warn"}">${a.overdue ? "overdue" : "due"} ${day(a.due_date)}</span></li>`).join("") || '<li class="muted">Nothing due in the next 2 business days.</li>'}</ul></div>
+        <div class="card"><h2>Open closing files</h2><table><thead><tr><th>Property</th><th>Stage</th><th class="num">Contract</th><th>Progress</th><th>Next</th></tr></thead><tbody>
+          ${o.files.map((r) => `<tr class="click" data-href="#/closing/${r.lead_id}"><td>${esc(r.address)}</td><td>${label(r.stage)}</td><td class="num">${money(r.contract_price)}</td>
+            <td>${r.done}/${r.total}</td><td>${esc(r.next || "—")} <span class="${r.overdue ? "bad" : "muted"}">${day(r.next_due)}</span></td></tr>`).join("") || '<tr><td colspan="5" class="muted">No deals under contract yet — record one with manage.py contract &lt;id&gt; --price … --signed ….</td></tr>'}</tbody></table></div>
+        <div class="card"><h2>Ledger</h2><table><thead><tr><th>Date</th><th>Kind</th><th>Category</th><th class="num">Amount</th><th>Note</th></tr></thead><tbody>
+          ${f.entries.map((x) => `<tr><td>${day(x.date)}</td><td>${label(x.kind)}</td><td>${label(x.category)}</td><td class="num ${x.kind === "income" ? "good" : ""}">${money(x.amount)}</td><td>${esc(x.description || "")}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">No entries yet.</td></tr>'}</tbody></table></div>
+      </div>
+      <div>
+        <div class="card"><h2>Add income / expense</h2><form id="led-form">
+          <label>Kind</label><select id="led-kind"><option value="expense">expense</option><option value="income">income</option></select>
+          <label>Category</label><select id="led-cat"></select>
+          <label>Amount</label><input type="number" id="led-amt" step="0.01"><label>Note</label><input type="text" id="led-desc">
+          <button class="btn primary" style="margin-top:8px">Add</button></form></div>
+        <div class="card"><h2>Taxes</h2><ul>${f.quarters.map((q) => `<li>due ${day(q.due_date)}: period net ${money(q.period_net)} → set aside <b>${money(q.set_aside)}</b></li>`).join("")}</ul>
+          ${f.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join("")}</div>
+      </div>
+    </div>`;
+  wireHrefs();
+  const cats = () => { $("#led-cat").innerHTML = f.categories[$("#led-kind").value].map((c) => `<option>${esc(c)}</option>`).join(""); };
+  $("#led-kind").addEventListener("change", cats); cats();
+  $("#led-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    try { await post("/api/finance", { kind: $("#led-kind").value, category: $("#led-cat").value, amount: +$("#led-amt").value, description: $("#led-desc").value });
+      toast("Added."); renderClosing(null); } catch (err) { toast(err.message, true); }
+  });
+}
+
+
+// -- Phase 4: Today (home) -------------------------------------------------------------------------
+async function renderToday() {
+  const { data: t } = await api("/api/today");
+  if (!STATE.dash) api("/api/dashboard").then(({ data }) => statusBar(data.dnc)).catch(() => {});
+  const [b1, b2, b3, b4] = t.blocks;
+  const head = (b, cls) => `<div class="row spread"><h2 class="${cls}">Block ${t.blocks.indexOf(b) + 1} · ${b.minutes} min — ${esc(b.title)}</h2>
+    <span class="muted">${b.rows.length} today</span></div>`;
+  const empty = (b) => (b.rows.length ? "" : `<p class="muted">${esc(b.empty)}</p>`);
+  const dl = t.deadlines;
+  app.innerHTML = `
+    <div class="row spread" style="margin-bottom:10px"><h1>Today — ${day(t.date)}</h1><span class="muted">${esc(t.reminder)}</span></div>
+    ${dl.closing.length || dl.followups.length ? `<div class="card"><h2>First: deadlines &amp; follow-ups</h2><ul>
+      ${dl.closing.map((a) => `<li><a href="#/closing/${a.lead_id}">${esc(a.address)}</a> — ${esc(a.label)} <span class="pill ${a.overdue ? "bad" : "warn"}">${a.overdue ? "overdue" : "due"} ${day(a.due_date)}</span></li>`).join("")}
+      ${dl.followups.map((f) => `<li><a href="#/lead/${f.lead_id}">${esc(f.address)}</a> — follow up (${label(f.stage)}${f.last ? ", last: " + label(f.last) : ""})</li>`).join("")}</ul></div>` : ""}
+    <div class="card">${head(b1, "bad")}
+      <table><thead><tr><th>Property</th><th>Sale</th><th class="num">Upset</th><th class="num">Ask</th><th class="num">DOM</th><th>Track</th><th>Agent</th><th></th></tr></thead><tbody>
+      ${b1.rows.map((r) => `<tr><td><a href="#/lead/${r.lead_id}"><b>${esc(r.address)}</b></a></td><td>${countdown(r)}</td><td class="num">${kmoney(r.upset)}</td>
+        <td class="num">${kmoney(r.list_price)}</td><td class="num">${r.dom ?? "?"}</td><td><span class="pill ${TRACK_CLS[r.track] || ""}">${esc(r.track_label)}</span>
+        ${r.anchor ? `<br><span class="muted">${kmoney(r.anchor)} / ${kmoney(r.best)}</span>` : ""}</td>
+        <td>${esc(r.agent.name || "")}<br><span class="mono">${esc(r.agent.phone_display || r.agent.email || "")}</span></td>
+        <td><a class="btn" href="#/fast">Script + LOI</a></td></tr>`).join("")}</tbody></table>${empty(b1)}</div>
+    <div class="card">${head(b2, "good")}
+      <table><thead><tr><th>Property</th><th>Call / e-mail</th><th class="num">Ask</th><th class="num">MAO 70</th><th class="num">Gap</th><th></th></tr></thead><tbody>
+      ${b2.rows.map((r) => `<tr><td><a href="#/lead/${r.lead_id}${r.contact_id ? "?contact=" + r.contact_id : ""}"><b>${esc(r.address)}</b></a> ${stackPill(r.badge)}<br><span class="muted">${esc(r.town)}</span></td>
+        <td>${esc(r.who || "")}<br><span class="mono">${esc(r.phone_display || r.email || "")}</span></td>
+        <td class="num">${kmoney(r.ask)}</td><td class="num">${kmoney(r.mao_70)}</td><td class="num">${kmoney(r.gap_to_ask)}</td>
+        <td><a class="btn" href="#/agents">LOI</a></td></tr>`).join("")}</tbody></table>${empty(b2)}</div>
+    <div class="grid g-dash">
+      <div class="card">${head(b3, "warn")}<ul>
+        ${b3.rows.map((r) => `<li style="margin-bottom:8px"><a href="#/lead/${r.lead_id}"><b>${esc(r.address)}</b></a> · ${label(r.kind)} · sale ${esc(r.sale_date || "—")} · spread ${kmoney(r.spread)}<br>
+          look up <b>${esc(r.target)}</b> (${label(r.role)}): ${Object.entries(r.links).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${label(k)} ↗</a>`).join(" · ")}</li>`).join("")}</ul>
+        ${b3.rows.length ? '<p class="muted">Paste what you find into the lead\'s Skip-trace box — numbers are DNC-checked on import.</p>' : empty(b3)}</div>
+      <div class="card">${head(b4, "acc")}<ul>
+        ${b4.rows.map((r) => `<li style="margin-bottom:8px"><b>${esc(r.name)}</b>${r.flipper ? ' <span class="pill good">flipper</span>' : ""} · ${r.purchases_in_towns} buys there<br>
+          <span class="muted">recent: ${esc(r.recent.address)}, ${esc(r.recent.town)} ${money(r.recent.price)} (${esc(r.recent.date || "")})</span><br>
+          ${r.phone_display || r.email ? `<span class="mono">${esc(r.phone_display || r.email)}</span>` : Object.entries(r.links).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${label(k)} ↗</a>`).join(" · ")}
+          <details><summary class="muted">script</summary><p>${esc(r.opening)}</p><ul>${r.discovery.map((q) => `<li>${esc(q)}</li>`).join("")}</ul></details></li>`).join("")}</ul>${empty(b4)}</div>
+    </div>`;
 }
 
 route();

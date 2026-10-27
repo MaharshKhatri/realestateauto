@@ -487,10 +487,25 @@ def invite(session: Session, lead: Lead, buyer: CashBuyer, walkthrough_at: datet
     return bid
 
 
+def _closing_step(session: Session, lead: Lead, key: str, notes: str) -> None:
+    """Tick the matching closing milestone when the deal has a closing file (engine/closing_coordinator.py)."""
+    from engine import closing_coordinator as cc
+    if not cc.milestones(session, lead):
+        return
+    cc.sync(session, lead)
+    m = next((x for x in cc.milestones(session, lead) if x.milestone == key), None)
+    if m is not None and m.status == "pending":
+        cc.complete(session, lead, key, notes)
+
+
 def mark_walked(session: Session, bid: BuyerBid, when: datetime | None = None, notes: str = "") -> BuyerBid:
     bid.walkthrough_date = when or bid.walkthrough_date or datetime.now()
     if bid.status in ("invited", "scheduled"):
         bid.status = "walked"
+    lead = session.get(Lead, bid.lead_id)
+    if lead is not None:
+        _closing_step(session, lead, "VIRTUAL_WALKTHROUGH_AND_OIL_TANK_SWEEP",
+                      f"walked by {buyer_label(bid.buyer)}; confirm the oil tank sweep is ordered")
     if notes:
         bid.notes = "\n".join(x for x in (bid.notes, notes) if x)
     session.flush()
@@ -575,6 +590,9 @@ def accept_bid(session: Session, bid: BuyerBid, structure: str = "assignment", s
         if other.id != bid.id and other.status in ("bid", "accepted"):
             other.status = "backup"
     bid.status = "accepted"
+    _closing_step(session, lead, "ASSIGNMENT_OR_DOUBLE_CLOSE_EXECUTED",
+                  f"{structure} with {buyer_label(buyer)} at {money(bid.bid_amount)}; buyer deposit "
+                  f"{money(bid.emd_amount)} to escrow")
     lead.status_stage = advance_stage(lead.status_stage, LeadStage.ASSIGNED)
     fee = bid.bid_amount - contract if contract else None
     _log(session, lead, "BUYER_BID_ACCEPTED",

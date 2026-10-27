@@ -6,13 +6,14 @@ rebinding / cross-site form posts) from reading or writing the lead data through
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import exists, func, or_, select
@@ -43,9 +44,22 @@ TABS = {
 app = FastAPI(title="NJ Wholesale Cockpit", docs_url="/api/docs", redoc_url=None)
 
 
+def public_hosts() -> set[str]:
+    """Tunnel / public host names allowed to reach ONLY the inbound site and its form posts (web.public_hosts)."""
+    return {str(h).lower() for h in (settings().get("web", {}) or {}).get("public_hosts") or []}
+
+
+def public_path(request: Request) -> bool:
+    path = request.url.path
+    return path.startswith("/site/") or (request.method == "POST" and path in ("/api/inbound/seller",
+                                                                               "/api/inbound/buyer"))
+
+
 @app.middleware("http")
 async def local_only(request: Request, call_next):
-    host = (request.headers.get("host") or "").split(":")[0]
+    host = (request.headers.get("host") or "").split(":")[0].lower()
+    if host in public_hosts() and public_path(request):
+        return await call_next(request)
     if host not in ALLOWED_HOSTS and host != "testserver":
         return JSONResponse({"detail": "cockpit is local-only"}, status_code=403)
     origin = request.headers.get("origin")
@@ -137,6 +151,24 @@ def index() -> FileResponse:
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+SITE = Path(__file__).resolve().parent.parent / "site"
+
+
+@app.get("/site/seller", include_in_schema=False)
+def site_seller() -> FileResponse:
+    return FileResponse(SITE / "index.html")
+
+
+@app.get("/site/buyers", include_in_schema=False)
+def site_buyers() -> FileResponse:
+    return FileResponse(SITE / "buyers.html")
+
+
+@app.get("/site/config.js", include_in_schema=False)
+def site_config_js() -> Response:
+    from engine.inbound import site_config
+    return Response("window.SITE_CONFIG = " + json.dumps(site_config(mode="local")) + ";",
+                    media_type="application/javascript")
 
 
 @app.get("/deals/{property_id}/{filename}", include_in_schema=False)
@@ -667,3 +699,185 @@ def accept(bid_id: int, body: AcceptIn, session: Session = Depends(db)) -> JSONR
     lead = get_lead(session, bid.lead_id)
     return JSONResponse({"blocked": False, "notes": notes, "stage": lead.status_stage,
                          "files": _doc_files(lead.property_id, doc.doc_type)})
+
+
+# -- Phase 4: fast track (listed foreclosures + portfolio owners) -------------------------------------
+@app.get("/api/fast-track")
+def fast_track_queue(portfolios: int = Query(20, le=100), session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import fast_track as ft
+    listed = []
+    for lf in ft.listed_foreclosures(session):
+        listed.append({**lf.to_dict(), "script": ft.agent_script(lf)})
+    owners = [{**p.to_dict(), "script": ft.portfolio_script(p)} for p in ft.portfolios(session, portfolios)]
+    return {"listed": listed, "portfolios": owners}
+
+
+@app.post("/api/fast-track/{lead_id}/packet")
+def fast_track_packet(lead_id: int, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import fast_track as ft
+    lead = get_lead(session, lead_id)
+    if not ft.is_listed_foreclosure(lead.property):
+        raise HTTPException(400, "not a listed foreclosure")
+    try:
+        packet = ft.build_packet(session, lead)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"packet": packet.to_dict(), "files": _doc_files(lead.property_id, "loi") if packet.loi_files else {}}
+
+
+# -- Phase 4: closing coordinator + money -------------------------------------------------------------
+def _milestone_dict(m: Any) -> dict[str, Any]:
+    from engine.closing_coordinator import LABELS
+    return {"key": m.milestone, "label": LABELS[m.milestone], "sequence": m.sequence, "due_date": iso(m.due_date),
+            "status": m.status, "completed_at": iso(m.completed_at), "notes": m.notes,
+            "overdue": bool(m.status == "pending" and m.due_date and m.due_date < date.today())}
+
+
+@app.get("/api/closing")
+def closing_overview(session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import closing_coordinator as cc
+    return {"alerts": [{**a.__dict__, "due_date": iso(a.due_date)} for a in cc.alerts(session)],
+            "files": cc.pipeline(session)}
+
+
+@app.get("/api/closing/{lead_id}")
+def closing_file(lead_id: int, structure: str = "assignment", session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import closing_coordinator as cc
+    lead = get_lead(session, lead_id)
+    if not lead.contract_date:
+        return {"open": False, "milestones": [], "reason": "No signed contract on this lead yet."}
+    if not cc.milestones(session, lead):
+        cc.open_file(session, lead)
+    notes = cc.sync(session, lead)
+    e = cc.title_order_email(lead, None, structure if structure in ("assignment", "double_close") else "assignment")
+    return {"open": True, "notes": notes, "milestones": [_milestone_dict(m) for m in cc.milestones(session, lead)],
+            "title_email": e, "contract_price": lead.offer_amount, "stage": lead.status_stage}
+
+
+class MilestoneIn(BaseModel):
+    notes: str = ""
+
+
+@app.post("/api/closing/{lead_id}/milestones/{key}")
+def closing_done(lead_id: int, key: str, body: MilestoneIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import closing_coordinator as cc
+    lead = get_lead(session, lead_id)
+    try:
+        cc.sync(session, lead)
+        m = cc.complete(session, lead, key.upper(), body.notes)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return _milestone_dict(m)
+
+
+@app.post("/api/closing/{lead_id}/disapproved")
+def closing_disapproved(lead_id: int, body: MilestoneIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import closing_coordinator as cc
+    lead = get_lead(session, lead_id)
+    cc.record_disapproval(session, lead, body.notes)
+    return {"stage": lead.status_stage}
+
+
+class CloseIn(BaseModel):
+    fee: float = Field(gt=0)
+    closed_on: date | None = None
+
+
+@app.post("/api/closing/{lead_id}/close")
+def closing_close(lead_id: int, body: CloseIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import closing_coordinator as cc
+    lead = get_lead(session, lead_id)
+    try:
+        cc.close_deal(session, lead, body.fee, body.closed_on)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"stage": lead.status_stage}
+
+
+@app.get("/api/finance")
+def finance_summary(year: int | None = None, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import finance
+    from db.models import LedgerEntry
+    sm = finance.summary(session, year)
+    rows = session.scalars(select(LedgerEntry).order_by(LedgerEntry.entry_date.desc()).limit(50)).all()
+    return {**sm.to_dict(), "entries": [{"id": r.id, "date": iso(r.entry_date), "kind": r.kind, "category": r.category,
+                                         "amount": r.amount, "description": r.description, "lead_id": r.lead_id}
+                                        for r in rows],
+            "categories": {"income": finance.INCOME_CATEGORIES, "expense": finance.EXPENSE_CATEGORIES}}
+
+
+class LedgerIn(BaseModel):
+    kind: str
+    category: str
+    amount: float = Field(gt=0)
+    entry_date: date | None = None
+    description: str | None = Field(None, max_length=300)
+    lead_id: int | None = None
+
+
+@app.post("/api/finance")
+def finance_add(body: LedgerIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import finance
+    try:
+        row = finance.add_entry(session, kind=body.kind, category=body.category, amount=body.amount,
+                                entry_date=body.entry_date, description=body.description, lead_id=body.lead_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"id": row.id}
+
+
+
+# -- Phase 4: inbound funnel (site/) ----------------------------------------------------------------------
+def inbound_gis() -> Any:
+    """NJGIN client for parcel matching + underwriting of web leads (None when inbound.offline is set)."""
+    if (settings().get("inbound", {}) or {}).get("offline"):
+        return None
+    from agents.scrapers.njgis_client import NJGISClient
+    return NJGISClient()
+
+
+def underwrite_inbound(lead_id: int) -> None:
+    """After the visitor has their answer: value the property and re-score (NJGIN + listing comps take seconds)."""
+    from engine.scoring import active_weights, apply_score
+    from engine.underwriter import Underwriter, _default_listing_provider
+    gis = inbound_gis()
+    if gis is None:
+        return
+    with session_scope() as s:
+        lead = s.get(Lead, lead_id)
+        if lead is None:
+            return
+        Underwriter(gis=gis, listing_provider=_default_listing_provider()).underwrite(s, lead.property)
+        version, weights = active_weights(s)
+        apply_score(lead, version, weights)
+
+
+@app.post("/api/inbound/seller")
+def inbound_seller(body: dict[str, Any], tasks: BackgroundTasks, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine.inbound import InboundError, ingest_seller
+    try:
+        r = ingest_seller(session, body, gis=inbound_gis(), underwrite=False)
+    except InboundError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    tasks.add_task(underwrite_inbound, r.lead_id)
+    return {"ok": True, "lead_id": r.lead_id}
+
+
+@app.post("/api/inbound/buyer")
+def inbound_buyer(body: dict[str, Any], session: Session = Depends(db)) -> dict[str, Any]:
+    from engine.inbound import InboundError, ingest_buyer
+    try:
+        b, created = ingest_buyer(session, body)
+    except InboundError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "buyer_id": b.id, "created": created}
+
+
+
+@app.get("/api/today")
+def today_view(session: Session = Depends(db)) -> dict[str, Any]:
+    from engine.today import today
+    return today(session)
+
+
+app.mount("/site", StaticFiles(directory=SITE), name="site")

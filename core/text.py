@@ -103,6 +103,7 @@ class ParsedAddress:
     zip: str
 
 
+SUFFIX_WORDS = set(STREET_SUFFIXES) | set(STREET_SUFFIXES.values())
 ADDR_RE = re.compile(
     r"^(?P<street>.+?)\s*,?\s+(?P<city>[A-Z][A-Z .'\-]+?)\s*,?\s+(?P<state>[A-Z]{2})\s*,?\s*(?P<zip>\d{5})(?:-?\d{4})?\s*$")
 
@@ -127,7 +128,20 @@ def parse_one_line_address(text: str | None, known_cities: list[str] | None = No
             if combined.endswith(" " + kc_u):
                 street, city = combined[: -len(kc_u) - 1].strip(), kc_u
                 break
+    street, city = split_suffix_from_city(street, city)
     return ParsedAddress(street=street.strip(" ,"), city=city.strip(" ,"), state=state, zip=zip_)
+
+
+def split_suffix_from_city(street: str, city: str) -> tuple[str, str]:
+    """'1014 NO 20TH' + 'STREET CAMDEN' -> '1014 NO 20TH STREET' + 'CAMDEN' (numbered streets end in digits, so
+    the street/city split can hand the suffix word to the city)."""
+    words = city.strip(" ,").split()
+    moved = []
+    while len(words) > 1 and words[0].upper().strip(".") in SUFFIX_WORDS:
+        moved.append(words.pop(0))
+    if not moved:
+        return street, city
+    return f"{street.strip(' ,')} {' '.join(moved)}", " ".join(words)
 
 
 def mailing_state(city_state: str | None) -> str | None:
@@ -207,6 +221,7 @@ def format_phone(digits: str | None) -> str:
 def split_person_name(name: str | None) -> tuple[str, str]:
     """('QUINN', 'SAMPLE') from 'SAMPLE, QUINN A' / 'Quinn A. Sample Jr' / 'SAMPLE QUINN & MARY' (best effort)."""
     s = clean(name).upper()
+    s = re.sub(r"\bET\.?\s*(ALS?|UX|VIR)\b\.?", "", s)           # 'QUINN SAMPLE ET ALS' (sheriff captions)
     s = re.sub(r"\b(JR|SR|II|III|IV|ESQ|MD)\b\.?", "", s)
     people = [x.strip(" ,.") for x in re.split(r"\s*(?:&|\bAND\b|;|/)\s*", s) if x.strip(" ,.")]
     if not people:

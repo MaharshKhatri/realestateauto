@@ -1,0 +1,204 @@
+# NJ closing partners directory — used by engine/closing_coordinator.py (title order e-mails, partner picker).
+#
+# Every entry was checked on a live web page on `verified_on`; `source` is the page read. Phones appear only
+# where the source page shows them. `investor_evidence` is a short quote from the source page (null = the page
+# says nothing about investors). Website claims are marketing: before you open a file, call and confirm the
+# agency will insure an ASSIGNMENT and an A-B / B-C DOUBLE CLOSE with separate funds for each closing, and
+# check the agency's NJ title license (NAIC lookup) and the attorney's standing. Edit freely; add your own picks
+# under `preferred:` (title_agency / closing_attorney names exactly as listed, or new entries of the same shape).
+verified_on: "2026-10-27"
+preferred:
+  title_agency: null
+  closing_attorney: null
+regions:
+  north:
+    counties: [Bergen, Passaic, Essex, Hudson]
+    title_agencies:
+      - name: Clear Skies Title Agency
+        city: Millburn (HQ); satellite office in Jersey City
+        phone: "908-810-7402"
+        website: https://clearskiestitle.com/
+        source: https://clearskiestitle.com/investors/
+        investor_evidence: "We insure assignments, handle sheriff and short sales, and have lots of experience with double closings."
+      - name: First Bergen Title Agency
+        city: Hackensack
+        phone: "(201) 343-3121"
+        website: https://www.firstbergentitle.com/
+        source: https://www.firstbergentitle.com/
+        investor_evidence: "designated qualified intermediary for 1031 exchange transactions"
+      - name: Passaic Valley Title Service, Inc.
+        city: Clifton
+        phone: "(973) 773-3535"
+        website: https://nj-title-insurance.com/
+        source: https://nj-title-insurance.com/
+        investor_evidence: null
+      - name: Coastal Title Agency
+        city: Jersey City (satellite office); HQ in Freehold
+        phone: "732 308-1660"
+        website: https://www.coastaltitleagency.com/
+        source: https://www.coastaltitleagency.com/
+        investor_evidence: null
+      - name: Forescene Title Agency
+        city: Oradell
+        phone: "201-568-0060"
+        website: https://forescenetitle.com/
+        source: https://forescenetitle.com/
+        investor_evidence: null
+    closing_attorneys:
+      - name: Law Firm of Earl P. White
+        city: Rutherford
+        phone: "(201) 627-2457"
+        website: https://www.earlwhite.law/
+        source: https://www.earlwhite.law/practices/real-estate-new-jersey/
+        investor_evidence: "We support flippers and developers with purchase and sale transactions and land-use and zoning matters."
+      - name: Friscia & Associates LLC
+        city: Newark
+        phone: "(973) 500-8024"
+        website: https://www.friscialaw.com/
+        source: https://www.friscialaw.com/practice-area/real-estate-attorney/
+        investor_evidence: "our real estate attorneys represent buyers, sellers, and investors in residential and commercial transactions"
+      - name: Kambo Law, PLLC
+        city: Jersey City (Journal Square office); HQ in Jericho, NY
+        phone: "(516) 345-4502"
+        website: https://kambolaw.com/
+        source: https://kambolaw.com/real-estate-lawyer-new-jersey
+        investor_evidence: "representing buyers, sellers, and investors in residential and commercial transactions throughout New Jersey"
+  central:
+    counties: [Union, Middlesex]
+    note: "No Union County title agency office could be verified; statewide agencies below and the Cranford/Springfield attorneys cover Union."
+    title_agencies:
+      - name: Foundation Title, LLC (East Brunswick office)
+        city: East Brunswick (HQ Marlton; offices in Hackensack, Roseland, Woodbury, Hamilton, Eatontown)
+        phone: "732-214-9070"
+        website: https://foundationtitle.com/
+        source: https://foundationtitle.com/find-a-location/
+        investor_evidence: "We work closely with lenders, developers, attorneys, and investors to identify and resolve issues"
+      - name: River Edge Title Agency
+        city: Metuchen
+        phone: "(732) 573-0060"
+        website: https://riveredgetitle.com/
+        source: https://riveredgetitle.com/
+        investor_evidence: null
+      - name: Seamless Title Agency, Inc.
+        city: Somerset
+        phone: "732-412-7249"
+        website: https://seamlesstitle.com/
+        source: https://seamlesstitle.com/?page_id=17
+        investor_evidence: "1031 Exchanges"
+      - name: Rally Point Title Agency
+        city: Matawan
+        phone: "732-359-2009"
+        website: https://rallypointtitle.com/
+        source: https://rallypointtitle.com/
+        investor_evidence: "For Investors Close more deals. Move faster."
+    closing_attorneys:
+      - name: Levin Law Group, PLLC
+        city: Cranford (Union) and East Brunswick (Middlesex), by appointment
+        phone: "(973) 528-0285"
+        website: https://ylevinlaw.com/
+        source: https://ylevinlaw.com/practice-areas/real-estate-law/1031-exchanges.html
+        investor_evidence: "assists real estate investors in conducting 1031 Exchanges"
+      - name: The Law Offices of Anthony Di Maggio, LLC
+        city: Springfield
+        phone: "973-258-9100"
+        website: https://dimaggiolawoffice.com/
+        source: https://dimaggiolawoffice.com/faq/middlesex-county-nj
+        investor_evidence: "they can help structure and execute 1031 exchanges to defer capital gains taxes"
+      - name: Law Office of Craig Rothenberg
+        city: New Brunswick
+        phone: "732-247-5002"
+        website: https://www.rothenbergesq.com/
+        source: https://www.rothenbergesq.com/practice-areas/real-estate-transactions/
+        investor_evidence: null
+  south:
+    counties: [Camden, Burlington, Gloucester, Cumberland]
+    title_agencies:
+      - name: Pittman Title & Escrow
+        city: Sicklerville (also Mullica Hill and North Wildwood)
+        phone: "(856) 516-4197"
+        website: https://pittmantitle.com/
+        source: https://pittmantitle.com/our-services/real-estate-investments/
+        investor_evidence: "expertise in managing complex transactions like assignments, wholesaling, and double closings"
+      - name: South Jersey Settlement Agency (SJSA)
+        city: Vineland
+        phone: "856-690-1121"
+        website: https://www.sjsatitle.com/
+        source: https://www.sjsatitle.com/investors-start-here/
+        investor_evidence: "We specialize in double closings and assignments!"
+      - name: Title America Agency Corp.
+        city: Berlin
+        phone: "856-767-8573"
+        website: https://www.titleamericaagency.com/
+        source: https://alta.org/membership/directory-profile/1141529
+        investor_evidence: null
+      - name: ClosePoint USA LLC (Blackwood office)
+        city: Blackwood (Camden & Gloucester counties; also Marlton)
+        phone: "(888) 614-0050"
+        website: https://www.closepointusa.com/
+        source: https://www.closepointusa.com/locations
+        investor_evidence: null
+      - name: National Integrity Title Agency
+        city: Marlton
+        phone: "(856) 427-4343"
+        website: https://nationalintegritytitle.com/
+        source: https://nationalintegritytitle.com/title-companies-in-south-jersey/
+        investor_evidence: null
+    closing_attorneys:
+      - name: Hill Wallack LLP (Cherry Hill office)
+        city: Cherry Hill
+        phone: "(856) 616-8080"
+        website: https://www.hillwallack.com/
+        source: https://www.hillwallack.com/real-estate
+        investor_evidence: "residential real estate practice representing individuals, banks, mortgage servicers, investors and business owners"
+      - name: Elkind and DiMento, P.A.
+        city: Cherry Hill
+        phone: "856-424-7800"
+        website: https://www.elkind-dimento.com/
+        source: https://www.elkind-dimento.com/estate-lawyers
+        investor_evidence: "including residential, commercial, and investment properties"
+      - name: Law Offices of Edward P. Vidal
+        city: Moorestown
+        phone: "(856) 281-2857"
+        website: https://www.edwardvidal.com/
+        source: https://www.edwardvidal.com/residential-real-estate
+        investor_evidence: "From first-time homebuyers to experienced property investors, we're here to protect your interests"
+county_region:
+  Bergen: north
+  Passaic: north
+  Essex: north
+  Hudson: north
+  Union: central
+  Middlesex: central
+  Camden: south
+resources:
+  - {name: NJLTA member directory, url: "https://njlta.org/members/", use: "find NJ title agents (open in a browser)"}
+  - {name: NJ DOBI licensee search, url: "https://www-dobi.nj.gov/DOBI_LicSearch", use: "license status of DOBI licensees"}
+  - {name: NAIC SBS licensee lookup, url: "https://sbs.naic.org/solar-external-lookup/", use: "confirm an active NJ license with the Title line of authority"}
+  - {name: DOBI registered title search business entities, url: "https://www.nj.gov/dobi/division_insurance/titlesearch/registry.html", use: "title search firms registered with DOBI"}
+  - {name: ALTA company directory, url: "https://www.alta.org/membership/directory", use: "look up a title company (no list extraction)"}
+  - {name: NJSBA county bar associations, url: "https://njsba.com/county-bar-associations-for-the-public/", use: "county bar lawyer referral services"}
+  - {name: Bergen County Bar lawyer referral, url: "https://bergenbar.org/lawyer-referral-service/", phone: "(201) 488-0044"}
+  - {name: Essex County Bar lawyer referral, url: "https://essexbar.com/lawyer-referral-service/", phone: "973-622-6204"}
+  - {name: Hudson County Bar Association, url: "https://www.hcbalaw.com/", phone: "201-798-4708"}
+  - {name: Union County Bar lawyer referral, url: "https://uclaw.com/lawyer-referral-service/", phone: "908-353-4715"}
+  - {name: Middlesex County Bar Association, url: "https://www.mcbalaw.com/", phone: "732-828-0053 ext. 100"}
+  - {name: Passaic County Bar lawyer referral (2026 list), url: "https://passaicbar.org/wp-content/uploads/2026/08/2026-ONLINE-LAWYER-REFERRAL-SERVICE.pdf"}
+  - {name: Camden County Bar lawyer referral, url: "https://www.camdencountybar.org/lrs-info/", phone: "856-482-0620"}
+tax:
+  # engine/finance.py reads this block. Sources: IRS 2026 Form 1040-ES; 2026 NJ-1040-ES instructions.
+  reserve_rate: 0.28                     # operator's set-aside on net wholesale profit (a habit, not a tax computation)
+  self_employment_rate: 0.153            # 12.4% social security + 2.9% Medicare
+  se_net_earnings_factor: 0.9235
+  social_security_wage_base_2026: 184500
+  federal_threshold_usd: 1000            # estimated payments needed if you expect to owe >= $1,000
+  nj_threshold_usd: 400                  # NJ: expect to owe more than $400
+  federal_estimated_due_dates: ["2026-04-15", "2026-06-15", "2026-09-15", "2027-01-15"]
+  nj_estimated_due_dates: ["2026-04-15", "2026-06-15", "2026-09-15", "2027-01-15"]
+  notes:
+    - "Federal: the Jan 15, 2027 payment is not required if the 2026 return is filed by Feb 1, 2027 and the balance is paid."
+    - "NJ: the Jan 15, 2027 payment is not required if the 2026 NJ return is filed by Feb 15, 2027 and the balance is paid."
+  sources:
+    - https://www.irs.gov/pub/irs-pdf/f1040es.pdf
+    - https://www.irs.gov/businesses/small-businesses-self-employed/self-employment-tax-social-security-and-medicare-taxes
+    - https://nj.gov/treasury/taxation/pdf/current/1040esi.pdf
+    - https://www.nj.gov/treasury/taxation/njit20.shtml

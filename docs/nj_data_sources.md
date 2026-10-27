@@ -90,6 +90,12 @@ Full evidence: `docs/recon/comps_listings.md`. Highlights:
   address is exact; unresolved addresses fall back to an area search (capped with `limit=5`).
 - Terms: Realtor.com prohibits scraping. We keep it low-volume, cached (24 h), internal-only, and
   never republish listing text/photos. Public-record comps are the automatic fallback.
+- **Package deeds in NJGIN sales (learned 2026-10-27):** one bulk deed (e.g. a building of condo units sold for
+  $4.725M) is recorded with the full price on every parcel, and `SALES_CODE` reads "A" on all of them, so the code
+  can't filter them. The comp engine drops any price + deed date that appears on 2+ parcels, sale prices outside
+  $40K–$2.5M for houses, and sales above 2× (or below 0.5×) their equalized assessment. Before this, 45 valuations
+  were above $1.8M ARV (worst: $215M on a commercial tower, $12.8M on a 1,884 sqft house); after the guard, no class-2
+  house above $1.8M carries an offer verdict.
 - Listing-only parcels (condo units and addresses that never matched a MOD-IV parcel) have no building
   description, so comps use the listing's own MLS property type (condos / multi_family) — learned 2026-10-27:
   without it, 114 condo/multi listings found no comps.
@@ -219,3 +225,18 @@ Full evidence and per-town survey: `docs/recon/tax_sale_clerk_opendata.md`.
 5. National DNC: re-download your area codes every 31 days → `python manage.py dnc --load <file>`.
 6. Skip trace: `python manage.py skiptrace --export-top 50` → look up → paste/import.
 7. Run `python -m swarm.orchestrator run-all`.
+
+## 9. Closing partners and tax references (added 2026-10-27)
+
+`config/nj_closing_partners.yaml` lists NJ title agencies and closing attorneys by region, each checked on its own
+website (source URL recorded; quotes only where the page mentions investors, assignments or double closings), plus
+verification resources: NJLTA member directory, NJ DOBI licensee search, NAIC SBS producer lookup, ALTA directory,
+NJSBA county bar referral services. Union County had no verifiable title agency office; statewide agencies and the
+Cranford/Springfield attorneys cover it. Tax inputs (SE tax 15.3% on 92.35% of net earnings, 2026 federal and NJ
+estimated-tax due dates and thresholds) come from the 2026 Form 1040-ES and NJ-1040-ES instructions.
+
+## 10. Inbound web submissions
+
+The seller/buyer pages post to the local cockpit (`/api/inbound/*`), or — when hosted statically — to a form
+service such as Formspree, whose JSON/CSV export `manage.py inbound --ingest` reads. Submissions are first-party data
+the visitor typed, with an explicit consent checkbox for calls/texts.

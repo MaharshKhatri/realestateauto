@@ -41,6 +41,7 @@ class SignalType(StrEnum):
     STALE_LISTING = "STALE_LISTING"
     PORTFOLIO_OWNER = "PORTFOLIO_OWNER"        # same owner/mailing holds several distressed or absentee leads
     ACTIVE_LISTING = "ACTIVE_LISTING"          # listed for sale now (any DOM) — found by cross-matching the MLS feed
+    INBOUND_LEAD = "INBOUND_LEAD"              # the owner contacted us through the website form (engine/inbound.py)
 
 
 class LeadStage(StrEnum):
@@ -297,6 +298,9 @@ class CashBuyer(Base):
     recent_purchases_json: Mapped[list[Any]] = mapped_column(JSON, default=list)
     reliability_score: Mapped[float] = mapped_column(Float, default=0)
     source: Mapped[str | None] = mapped_column(String(48))
+    asset_classes: Mapped[list[Any]] = mapped_column(JSON, default=list)   # self-reported (buyer registration form)
+    proof_of_funds: Mapped[str | None] = mapped_column(String(32))
+    registered_at: Mapped[datetime | None] = mapped_column(DateTime)       # opted in to deal e-mails / texts
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -486,6 +490,39 @@ class BuyerBid(Base):
     buyer: Mapped[CashBuyer] = relationship()
 
     __table_args__ = (UniqueConstraint("lead_id", "buyer_id", name="uq_buyer_bid_lead_buyer"),)
+
+
+class ClosingMilestone(Base):
+    """One step of a deal's contract-to-close checklist (engine/closing_coordinator.py)."""
+    __tablename__ = "closing_milestones"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    milestone: Mapped[str] = mapped_column(String(48))
+    sequence: Mapped[int] = mapped_column(Integer)
+    due_date: Mapped[date | None] = mapped_column(Date, index=True)
+    status: Mapped[str] = mapped_column(String(12), default="pending")       # pending | done | waived | cancelled
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (UniqueConstraint("lead_id", "milestone", name="uq_closing_milestone"),)
+
+
+class LedgerEntry(Base):
+    """Money in and out of the business (engine/finance.py): assignment fees, marketing, legal, title, tools."""
+    __tablename__ = "financial_ledger"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="SET NULL"), index=True)
+    entry_date: Mapped[date] = mapped_column(Date, index=True)
+    kind: Mapped[str] = mapped_column(String(8))              # income | expense
+    category: Mapped[str] = mapped_column(String(32))
+    amount: Mapped[float] = mapped_column(Float)
+    description: Mapped[str | None] = mapped_column(String(300))
+    source_ref: Mapped[str | None] = mapped_column(String(80), unique=True)   # idempotency key for automatic entries
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class BuyerMatch(Base):

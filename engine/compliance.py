@@ -93,13 +93,18 @@ def dnc_sources(session: Session, phone: str | None) -> list[str]:
     return [r.source for r in session.scalars(select(DncEntry).where(DncEntry.phone == digits))]
 
 
-def classify_number(session: Session, phone: str | None, *, b2b: bool = False) -> str:
-    """dnc | clear | not_checked | b2b. 'not_checked' means no fresh FTC data covers its area code."""
+def classify_number(session: Session, phone: str | None, *, b2b: bool = False, consent: bool = False) -> str:
+    """dnc | clear | not_checked | b2b | consented. 'not_checked' means no fresh FTC data covers its area code.
+    'consented': the person gave written consent on our web form — that covers a National-registry number for this
+    inquiry, but an internal stop request or a Daniel's Law notice always wins."""
     digits = normalize_phone(phone)
     if not digits:
         return "not_checked"
-    if dnc_sources(session, digits):
+    sources = dnc_sources(session, digits)
+    if sources and not (consent and set(sources) <= {"ftc"}):
         return "dnc"
+    if consent:
+        return "consented"
     if b2b:
         return "b2b"
     status = ftc_data_status(session)
@@ -113,7 +118,7 @@ def classify_number(session: Session, phone: str | None, *, b2b: bool = False) -
 def refresh_contact_dnc(session: Session) -> int:
     n = 0
     for c in session.scalars(select(Contact).where(Contact.phone.is_not(None))):
-        new = classify_number(session, c.phone, b2b=c.contact_type == "LISTING_AGENT")
+        new = classify_number(session, c.phone, b2b=c.contact_type == "LISTING_AGENT", consent=has_consent(c))
         if c.dnc_status != new:
             c.dnc_status = new
             n += 1
@@ -129,14 +134,21 @@ def can_call(session: Session, contact: Contact, now: datetime | None = None) ->
     """The cockpit asks this before showing a number as callable."""
     if not contact.phone:
         return False, "no phone"
-    status = classify_number(session, contact.phone, b2b=contact.contact_type == "LISTING_AGENT")
+    status = classify_number(session, contact.phone, b2b=contact.contact_type == "LISTING_AGENT",
+                             consent=has_consent(contact))
     if status == "dnc":
         return False, "on a do-not-call list: send a letter instead"
     if not within_calling_hours(now):
         return False, "outside 8am–9pm Eastern"
     if status == "not_checked":
         return True, "not yet scrubbed against the National DNC registry — load fresh FTC data first"
+    if status == "consented":
+        return True, "written consent on our web form (stop immediately if they ask)"
     return True, "ok"
+
+
+def has_consent(contact: Contact) -> bool:
+    return bool((contact.raw_json or {}).get("consent"))
 
 
 def recommended_free_area_codes(session: Session, limit: int = 5) -> list[tuple[str, int]]:

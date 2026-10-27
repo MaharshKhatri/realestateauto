@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NJ Off-Market Investor Deal Flow</title>
+  <meta name="description" content="Register your buy box to receive off-market New Jersey properties under contract: Essex, Hudson, Union, Middlesex, Passaic, Bergen, Camden.">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header class="top"><div class="wrap">
+    <a class="brand" href="index.html" data-cfg="company">NJ House Buyers</a>
+    <nav><a href="index.html">Sell a house</a></nav>
+  </div></header>
+
+  <main class="wrap">
+    <div class="hero grid">
+      <div>
+        <h1>NJ off-market deal flow for cash buyers</h1>
+        <p class="lead">Tell us what you buy. When we have a property under contract that fits your counties, product and
+          rehab level, you'll hear about it — after the seller's attorney review has ended, never before.</p>
+        <ul class="points">
+          <li><b>Underwritten, not just forwarded</b>Every deal sheet shows our ARV, repair estimate and the comps behind
+            them — treat them as estimates and run your own numbers.</li>
+          <li><b>Remote walkthroughs</b>Walk the property with the listing agent or seller during the inspection period
+            and bring your contractor.</li>
+          <li><b>Clean paperwork</b>Assignment of contract (or a double close) through a New Jersey title company; your
+            deposit is held in escrow.</li>
+        </ul>
+        <p class="fine">We're real estate investors acting as principals, not licensed agents. We market our contract
+          (equitable interest) in a property, not the property itself. Nothing here is an offer to sell real estate.</p>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">Join the buyers list</h2>
+        <form id="buyer-form" data-kind="buyer" novalidate>
+          <input type="hidden" name="form_type" value="buyer">
+          <div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+          <div class="row2">
+            <div><label for="name">Your name</label><input id="name" name="name" type="text" required autocomplete="name"></div>
+            <div><label for="llc">Company / LLC</label><input id="llc" name="llc" type="text" autocomplete="organization"></div>
+          </div>
+          <div class="row2">
+            <div><label for="phone">Phone</label><input id="phone" name="phone" type="tel" autocomplete="tel"></div>
+            <div><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email"></div>
+          </div>
+          <label>Counties you buy in</label>
+          <div class="checks" id="counties"></div>
+          <label>What you buy</label>
+          <div class="checks">
+            <label><input type="checkbox" name="asset_classes" value="1-4_family"> 1–4 family</label>
+            <label><input type="checkbox" name="asset_classes" value="fix_and_flip"> Fix &amp; flip</label>
+            <label><input type="checkbox" name="asset_classes" value="buy_and_hold"> Buy &amp; hold rentals</label>
+            <label><input type="checkbox" name="asset_classes" value="multifamily_5plus"> 5+ units</label>
+          </div>
+          <div class="row2">
+            <div><label for="min_price">Min price</label><input id="min_price" name="min_price" type="text" placeholder="150k"></div>
+            <div><label for="max_price">Max price</label><input id="max_price" name="max_price" type="text" placeholder="600k"></div>
+          </div>
+          <div class="row2">
+            <div><label for="max_rehab">Max rehab</label><select id="max_rehab" name="max_rehab"><option value="">Choose…</option>
+              <option value="light">Light (cosmetic)</option><option value="medium">Medium (kitchen/baths/systems)</option>
+              <option value="heavy">Heavy (gut / structural)</option></select></div>
+            <div><label for="proof_of_funds">Proof of funds</label><select id="proof_of_funds" name="proof_of_funds">
+              <option value="">Choose…</option><option value="cash_ready">Cash — POF ready</option>
+              <option value="hard_money">Hard money / private lender</option><option value="on_request">Can provide on request</option></select></div>
+          </div>
+          <label class="consent"><input type="checkbox" name="consent" value="yes" required> <span data-cfg="consent_buyer">I agree that you may e-mail, call or text me about off-market properties that match my criteria. Reply STOP or unsubscribe at any time.</span></label>
+          <button class="cta" type="submit">Send me deals</button>
+          <div class="msg" role="status"></div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <footer><div class="wrap">
+    <div><b data-cfg="company"></b> · <span data-cfg="phone"></span> · <span data-cfg="email"></span></div>
+    <div data-cfg="mailing_address"></div>
+  </div></footer>
+  <script src="config.js"></script>
+  <script src="site.js"></script>
+</body>
+</html>

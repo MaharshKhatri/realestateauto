@@ -12,8 +12,9 @@ Jobs (each composed of agents; every agent logs its own agent_runs row):
     DataRefreshAgent             tax_assessment + cash_buyers + stale_listings + tax_sales → owner_enrichment
     ContactEnrichmentAgent       municipal_owners → listing_agents → owner_resolver → signal_stacker
                                  (names, agents, heirs, mailing matches; listed distress + portfolio owners)
-    CompUnderwriterAgent         lead_scoring → underwriter(top N) → lead_scoring → buyer_matcher (top-5 buyers/deal)
-    PipelineSelfImprovementAgent self_improvement
+    CompUnderwriterAgent         lead_scoring → underwriter(top N) → outlier_guard → lead_scoring → fast_track
+                                 → buyer_matcher
+    PipelineSelfImprovementAgent closing_alerts → self_improvement
 """
 from __future__ import annotations
 
@@ -75,6 +76,21 @@ def _signal_stacker(**opts: Any) -> BaseAgent:
     return SignalStackerAgent(**opts)
 
 
+def _outlier_guard(**opts: Any) -> BaseAgent:
+    from engine.valuation_guard import OutlierGuardAgent
+    return OutlierGuardAgent(**opts)
+
+
+def _fast_track(**opts: Any) -> BaseAgent:
+    from engine.fast_track import FastTrackAgent
+    return FastTrackAgent(**opts)
+
+
+def _closing_alerts(**opts: Any) -> BaseAgent:
+    from engine.closing_coordinator import ClosingAlertsAgent
+    return ClosingAlertsAgent(**opts)
+
+
 def _tax_sale_agent(**opts: Any) -> BaseAgent:
     from agents.scrapers.tax_sale_agent import TaxSaleAgent
     return TaxSaleAgent(**opts)
@@ -102,6 +118,12 @@ REGISTRY: dict[str, AgentSpec] = {spec.name: spec for spec in [
     AgentSpec("signal_stacker", _signal_stacker, "Stacked distress: listed foreclosures/absentee/tax leads, portfolio owners.", "enrich"),
     AgentSpec("lead_scoring", LeadScoringAgent, LeadScoringAgent.description, "analyze"),
     AgentSpec("underwriter", UnderwriterAgent, UnderwriterAgent.description, "analyze", {"top": 25}),
+    AgentSpec("outlier_guard", _outlier_guard, "Comp hygiene + ARV guard on every valuation (package deeds, ask, "
+              "assessment, $/sqft, non-residential); re-underwrites thin comp sets.", "analyze", {"max_live": 25}),
+    AgentSpec("fast_track", _fast_track, "Listed-foreclosure sniper queue + portfolio owners (counts, call-today notes).",
+              "analyze"),
+    AgentSpec("closing_alerts", _closing_alerts, "Closing milestones: attorney review, deadlines into the call queue.",
+              "improve"),
     AgentSpec("buyer_matcher", _buyer_matcher, "Top-5 recorded cash buyers for each top underwritten deal.", "analyze", {"top": 50}),
     AgentSpec("self_improvement", PipelineSelfImprovementAgent, PipelineSelfImprovementAgent.description, "improve"),
 ]}
@@ -110,8 +132,9 @@ JOBS: dict[str, list[str]] = {
     "SheriffSaleMonitorAgent": ["sheriff_sales"],
     "DataRefreshAgent": ["tax_assessment", "cash_buyers", "stale_listings", "tax_sales", "owner_enrichment"],
     "ContactEnrichmentAgent": ["municipal_owners", "listing_agents", "owner_resolver", "signal_stacker"],
-    "CompUnderwriterAgent": ["lead_scoring", "underwriter", "lead_scoring", "buyer_matcher"],
-    "PipelineSelfImprovementAgent": ["self_improvement"],
+    "CompUnderwriterAgent": ["lead_scoring", "underwriter", "outlier_guard", "lead_scoring", "fast_track",
+                             "buyer_matcher"],
+    "PipelineSelfImprovementAgent": ["closing_alerts", "self_improvement"],
 }
 JOB_ALIASES = {"sheriff": "SheriffSaleMonitorAgent", "data_refresh": "DataRefreshAgent",
                "contacts": "ContactEnrichmentAgent", "underwrite": "CompUnderwriterAgent",

@@ -208,6 +208,9 @@ def record_contract(session: Session, lead: Lead, price: float, signed: date | N
     lead.attorney_review_ends = review_end
     lead.status_stage = advance_stage(lead.status_stage, LeadStage.UNDER_CONTRACT)
     session.flush()
+    from engine.closing_coordinator import open_file
+    steps = open_file(session, lead)
+    notes.append(f"Closing file opened: {len(steps)} milestones (python manage.py closing {lead.id}).")
     rescore(session, lead)
     return notes
 

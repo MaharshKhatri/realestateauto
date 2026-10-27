@@ -74,6 +74,10 @@ class AgentPacket:
     reasons: list[str] = field(default_factory=list)
     loi_files: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    sale_date: str | None = None            # listed foreclosures (engine/fast_track.py)
+    days_to_sale: int | None = None
+    upset: float | None = None
+    track: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -106,6 +110,9 @@ def eligible(lead: Lead) -> tuple[bool, str]:
         return False, "no asking price"
     if gap.get("valuation_conflict"):
         return False, f"valuation conflict: ARV {gap.get('arv_to_list')}x the asking price — re-check comps"
+    from engine.scoring import valuation_suspect
+    if valuation_suspect(v):
+        return False, "outlier-capped or non-residential valuation — re-check comps before offering"
     # An offer far below ask burns the agent relationship: only listings our 75% ceiling can reach.
     if (gap.get("list_to_mao_75") or 0) < float(_cfg().get("min_list_to_mao_75", 0.75)):
         return False, "too far from ask"
@@ -165,7 +172,11 @@ def offer_prices(lead: Lead) -> tuple[float | None, float | None]:
 def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = True,
                  out_root: Path | None = None, session: Session | None = None) -> AgentPacket:
     from engine.contracts import ContractBlocked, contract_gate, generate
+    from engine.fast_track import is_listed_foreclosure
 
+    if session is not None and agent is None and is_listed_foreclosure(lead.property):
+        from engine.fast_track import build_packet as urgent_packet   # sheriff sale + listing: urgent version
+        return urgent_packet(session, lead, generate_loi=generate_loi, out_root=out_root)
     agent = agent or agent_contact(lead)
     if agent is None:
         raise ValueError(f"lead {lead.id} has no reachable listing agent")

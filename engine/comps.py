@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import statistics
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from typing import Any
 
-from agents.scrapers.njgis_client import NJGISClient, stories_from_desc
+from agents.scrapers.njgis_client import NJGISClient
 from core.dates import parse_modiv_date
 from core.geo import haversine_miles
 from core.text import clean
@@ -67,6 +68,63 @@ class ValueResult:
     dispersion: float | None = None           # IQR / median of the valuation metric
     radius_used: float | None = None
     notes: list[str] = field(default_factory=list)
+    subject_equalized: float | None = None    # assessed x town sale/assessment ratio (public-record method)
+
+
+@dataclass
+class CompHygiene:
+    """Residential comp filters (NJ class 2). Package deeds, non-arm's-length prices and $/sqft or
+    sale-to-assessment extremes never reach the ARV percentile."""
+    min_price: float = 40_000
+    max_price: float = 2_500_000
+    high_value_subject: float = 1_200_000     # above this (assessed equalized value or ask) the price cap is lifted
+    ppsf_min: float = 60
+    ppsf_max: float = 850
+    ratio_min: float = 0.5                    # comp sale / its equalized assessment; above ~2x is
+    ratio_max: float = 2.0                    # usually new construction on a teardown, not a fixer comp
+
+    @classmethod
+    def from_settings(cls) -> "CompHygiene":
+        from core.config import settings
+        g = dict(settings().deal.get("outlier_guard") or {})
+        keys = {"comp_min_price": "min_price", "comp_max_price": "max_price", "high_value_subject": "high_value_subject",
+                "comp_ppsf_min": "ppsf_min", "comp_ppsf_max": "ppsf_max", "comp_ratio_min": "ratio_min",
+                "comp_ratio_max": "ratio_max"}
+        return cls(**{attr: float(g[k]) for k, attr in keys.items() if k in g})
+
+    def price_ok(self, price: float, subject_value: float | None = None) -> bool:
+        cap = math.inf if subject_value and subject_value > self.high_value_subject else self.max_price
+        return self.min_price <= price <= cap
+
+    def ppsf_ok(self, price: float, sqft: float | None) -> bool:
+        return not sqft or self.ppsf_min <= price / sqft <= self.ppsf_max
+
+    def ratio_ok(self, ratio: float) -> bool:
+        return self.ratio_min <= ratio <= self.ratio_max
+
+
+def package_deed_keys(features: list[dict]) -> set[tuple[Any, Any]]:
+    """(price, deed date) pairs recorded on 2+ different parcels: one bulk deed (a building of condo units,
+    a portfolio) whose total price is attached to every parcel. None of those rows is a usable comp."""
+    parcels: dict[tuple[Any, Any], set[str]] = {}
+    for f in features:
+        a = f.get("attributes") or {}
+        if a.get("SALE_PRICE") and a.get("DEED_DATE"):
+            pin = a.get("PAMS_PIN") or f"{a.get('PCL_MUN')}-{a.get('PCLBLOCK')}-{a.get('PCLLOT')}-{a.get('PCLQCODE')}"
+            parcels.setdefault((a["SALE_PRICE"], a["DEED_DATE"]), set()).add(str(pin))
+    return {k for k, pins in parcels.items() if len(pins) >= 2}
+
+
+SQFT_IN_DESC = re.compile(r"(\d{1,2},?\d{3})\s*(?:SF|SQ\.?\s*FT)\b", re.I)
+
+
+def explicit_sqft(desc: str | None) -> int | None:
+    """Living area only when MOD-IV states it ('1,884 SF.', '2775 SQ FT'); never an estimate."""
+    m = SQFT_IN_DESC.search(desc or "")
+    if not m:
+        return None
+    n = int(m.group(1).replace(",", ""))
+    return n if 300 <= n <= 15000 else None
 
 
 def percentile(values: list[float], q: float) -> float:
@@ -117,21 +175,34 @@ class PublicRecordComps:
     def value(self, *, lat: float, lon: float, assessed_total: float, mun_code: str, municipality: str,
               units: int | None, building_desc: str | None, radius: float, fallback_radius: float,
               months: int, appreciation: float, min_comps: int, renovated_pct: float,
-              distressed_pct: float) -> ValueResult:
+              distressed_pct: float, value_hint: float | None = None,
+              hygiene: CompHygiene | None = None) -> ValueResult:
+        hygiene = hygiene or CompHygiene.from_settings()
         subject_stats = muni_stats(self.gis, mun_code, municipality)
         if not subject_stats.median_ratio:
             return ValueResult(None, None, "public_record", notes=["no sales data for subject town"])
         subject_equalized = assessed_total * subject_stats.median_ratio
         subject_units = max(int(units or 1), 1)
-        subject_stories = stories_from_desc(building_desc)
+        high_value = max(subject_equalized, value_hint or 0)
         result: ValueResult | None = None
         for r in (radius, fallback_radius):
             features = self.gis.nearby_sales(lat, lon, r, months=months + 12)
+            packages = package_deed_keys(features)
+            dropped = {"package deed": 0, "price band": 0, "$/sqft band": 0, "sale/assessment band": 0}
             comps: list[Comp] = []
             for f in features:
                 a = f["attributes"]
                 price, assessed = a.get("SALE_PRICE") or 0, a.get("NET_VALUE") or 0
-                if price < 40000 or assessed < 20000:
+                if assessed < 20000:
+                    continue
+                if (price, a.get("DEED_DATE")) in packages:
+                    dropped["package deed"] += 1
+                    continue
+                if not hygiene.price_ok(price, high_value):
+                    dropped["price band"] += 1
+                    continue
+                if not hygiene.ppsf_ok(price, explicit_sqft(a.get("BLDG_DESC"))):
+                    dropped["$/sqft band"] += 1
                     continue
                 comp_units = max(int(a.get("DWELL") or 1), 1)
                 if (subject_units == 1) != (comp_units == 1) or abs(comp_units - subject_units) > 1:
@@ -149,6 +220,9 @@ class PublicRecordComps:
                     property_type=a.get("BLDG_DESC"), lat=c[1] if c else None, lon=c[0] if c else None,
                     assessed_total=assessed, time_adjusted_price=round(adj, -2),
                     normalized_ratio=adj / (assessed * comp_stats.median_ratio)))
+            kept = [c for c in comps if hygiene.ratio_ok(c.normalized_ratio)]
+            dropped["sale/assessment band"] += len(comps) - len(kept)
+            comps = kept
             if comps:
                 lo, hi = iqr_filter([c.normalized_ratio for c in comps])
                 comps = [c for c in comps if lo <= c.normalized_ratio <= hi]
@@ -161,9 +235,13 @@ class PublicRecordComps:
                 result = ValueResult(
                     arv=round(arv_mult * subject_equalized, -3), as_is=round(as_is_mult * subject_equalized, -3),
                     method="public_record_equalized_ratio", comps=comps, renovated_count=n_r,
-                    distressed_count=n_d, dispersion=disp, radius_used=r,
+                    distressed_count=n_d, dispersion=disp, radius_used=r, subject_equalized=round(subject_equalized, -2),
                     notes=[f"subject equalized value ${subject_equalized:,.0f} (assessed ${assessed_total:,.0f} x "
                            f"town ratio {subject_stats.median_ratio})",
                            f"{len(comps)} recorded sales within {r} mi, time-adjusted at {appreciation:.0%}/yr"])
+                if any(dropped.values()):
+                    result.notes.append("comp hygiene dropped " + ", ".join(
+                        f"{n} {why}" for why, n in dropped.items() if n))
                 break
-        return result or ValueResult(None, None, "public_record", notes=["not enough recorded sales nearby"])
+        return result or ValueResult(None, None, "public_record", subject_equalized=round(subject_equalized, -2),
+                                     notes=["not enough clean recorded sales nearby"])

@@ -148,3 +148,9 @@ def counts(session: Session) -> dict[str, int]:
     tally["portfolio_owners"] = session.scalar(select(func.count(DistressSignal.id)).where(
         DistressSignal.signal_type == SignalType.PORTFOLIO_OWNER, DistressSignal.active.is_(True))) or 0
     return tally
+
+
+def listed_rows(session: Session, top: int = 10) -> list[dict[str, Any]]:
+    """Listed foreclosures (sheriff sale + MLS listing) with an agent to call, best track first."""
+    from engine.fast_track import listed_foreclosures
+    return [lf.to_dict() for lf in listed_foreclosures(session) if lf.agent][:top]
