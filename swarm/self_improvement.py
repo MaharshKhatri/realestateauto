@@ -189,7 +189,17 @@ class PipelineSelfImprovementAgent(BaseAgent):
             + (", ".join(f"{o.lower()} {n}" for o, n in outcomes.most_common()) or "none logged")
             + f"; overdue follow-ups {overdue}",
         ]
+        from engine.scoring import signal_families
+        ready_now = sum(1 for l in open_leads if l.ready_to_call)
+        stacks = Counter(min(len(signal_families(l.property)), 4) for l in open_leads)
+        offers_out = sum(1 for l in open_leads if l.status_stage == "OFFER_SENT_TO_AGENT")
+        lines.append(f"- Ready to call now (deal + live phone / agent e-mail): **{ready_now}**; agent LOIs awaiting "
+                     f"follow-up {offers_out}; stacked distress 2x {stacks.get(2, 0)}, 3x {stacks.get(3, 0)}, "
+                     f"4x+ {stacks.get(4, 0)}")
         sections["Contact readiness & CRM"] = lines
+        if ready_now < 50:
+            findings.append(f"Only {ready_now} deals are ready to call. Underwrite more stale listings "
+                            "(swarm run underwriter --opt scope=stale_listing) and refresh listing agents.")
         if cr["ready"] < 0.5:
             findings.append(f"Only {cr['ready']:.0%} of the top 100 leads have a callable number. "
                             f"{cr['skip_traceable']} can be skip-traced right now (python manage.py skiptrace "
@@ -271,6 +281,7 @@ class PipelineSelfImprovementAgent(BaseAgent):
                             "upset_coverage": round(upset_cov, 3), "valuations": len(vals),
                             "verdicts": dict(verdicts), "contact_readiness_top100": round(cr["ready"], 3),
                             "buyer_match_coverage": round(match_cov, 3), "calls_7d": len(calls),
+                            "ready_to_call": ready_now, "stacked_2x_plus": sum(n for k, n in stacks.items() if k >= 2),
                             "connect_rate_7d": round(spoke / (len(calls) or 1), 3)})
         ctx.records_processed = len(open_leads)
         notes = findings + actions

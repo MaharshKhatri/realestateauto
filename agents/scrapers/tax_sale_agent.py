@@ -37,13 +37,15 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from agents.base import AgentContext, BaseAgent
 from agents.scrapers.njgis_client import NJGISClient, feature_to_property
 from core.config import CONFIG_DIR, DATA_DIR, settings
 from core.dates import parse_us_date
 from core.http import FetchError, PoliteSession
-from db.models import SignalType
+from db.models import Property, SignalType
 from db.repository import ensure_lead, normalize_block_lot, upsert_property, upsert_signal
 
 log = logging.getLogger(__name__)
@@ -161,6 +163,20 @@ def load_sites(counties: list[str] | None = None, towns: list[str] | None = None
     return sites
 
 
+def local_parcels(session: Session, mun_code: str, keys: list[tuple[str, str, str]]) -> dict[tuple[str, str, str], Property]:
+    """Existing properties in this municipality keyed like group_by_parcel: (block, lot, qualifier)."""
+    blocks = {k[0] for k in keys}
+    out: dict[tuple[str, str, str], Property] = {}
+    if not blocks:
+        return out
+    for prop in session.scalars(select(Property).where(Property.mun_code == mun_code)):
+        key = (normalize_block_lot(prop.block), normalize_block_lot(prop.lot), (prop.qual or "").strip().upper())
+        if key[0] in blocks:
+            out.setdefault(key, prop)
+            out.setdefault((key[0], key[1], ""), prop)
+    return {k: v for k, v in out.items() if k in set(keys) or (k[0], k[1]) in {(a, b) for a, b, _ in keys}}
+
+
 def group_by_parcel(rows: list[LienRow]) -> dict[tuple[str, str, str], ParcelLiens]:
     groups: dict[tuple[str, str, str], ParcelLiens] = {}
     for r in rows:
@@ -272,7 +288,12 @@ class TaxSaleAgent(BaseAgent):
         mun_name, mun_code = mun
         delinquent = group_by_parcel(active)
         certs = group_by_parcel(sold)
-        blocks = sorted({k[0] for k in list(delinquent) + list(certs)})
+        keys = list(delinquent) + list(certs)
+        # Stack onto parcels we already track first (same municipality + block + lot + qualifier), so tax liens
+        # land on existing sheriff-sale / absentee properties even when NJGIN is unreachable.
+        local = local_parcels(ctx.session, mun_code, keys)
+        ctx.bump("matched_existing_parcels", len(local))
+        blocks = sorted({k[0] for k in keys if k not in local and (k[0], k[1], "") not in local})
         parcels: dict[tuple[str, str, str], dict] = {}
         for i in range(0, len(blocks), 40):
             chunk = ",".join("'" + b.replace("'", "''") + "'" for b in blocks[i:i + 40])
@@ -284,6 +305,13 @@ class TaxSaleAgent(BaseAgent):
         for kind, groups in (("delinquent", delinquent), ("certificate", certs)):
             for key, liens in groups.items():
                 ctx.records_processed += 1
+                prop = local.get(key) or local.get((key[0], key[1], ""))
+                if prop is not None:
+                    if prop.property_class not in (None, "2"):
+                        ctx.bump("non_residential_skipped")
+                        continue
+                    self._store_parcel(ctx, site, None, kind, liens, sale_date, prop=prop)
+                    continue
                 feature = parcels.get(key) or parcels.get((key[0], key[1], ""))
                 if feature is None:
                     ctx.bump("parcel_unmatched")
@@ -294,12 +322,13 @@ class TaxSaleAgent(BaseAgent):
                 self._store_parcel(ctx, site, feature, kind, liens, sale_date)
         ctx.note(f"{site['town']}: {len(delinquent)} delinquent parcels (sale {sale_date}), {len(certs)} certificate parcels")
 
-    def _store_parcel(self, ctx: AgentContext, site: dict, feature: dict, kind: str, liens: ParcelLiens,
-                      sale_date: date | None) -> None:
-        data = feature_to_property(feature)
-        prop, created = upsert_property(ctx.session, data, source="njgin_modiv")
-        if created:
-            ctx.bump("properties_created")
+    def _store_parcel(self, ctx: AgentContext, site: dict, feature: dict | None, kind: str, liens: ParcelLiens,
+                      sale_date: date | None, prop: Property | None = None) -> None:
+        if prop is None:
+            data = feature_to_property(feature)
+            prop, created = upsert_property(ctx.session, data, source="njgin_modiv")
+            if created:
+                ctx.bump("properties_created")
         if liens.owner and not prop.owner_name:
             prop.owner_name, prop.owner_name_source = liens.owner, "tax_sale_list"
         today = date.today()

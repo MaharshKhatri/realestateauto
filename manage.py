@@ -2,7 +2,7 @@
 """Operator CLI.
 
     python manage.py init                     create/upgrade the database
-    python manage.py briefing [--top 15]      Daily Action Briefing
+    python manage.py briefing [--top 15]      Daily Action Briefing: (A) ready to call (B) sheriff/estate spreads (C) stacked
     python manage.py lead <id>                everything about one lead
     python manage.py underwrite [--top 15]    comps / ARV / MAO for the top leads
     python manage.py buyers [--top 20]        active cash buyers
@@ -17,7 +17,15 @@
     python manage.py skiptrace --export-top 50 | --import found.csv | --lead ID --paste file.txt
     python manage.py dnc --load ftc_201.txt [--date YYYY-MM-DD] | --add PHONE [--source daniels_law] | --status
     python manage.py match [--top 50]         top-5 cash buyers for each top deal
+    python manage.py dnc --suppress-address "12 Main St, Newark NJ 07102" [--source daniels_law]   stop mail to it
     python manage.py pii-scan                 check git-tracked files for names from the database (run before pushing)
+    python manage.py agent-blast [--top 50] [--send 10] | --mark-sent LEAD [--channel sms] | --opt-out CONTACT
+    python manage.py mail-merge [--top 50] [--kinds pre_auction,estate,landlord] | --mark-mailed deals/mail_batches/<dir>
+    python manage.py inspect <lead>           virtual inspection: Street View/satellite/FEMA links, condition flags
+    python manage.py stack                    stack distress signals (listed foreclosures, portfolio owners)
+    python manage.py buyer-hotzones [--top 10]   where cash buyers pay the most + our deals in those pockets
+    python manage.py walkthrough <lead> [--invite BUYER] [--walked BUYER] [--when 2026-11-02T11:00]
+    python manage.py bid <lead> [--buyer B --amount 470k --emd 5k] [--accept BID --assignee "ABC LLC"]
     python manage.py swarm <args...>          passthrough to `python -m swarm.orchestrator`
 """
 from __future__ import annotations
@@ -113,6 +121,19 @@ def cmd_briefing(args: argparse.Namespace) -> None:
                 f"{n} {r.started_at:%m/%d %H:%M} ({r.status})" for n, r in sorted(last_runs.items())),
             title="NJ Wholesale Engine", border_style="cyan"))
 
+        from engine import briefing as brief
+        tally = brief.counts(s)
+        console.print(f"[bold]Ready to call now:[/bold] {tally['ready_to_call']}   ·   Stacked distress: "
+                      f"2x {tally['stacked_2x']}, 3x+ {tally['stacked_3x_plus']}   ·   Portfolio-owner signals: "
+                      f"{tally['portfolio_owners']}")
+        if not args.classic:
+            print_briefing_sections(s, brief, args.top)
+            if due:
+                console.print(f"[bold]Follow-ups due now ({len(due)}):[/bold] " + ", ".join(
+                    f"#{lead.id} {lead.property.street_address}" for lead in due[:12]))
+            console.print(Panel(COMPLIANCE_REMINDER, title="Compliance reminder", border_style="yellow"))
+            return
+
         table = Table(box=box.SIMPLE_HEAVY, show_lines=False, header_style="bold magenta",
                       title=f"Top {len(leads)} leads to work today", title_justify="left")
         for col, kw in [("#", {"justify": "right"}), ("Pri", {"justify": "right"}), ("M/V", {}),
@@ -160,11 +181,79 @@ def cmd_briefing(args: argparse.Namespace) -> None:
         if due:
             console.print(f"[bold]Follow-ups due now ({len(due)}):[/bold] " + ", ".join(
                 f"#{lead.id} {lead.property.street_address}" for lead in due[:12]))
-        console.print(Panel(
-            "Every call: identify yourself as a real estate investor (not an agent), say you may assign the contract to "
-            "another investor, and encourage attorney review. Call 8am–9pm only; scrub numbers against the National DNC "
-            "list before calling; stop immediately on any do-not-call request.",
-            title="Compliance reminder", border_style="yellow"))
+        console.print(Panel(COMPLIANCE_REMINDER, title="Compliance reminder", border_style="yellow"))
+
+
+COMPLIANCE_REMINDER = (
+    "Every call: identify yourself as a real estate investor (not an agent), say you may assign the contract to "
+    "another investor, and encourage attorney review. Call 8am–9pm only; scrub numbers against the National DNC "
+    "list before calling; stop immediately on any do-not-call request. Listing agents: you are an unrepresented "
+    "buyer — never imply you will pay them.")
+
+
+def pct(v: float | None) -> str:
+    return f"{v:.0%}" if v is not None else "—"
+
+
+def place(row: dict) -> str:
+    badge = f" [bold yellow]{row['badge']}[/bold yellow]" if row.get("badge") else ""
+    return f"{row['address'] or '?'}{badge}\n[dim]{row['town'] or ''} {row['zip'] or ''} · {row['county'] or ''}[/dim]"
+
+
+def reach_text(row: dict) -> str:
+    who = f"{row['who'] or ''} [dim]({(row['role'] or '').lower().replace('_', ' ')})[/dim]" if row.get("who") else ""
+    line = format_phone(row["phone"]) if row.get("phone") else (row.get("email") or "[dim]no contact[/dim]")
+    return f"{who}\n{line}".strip()
+
+
+def print_briefing_sections(s, brief, top: int) -> None:
+    a = brief.ready_rows(s, top)
+    t = Table(box=box.SIMPLE_HEAVY, header_style="bold green", title_justify="left",
+              title=f"(A) Ready to call now — top {len(a)} underwritten deals with a live phone / agent e-mail")
+    for col, kw in [("#", {"justify": "right"}), ("Lead", {"justify": "right"}), ("Pri", {"justify": "right"}),
+                    ("Property", {"max_width": 40}), ("Call / e-mail", {"max_width": 34}), ("Ask", {"justify": "right"}),
+                    ("MAO 70/75", {"justify": "right"}), ("75% ÷ ask", {"justify": "right"}),
+                    ("Gap to ask", {"justify": "right"}), ("Verdict", {}), ("Why", {"max_width": 40})]:
+        t.add_column(col, **kw)
+    for i, r in enumerate(a, 1):
+        ask = r.get("ask") or r.get("upset")
+        gap = (ask - r["mao_70"]) if ask and r.get("mao_70") else None
+        t.add_row(str(i), str(r["lead_id"]), f"{r['priority']:.0f}", place(r), reach_text(r),
+                  short_money(r.get("ask")) if r.get("ask") else (f"[dim]upset[/dim] {short_money(r['upset'])}"
+                                                                  if r.get("upset") else "—"),
+                  f"{short_money(r['mao_70'])}/{short_money(r['mao_75'])}", pct(r.get("list_to_mao_75")),
+                  short_money(gap) if gap is not None else "—",
+                  (r["verdict"] or "") + ("\n[cyan]striking distance[/cyan]" if r.get("striking_distance") else ""),
+                  (r.get("via") or "") + (f" · sale {r['sale_date']:%b %d}" if r.get("sale_date") else ""))
+    console.print(t)
+    if not a:
+        console.print("[yellow]No ready-to-call deals: run the swarm (underwrite → lead_scoring) or add phones via "
+                      "manage.py skiptrace.[/yellow]")
+    b = brief.high_spread_rows(s, 10)
+    t = Table(box=box.SIMPLE_HEAVY, header_style="bold magenta", title_justify="left",
+              title=f"(B) Top {len(b)} high-spread sheriff-sale / estate deals")
+    for col, kw in [("Lead", {"justify": "right"}), ("Property", {"max_width": 40}), ("Kind", {}), ("Sale", {}),
+                    ("Upset", {"justify": "right"}), ("ARV", {"justify": "right"}), ("MAO 70", {"justify": "right"}),
+                    ("Spread", {"justify": "right"}), ("Verdict / FRFPA", {"max_width": 28}),
+                    ("Contact", {"max_width": 30})]:
+        t.add_column(col, **kw)
+    for r in b:
+        t.add_row(str(r["lead_id"]), place(r), r["kind"], f"{r['sale_date']:%b %d}" if r.get("sale_date") else "—",
+                  short_money(r.get("upset")), short_money(r["arv"]), short_money(r["mao_70"]), short_money(r["spread"]),
+                  f"{r['verdict']}" + (f"\n[dim]{r['frfpa_track']}[/dim]" if r.get("frfpa_track") else ""), reach_text(r))
+    console.print(t)
+    c = brief.stacked_rows(s, 10)
+    t = Table(box=box.SIMPLE_HEAVY, header_style="bold yellow", title_justify="left",
+              title=f"(C) Top {len(c)} stacked-distress / portfolio-owner leads")
+    for col, kw in [("Lead", {"justify": "right"}), ("Pri", {"justify": "right"}), ("Property", {"max_width": 40}),
+                    ("Signals", {"max_width": 34}), ("Portfolio", {"justify": "right"}), ("Verdict", {}),
+                    ("MAO 70", {"justify": "right"}), ("Contact", {"max_width": 30})]:
+        t.add_column(col, **kw)
+    for r in c:
+        t.add_row(str(r["lead_id"]), f"{r['priority']:.0f}", place(r), " + ".join(r["families"]),
+                  f"{r['portfolio_size']} props" if r.get("portfolio_size") else "—", r["verdict"] or "[dim]—[/dim]",
+                  short_money(r["mao_70"]), reach_text(r))
+    console.print(t)
 
 
 def cmd_lead(args: argparse.Namespace) -> None:
@@ -402,7 +491,10 @@ def cmd_dnc(args: argparse.Namespace) -> None:
         if args.add:
             row = compliance.add_internal(s, args.add, source=args.source, notes=args.notes)
             console.print(f"added {row.phone} ({row.source})" if row else "[red]not a valid phone number[/red]")
-        if args.status or not (args.load or args.add):
+        if args.suppress_address:
+            row = compliance.suppress_address(s, args.suppress_address, source=args.source, notes=args.notes)
+            console.print(f"suppressed mailing address ({row.source})" if row else "[red]not a usable address[/red]")
+        if args.status or not (args.load or args.add or args.suppress_address):
             st = compliance.ftc_data_status(s)
             console.print(f"FTC data: {st}  sources: " + ", ".join(
                 f"{src} {n:,}" for src, n in s.execute(select(compliance.DncEntry.source, func.count())
@@ -432,6 +524,233 @@ def cmd_match(args: argparse.Namespace) -> None:
     console.print(f"buyer_matcher: {run.status} {run.metrics_json}")
 
 
+def cmd_agent_blast(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from engine import agent_outreach as ao
+    init_db()
+    with session_scope() as s:
+        if args.opt_out:
+            contact = s.get(Contact, args.opt_out)
+            if contact is None:
+                console.print(f"[red]contact {args.opt_out} not found[/red]")
+                return
+            ao.opt_out(s, contact)
+            console.print(f"{contact.name}: opted out — phone on the internal DNC list, no more offers.")
+            return
+        if args.mark_sent:
+            lead = s.get(Lead, args.mark_sent)
+            if lead is None:
+                console.print(f"[red]lead {args.mark_sent} not found[/red]")
+                return
+            packet = ao.build_packet(lead, session=s)
+            stage = ao.record_sent(s, lead, packet, args.channel)
+            console.print(f"Lead #{lead.id}: {packet.kind} logged via {args.channel}; stage {stage}; follow-up call "
+                          f"{ao.followup_time():%a %b %d %H:%M}.")
+            return
+        index, packets = ao.write_batch(s, args.top, Path(args.out) if args.out else None)
+        t = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", title_justify="left",
+                  title=f"{len(packets)} listing-agent packets (review before sending)")
+        for col in ("Lead", "Listing", "DOM", "Ask", "Anchor / best", "75% ÷ ask", "Agent", "Reach", "Kind"):
+            t.add_column(col)
+        for p in packets:
+            t.add_row(str(p.lead_id), p.address[:38], str(p.dom or "?"), short_money(p.list_price),
+                      f"{short_money(p.anchor)} / {short_money(p.best)}", pct(p.list_to_mao_75),
+                      f"{p.agent_name[:22]}\n[dim]{(p.brokerage or '')[:26]}[/dim]",
+                      (p.agent_email or "") + ("\n" + format_phone(p.agent_phone) if p.agent_phone else ""), p.kind)
+        console.print(t)
+        console.print(f"Review page: {index}")
+        if args.send:
+            ok, why = ao.smtp_ready()
+            if not ok:
+                console.print(f"[yellow]SMTP not configured ({why}); use the mailto links / copy buttons, then "
+                              "--mark-sent LEAD.[/yellow]")
+                return
+            sent = 0
+            for p in [p for p in packets if p.agent_email][: args.send]:
+                lead = s.get(Lead, p.lead_id)
+                try:
+                    ao.send_smtp(s, lead, p)
+                    sent += 1
+                    console.print(f"  sent → {p.agent_email} (lead #{p.lead_id})")
+                except RuntimeError as exc:
+                    console.print(f"[yellow]  stopped: {exc}[/yellow]")
+                    break
+            console.print(f"{sent} e-mail(s) sent; {ao.sent_last_24h(s)} in the last 24 hours.")
+
+
+def cmd_mail_merge(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from engine import direct_mail as dm
+    init_db()
+    with session_scope() as s:
+        if args.mark_mailed:
+            n = dm.mark_mailed(s, Path(args.mark_mailed))
+            console.print(f"{n} letters logged as mailed.")
+            return
+        kinds = set(args.kinds.split(",")) if args.kinds else None
+        out, letters = dm.write_batch(s, args.top, Path(args.out) if args.out else None, kinds=kinds,
+                                      all_verdicts=args.all_verdicts, include_callable=args.include_callable)
+        counts = Counter(lt.kind for lt in letters)
+        console.print(f"{len(letters)} letters → {out}  ({', '.join(f'{k} {v}' for k, v in counts.items())})")
+        if not dm.operator_ready():
+            console.print("[yellow]PROOF batch: set operator.name, phone and mailing_address in config/settings.yaml "
+                          "before mailing (the PDFs are watermarked).[/yellow]")
+        console.print("Upload <kind>.pdf + mailing_list.csv to Click2Mail (or print), then: "
+                      f"python manage.py mail-merge --mark-mailed {out}")
+
+
+def cmd_inspect(args: argparse.Namespace) -> None:
+    from engine.virtual_inspector import build_dossier
+    init_db()
+    with session_scope() as s:
+        lead = s.get(Lead, args.id)
+        if lead is None:
+            console.print(f"[red]lead {args.id} not found[/red]")
+            return
+        d = build_dossier(s, lead)
+        console.print(Panel.fit("\n".join(f"[bold]{k}[/bold]: {v}" for k, v in d.links.items()),
+                                title=f"Virtual inspection — {d.address}"))
+        for f in d.flags:
+            console.print(f"  [yellow]{f['flag']}[/yellow] ({f['evidence']}): {f['advice']}")
+        if d.occupancy_hint:
+            console.print(f"  Occupancy hint: {d.occupancy_hint}")
+        console.print("[bold]Remote due-diligence checklist[/bold]")
+        for item in d.checklist:
+            console.print(f"  ☐ {item}")
+        for k, v in d.requests.items():
+            console.print(Panel(v, title=f"Photo / video request — {k}"))
+        for n in d.notes:
+            console.print(f"[dim]{n}[/dim]")
+
+
+def cmd_stack(args: argparse.Namespace) -> None:
+    from agents.enrichment.signal_stacker import SignalStackerAgent
+    run = SignalStackerAgent(no_agents=args.no_agents).execute()
+    console.print(f"signal_stacker: {run.status} {run.metrics_json}")
+    for n in (run.self_improvement_notes or "").splitlines():
+        console.print(f"  {n}")
+
+
+def cmd_buyer_hotzones(args: argparse.Namespace) -> None:
+    from engine.disposition import buyer_hotzones
+    init_db()
+    with session_scope() as s:
+        zones = buyer_hotzones(s, args.top, include_commercial=args.include_commercial)
+        for i, z in enumerate(zones, 1):
+            console.print(f"[bold cyan]{i:>2}. {z.label}[/bold cyan]  [dim]score {z.score:,.0f}[/dim]")
+            for r in z.reasons:
+                console.print(f"     • {r}")
+            console.print("     Buyers: " + "; ".join(f"#{b['buyer_id']} {b['name']} ({b['purchases']})"
+                                                     for b in z.top_buyers))
+            for h in z.leads:
+                console.print(f"     → lead #{h['lead_id']} {h['address']} · buyer price {short_money(h['buyer_price'])} "
+                              f"· {h['verdict']} · headroom {short_money(h['headroom'])}"
+                              + (" · [green]under contract[/green]" if h["under_contract"] else ""))
+        if not zones:
+            console.print("[yellow]No buyer purchases on file — import county deed exports (owner_records).[/yellow]")
+
+
+def _parse_when(text: str | None):
+    from datetime import datetime
+    return datetime.fromisoformat(text) if text else None
+
+
+def cmd_walkthrough(args: argparse.Namespace) -> None:
+    from engine import disposition as dp
+    init_db()
+    with session_scope() as s:
+        lead = s.get(Lead, args.id)
+        if lead is None:
+            console.print(f"[red]lead {args.id} not found[/red]")
+            return
+        try:
+            for ref in args.invite or []:
+                buyer = dp.find_buyer(s, ref)
+                if buyer is None:
+                    console.print(f"[red]buyer {ref!r} not found[/red]")
+                    continue
+                bid = dp.invite(s, lead, buyer, _parse_when(args.when))
+                console.print(f"invited {dp.buyer_label(buyer)} — status {bid.status}"
+                              + (f" at {bid.walkthrough_date:%a %b %d %H:%M}" if bid.walkthrough_date else ""))
+            for ref in args.walked or []:
+                buyer = dp.find_buyer(s, ref)
+                bid = next((b for b in dp.bids_for(s, lead) if buyer and b.buyer_id == buyer.id), None)
+                if bid is None:
+                    console.print(f"[red]no invitation for {ref!r} on this lead[/red]")
+                    continue
+                dp.mark_walked(s, bid, _parse_when(args.when))
+                console.print(f"{dp.buyer_label(buyer)} walked it — send: {dp.post_walk_followup(lead, buyer)}")
+        except dp.DispositionBlocked as exc:
+            console.print(f"[red]Blocked:[/red] {'; '.join(exc.reasons)}")
+            return
+        plan = dp.walkthrough_plan(lead, dp.matched_buyers(s, lead))
+        console.print(Panel.fit(
+            f"Status: [bold]{plan['status']}[/bold]" + (f" · window {plan['opens']} → {plan['closes']}" if plan.get("opens") else "")
+            + f"\nAccess: {plan['access']}\n" + (f"[yellow]{'; '.join(plan['blocked'])}[/yellow]\n" if plan["blocked"] else "")
+            + (f"Proposed slots: {', '.join(f'{x:%a %b %d %H:%M}' for x in plan['slots'])}\n" if plan["slots"] else "")
+            + (plan.get("tip") or ""), title=f"Remote walkthrough — {plan['address']}"))
+        if plan["blocked"]:
+            return
+        console.print(Panel(plan["access_request"], title="Access request (agent / seller)"))
+        for inv in plan["invites"]:
+            console.print(Panel(f"{inv['sms']}\n\n[dim]{inv['email']}[/dim]",
+                                title=f"Invite → #{inv['buyer_id']} {inv['buyer']} {format_phone(inv['phone']) if inv['phone'] else ''}"))
+        for step in plan["steps"]:
+            console.print(step)
+
+
+def cmd_bid(args: argparse.Namespace) -> None:
+    from engine import disposition as dp
+    init_db()
+    with session_scope() as s:
+        lead = s.get(Lead, args.id)
+        if lead is None:
+            console.print(f"[red]lead {args.id} not found[/red]")
+            return
+        try:
+            if args.buyer and args.amount:
+                buyer = dp.find_buyer(s, args.buyer)
+                if buyer is None:
+                    console.print(f"[red]buyer {args.buyer!r} not found[/red]")
+                    return
+                bid, warnings = dp.record_bid(s, lead, buyer, money_arg(args.amount),
+                                              money_arg(args.emd) if args.emd else None, notes=args.notes or "")
+                console.print(f"bid #{bid.id}: {dp.buyer_label(buyer)} {money(bid.bid_amount)}")
+                for w in warnings:
+                    console.print(f"  [yellow]{w}[/yellow]")
+            if args.accept:
+                from db.models import BuyerBid
+                bid = s.get(BuyerBid, args.accept)
+                if bid is None or bid.lead_id != lead.id:
+                    console.print(f"[red]bid {args.accept} is not on lead {lead.id}[/red]")
+                    return
+                doc, notes = dp.accept_bid(s, bid, args.structure, args.split, assignee_name=args.assignee)
+                for n in notes:
+                    console.print(n)
+                console.print("Generated: " + ", ".join(str(p) for p in doc.paths))
+        except dp.DispositionBlocked as exc:
+            console.print(f"[red]Blocked:[/red] {'; '.join(exc.reasons)}")
+            return
+        t = Table(box=box.SIMPLE, title=f"Bids on lead #{lead.id} (contract {money(lead.offer_amount)})")
+        for col in ("Bid", "Buyer", "Status", "Walkthrough", "Amount", "Fee", "Deposit", "Notes"):
+            t.add_column(col)
+        best = dp.best_bid(s, lead)
+        for b in dp.bids_for(s, lead):
+            fee = (b.bid_amount - lead.offer_amount) if b.bid_amount and lead.offer_amount else None
+            t.add_row(f"{b.id}{' ★' if best and b.id == best.id else ''}", dp.buyer_label(b.buyer), b.status,
+                      f"{b.walkthrough_date:%b %d %H:%M}" if b.walkthrough_date else "—", money(b.bid_amount),
+                      money(fee), money(b.emd_amount), (b.notes or "")[:40])
+        console.print(t)
+
+
+def money_arg(text: str) -> float:
+    t = text.strip().lower().replace("$", "").replace(",", "")
+    mult = 1_000 if t.endswith("k") else 1_000_000 if t.endswith("m") else 1
+    return float(t.rstrip("km")) * mult
+
+
 def main(argv: list[str] | None = None) -> None:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "swarm":
@@ -445,6 +764,7 @@ def main(argv: list[str] | None = None) -> None:
     b.add_argument("--top", type=int, default=15)
     b.add_argument("--source", help="only leads from this primary source (e.g. sheriff_sale)")
     b.add_argument("--underwritten", action="store_true", help="only leads that have a valuation")
+    b.add_argument("--classic", action="store_true", help="the single top-N table instead of sections A/B/C")
     l = sub.add_parser("lead")
     l.add_argument("id", type=int)
     u = sub.add_parser("underwrite")
@@ -501,15 +821,54 @@ def main(argv: list[str] | None = None) -> None:
     dn.add_argument("--source", default="internal", choices=["internal", "daniels_law", "litigator"])
     dn.add_argument("--notes")
     dn.add_argument("--status", action="store_true")
+    dn.add_argument("--suppress-address", help="stop mailing/sharing this address (Daniel's Law or a stop request)")
     sub.add_parser("pii-scan")
     mt = sub.add_parser("match")
     mt.add_argument("--top", type=int, default=50)
+    ab = sub.add_parser("agent-blast", help="B2B listing-agent LOI packets (e-mail + SMS + 1-page LOI)")
+    ab.add_argument("--top", type=int, default=50)
+    ab.add_argument("--out", help="output folder (default deals/agent_blast/<date>)")
+    ab.add_argument("--send", type=int, default=0, help="send up to N e-mails over SMTP (daily limit applies)")
+    ab.add_argument("--mark-sent", type=int, metavar="LEAD", help="log a packet you sent by hand")
+    ab.add_argument("--channel", default="email", choices=["email", "sms", "mailto", "phone"])
+    ab.add_argument("--opt-out", type=int, metavar="CONTACT", help="agent asked to stop: suppress them")
+    mm = sub.add_parser("mail-merge", help="pre-auction / estate / landlord letters (PDF + Click2Mail CSV)")
+    mm.add_argument("--top", type=int, default=50)
+    mm.add_argument("--out")
+    mm.add_argument("--kinds", help="comma list: pre_auction,estate,landlord")
+    mm.add_argument("--all-verdicts", action="store_true", help="include leads without an offer verdict")
+    mm.add_argument("--include-callable", action="store_true", help="also mail owners we can already call")
+    mm.add_argument("--mark-mailed", metavar="DIR", help="log a batch as mailed")
+    ins = sub.add_parser("inspect", help="virtual inspection dossier (Street View, flags, photo request)")
+    ins.add_argument("id", type=int)
+    st = sub.add_parser("stack", help="run the signal stacker (listed distress, portfolio owners)")
+    st.add_argument("--no-agents", action="store_true")
+    hz = sub.add_parser("buyer-hotzones", help="micro-markets where cash buyers pay the most + our deals there")
+    hz.add_argument("--top", type=int, default=10)
+    hz.add_argument("--include-commercial", action="store_true")
+    wt = sub.add_parser("walkthrough", help="remote buyer walkthrough plan, invites and scripts")
+    wt.add_argument("id", type=int)
+    wt.add_argument("--invite", action="append", metavar="BUYER", help="buyer id or name (repeatable)")
+    wt.add_argument("--walked", action="append", metavar="BUYER")
+    wt.add_argument("--when", help="YYYY-MM-DDTHH:MM walkthrough time")
+    bd = sub.add_parser("bid", help="record / list / accept buyer bids")
+    bd.add_argument("id", type=int)
+    bd.add_argument("--buyer", help="buyer id or name")
+    bd.add_argument("--amount", help="buyer's total price, e.g. 470k")
+    bd.add_argument("--emd", help="deposit offered, e.g. 5k")
+    bd.add_argument("--notes")
+    bd.add_argument("--accept", type=int, metavar="BID_ID")
+    bd.add_argument("--structure", default="assignment", choices=["assignment", "jv"])
+    bd.add_argument("--split", type=float, help="JV partner share in percent")
+    bd.add_argument("--assignee", help="legal name/entity of the assignee (required for unnamed buyers)")
     args = parser.parse_args(argv)
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
      "stats": cmd_stats, "server": cmd_server, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
-     "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan}[args.cmd](args)
+     "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,
+     "mail-merge": cmd_mail_merge, "inspect": cmd_inspect, "stack": cmd_stack, "buyer-hotzones": cmd_buyer_hotzones,
+     "walkthrough": cmd_walkthrough, "bid": cmd_bid}[args.cmd](args)
 
 
 if __name__ == "__main__":

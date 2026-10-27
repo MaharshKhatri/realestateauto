@@ -53,6 +53,7 @@ OUTCOME_NEXT = {
     CallOutcome.SPOKE_NEEDS_OFFER: "Send a written LOI today while they're warm; book a follow-up call to walk through it.",
     CallOutcome.SPOKE_NOT_INTERESTED: "Respect it. One check-in in ~6 weeks, or sooner if the sale date moves.",
     CallOutcome.AGENT_WILL_PRESENT_LOI: "Send the LOI to the agent now with proof of funds; confirm the seller's response date.",
+    CallOutcome.OFFER_SENT_TO_AGENT: "Call the agent's cell in 48 hours: did the seller see it, any counter, what would get it done?",
     CallOutcome.OFFER_ACCEPTED: "Generate the purchase agreement for attorney review; record the contract when fully signed.",
     CallOutcome.DEAD: "Close it out with the reason so the learner can use it.",
     CallOutcome.DNC: "Done — the number is suppressed. Don't contact this person by phone again.",

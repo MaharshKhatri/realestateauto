@@ -48,6 +48,30 @@ def clean(value: str | None) -> str:
     return re.sub(r"\s+", " ", (value or "").replace("\xa0", " ")).strip()
 
 
+US_STATES = {"AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY",
+             "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH",
+             "OK", "OR", "PA", "PR", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"}
+KEEP_UPPER = US_STATES | {"PO", "NW", "SE", "SW", "LLC", "LP", "LLP"}
+
+
+def postal_title(text: str | None) -> str:
+    """'306 13TH STREET' -> '306 13th Street'; 'BROOKLYN, NY 11215' -> 'Brooklyn, NY 11215'. For envelopes/letters."""
+    def word(m: re.Match[str]) -> str:
+        w = m.group(0)
+        up = w.upper()
+        if up in KEEP_UPPER and len(w) <= 3:
+            return up
+        if re.fullmatch(r"\d+(ST|ND|RD|TH)", up):
+            return w.lower()
+        if re.fullmatch(r"\d+[A-Z]?", up):
+            return up
+        head, sep, tail = w.partition("'")
+        if sep and len(head) == 1 and len(tail) > 1:                 # O'BRIEN -> O'Brien
+            return head.upper() + sep + tail[:1].upper() + tail[1:].lower()
+        return w[:1].upper() + w[1:].lower()
+    return re.sub(r"[A-Za-z0-9']+", word, clean(text))
+
+
 def normalize_street(street: str | None) -> str:
     """'186 Newark Avenue, Unit 2' -> '186 NEWARK AVE UNIT 2'. Used for matching, not display."""
     s = clean(street).upper().replace(".", "").replace(",", " ")

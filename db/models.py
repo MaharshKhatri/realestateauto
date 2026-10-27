@@ -39,6 +39,8 @@ class SignalType(StrEnum):
     VACANT = "VACANT"
     FAILED_LISTING = "FAILED_LISTING"
     STALE_LISTING = "STALE_LISTING"
+    PORTFOLIO_OWNER = "PORTFOLIO_OWNER"        # same owner/mailing holds several distressed or absentee leads
+    ACTIVE_LISTING = "ACTIVE_LISTING"          # listed for sale now (any DOM) — found by cross-matching the MLS feed
 
 
 class LeadStage(StrEnum):
@@ -48,6 +50,7 @@ class LeadStage(StrEnum):
     CONTACTED = "CONTACTED"
     INTERESTED = "INTERESTED"
     APPOINTMENT = "APPOINTMENT"
+    OFFER_SENT_TO_AGENT = "OFFER_SENT_TO_AGENT"   # LOI e-mailed/texted to the listing agent, awaiting presentation
     OFFER_MADE = "OFFER_MADE"
     NEGOTIATING = "NEGOTIATING"
     UNDER_CONTRACT = "UNDER_CONTRACT"
@@ -84,6 +87,7 @@ class CallOutcome(StrEnum):
     SPOKE_NEEDS_OFFER = "SPOKE_NEEDS_OFFER"
     SPOKE_NOT_INTERESTED = "SPOKE_NOT_INTERESTED"
     AGENT_WILL_PRESENT_LOI = "AGENT_WILL_PRESENT_LOI"
+    OFFER_SENT_TO_AGENT = "OFFER_SENT_TO_AGENT"    # written LOI e-mailed / texted to the listing agent
     OFFER_ACCEPTED = "OFFER_ACCEPTED"
     DEAD = "DEAD"
     DNC = "DNC"
@@ -249,6 +253,8 @@ class Lead(Base):
     occupancy_source: Mapped[str | None] = mapped_column(String(200))
     occupancy_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime)
     frfpa_track: Mapped[str | None] = mapped_column(String(40), index=True)
+    # Underwritten deal with a number we can dial (or a listing agent we can e-mail) right now.
+    ready_to_call: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     contact_attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_contact_at: Mapped[datetime | None] = mapped_column(DateTime)
     offer_amount: Mapped[float | None] = mapped_column(Float)
@@ -449,6 +455,37 @@ class DncEntry(Base):
     list_date: Mapped[date | None] = mapped_column(Date)                # FTC data must be <= 31 days old
     added_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     notes: Mapped[str | None] = mapped_column(String(200))
+
+
+class MailSuppression(Base):
+    """Addresses we must not mail or share: Daniel's Law nondisclosure requests, stop-mail requests, DNC leads."""
+    __tablename__ = "mail_suppressions"
+
+    address_key: Mapped[str] = mapped_column(String(250), primary_key=True)   # nj_tax_assessment_agent.mailing_key
+    source: Mapped[str] = mapped_column(String(24), primary_key=True)         # daniels_law | stop_mail | internal
+    address: Mapped[str | None] = mapped_column(String(250))
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    notes: Mapped[str | None] = mapped_column(String(200))
+
+
+class BuyerBid(Base):
+    """A cash buyer's walkthrough and bid on one of our contracts (remote disposition)."""
+    __tablename__ = "buyer_bids"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    buyer_id: Mapped[int] = mapped_column(ForeignKey("cash_buyers.id", ondelete="CASCADE"), index=True)
+    walkthrough_date: Mapped[datetime | None] = mapped_column(DateTime)
+    bid_amount: Mapped[float | None] = mapped_column(Float)
+    emd_amount: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(16), default="invited")   # invited|scheduled|walked|bid|accepted|declined|withdrawn
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    buyer: Mapped[CashBuyer] = relationship()
+
+    __table_args__ = (UniqueConstraint("lead_id", "buyer_id", name="uq_buyer_bid_lead_buyer"),)
 
 
 class BuyerMatch(Base):

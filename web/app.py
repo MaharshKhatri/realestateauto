@@ -27,6 +27,7 @@ from db.models import (CallOutcome, CashBuyer, Contact, ContactType, DistressSig
 from engine import compliance, crm
 from engine.contracts import DEALS_DIR, DOC_TYPES, ContractBlocked, contract_gate, default_price, generate
 from engine.frfpa_classifier import COVERED_TRACKS, covered_track
+from engine.scoring import stack_badge
 from engine.scripts import NO_OFFER_VERDICTS, build_battle_card, build_buyer_pitch
 from engine.underwriter import frfpa_decision, offer_math
 
@@ -36,7 +37,7 @@ DEAL_VERDICTS = ("STRONG", "WORKABLE", "WORKABLE_82_PCT_FLOOR", "TIGHT")
 TABS = {
     "all": "All open", "callable": "Callable now", "sheriff": "Sheriff sales", "estate": "Estates",
     "listings": "Stale listings", "deals": "Deals (offer verdict)", "frfpa": "Verify occupancy",
-    "followups": "Follow-ups", "pipeline": "In pipeline",
+    "followups": "Follow-ups", "pipeline": "In pipeline", "ready": "Ready to call", "stacked": "Stacked distress",
 }
 
 app = FastAPI(title="NJ Wholesale Cockpit", docs_url="/api/docs", redoc_url=None)
@@ -88,7 +89,7 @@ def lead_row(session: Session, lead: Lead) -> dict[str, Any]:
         "sale_date": iso(sd), "days_to_sale": (sd - date.today()).days if sd else None,
         "next_followup_at": iso(lead.next_followup_at), "attempts": lead.contact_attempts or 0,
         "contact_status": crm.contact_status(session, lead), "reasons": reasons[:3],
-        "owner": (p.owner_name or "").title() or None,
+        "owner": (p.owner_name or "").title() or None, "badge": stack_badge(p), "ready": bool(lead.ready_to_call),
     }
 
 
@@ -162,6 +163,8 @@ def dashboard(session: Session = Depends(db)) -> dict[str, Any]:
         "operator": settings().operator.get("name"), "company": settings().operator.get("company_name"),
         "funnel": crm.funnel(session), "open_leads": open_total,
         "kpis": {"contact_ready_top100": ready, "deals": sum(verdicts.get(v, 0) for v in DEAL_VERDICTS),
+                 "ready_to_call": session.scalar(select(func.count()).select_from(
+                     open_q.where(Lead.ready_to_call.is_(True)).subquery())),
                  "verify_occupancy": sum(1 for _ in session.scalars(open_q.where(Lead.frfpa_track.in_(COVERED_TRACKS)))),
                  "followups_due": len(crm.due_followups(session)), "sales_21d": len(countdown)},
         "verdicts": verdicts,
@@ -202,6 +205,13 @@ def leads(tab: str = "all", q: str | None = None, limit: int = Query(100, le=500
         stmt = stmt.where(Lead.next_followup_at.is_not(None))
     elif tab == "pipeline":
         stmt = stmt.where(Lead.status_stage.notin_(["NEW", "SKIP_TRACE"]))
+    elif tab == "ready":
+        stmt = stmt.where(Lead.ready_to_call.is_(True))
+    elif tab == "stacked":
+        multi = (select(DistressSignal.property_id).where(DistressSignal.active.is_(True))
+                 .group_by(DistressSignal.property_id)
+                 .having(func.count(func.distinct(DistressSignal.signal_type)) >= 2))
+        stmt = stmt.where(Property.id.in_(multi))
     elif tab != "all":
         raise HTTPException(400, f"unknown tab {tab!r}")
     if q:
@@ -430,3 +440,230 @@ def buyer_pitch(buyer_id: int, lead_id: int | None = None, session: Session = De
     if buyer is None:
         raise HTTPException(404)
     return build_buyer_pitch(buyer, get_lead(session, lead_id) if lead_id else None).to_dict()
+
+
+# -- Phase 3: ready-to-call, agent LOI blast, virtual inspector + mail merge, remote disposition ----------
+def _rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for r in rows:
+        r = {k: iso(v) for k, v in r.items()}
+        r["phone_display"] = format_phone(r["phone"]) if r.get("phone") else None
+        out.append(r)
+    return out
+
+
+@app.get("/api/briefing")
+def briefing_sections(top: int = Query(15, le=100), session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import briefing
+    return {"counts": briefing.counts(session), "ready": _rows(briefing.ready_rows(session, top)),
+            "spread": _rows(briefing.high_spread_rows(session, 10)), "stacked": _rows(briefing.stacked_rows(session, 10))}
+
+
+@app.get("/api/agent-outreach")
+def agent_outreach_queue(top: int = Query(50, le=200), session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import agent_outreach as ao
+    packets = [ao.build_packet(lead, generate_loi=False, session=session).to_dict()
+               for lead in ao.candidates(session, top)]
+    ok, why = ao.smtp_ready()
+    return {"packets": packets, "smtp": {"ready": ok, "why": why},
+            "sent_24h": ao.sent_last_24h(session), "daily_limit": int(ao._cfg().get("daily_email_limit", 25))}
+
+
+class SendIn(BaseModel):
+    channel: str = "email"          # email | sms | mailto | phone (logged after sending by hand) | smtp
+
+
+@app.post("/api/agent-outreach/{lead_id}/loi")
+def agent_loi(lead_id: int, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import agent_outreach as ao
+    lead = get_lead(session, lead_id)
+    try:
+        packet = ao.build_packet(lead, session=session)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"packet": packet.to_dict(), "files": _doc_files(lead.property_id, "loi")}
+
+
+@app.post("/api/agent-outreach/{lead_id}/send")
+def agent_send(lead_id: int, body: SendIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import agent_outreach as ao
+    lead = get_lead(session, lead_id)
+    if body.channel not in ("email", "sms", "mailto", "phone", "smtp"):
+        raise HTTPException(400, "channel must be email, sms, mailto, phone or smtp")
+    try:
+        packet = ao.build_packet(lead, session=session)
+        stage = ao.send_smtp(session, lead, packet) if body.channel == "smtp" else ao.record_sent(session, lead, packet,
+                                                                                                   body.channel)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"stage": stage, "kind": packet.kind, "followup_at": iso(lead.next_followup_at),
+            "sent_24h": ao.sent_last_24h(session)}
+
+
+class OptOutIn(BaseModel):
+    contact_id: int
+    notes: str = "agent asked to stop"
+
+
+@app.post("/api/agent-outreach/opt-out")
+def agent_opt_out(body: OptOutIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import agent_outreach as ao
+    contact = session.get(Contact, body.contact_id)
+    if contact is None:
+        raise HTTPException(404, "contact not found")
+    ao.opt_out(session, contact, body.notes)
+    return {"contact_id": contact.id, "dnc_status": contact.dnc_status}
+
+
+@app.get("/api/leads/{lead_id}/inspect")
+def inspect_lead(lead_id: int, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine.virtual_inspector import build_dossier
+    return build_dossier(session, get_lead(session, lead_id)).to_dict()
+
+
+@app.get("/api/mail-merge")
+def mail_preview(top: int = Query(50, le=500), kinds: str | None = None, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import direct_mail as dm
+    wanted = set(kinds.split(",")) if kinds else None
+    letters = [lt for lt in (dm.build_letter(lead) for lead in dm.select_leads(session, top, wanted)) if lt]
+    batches = sorted((p.name for p in dm.MAIL_DIR.glob("*") if (p / "manifest.json").exists()), reverse=True) \
+        if dm.MAIL_DIR.exists() else []
+    return {"operator_ready": dm.operator_ready(), "letters": [lt.to_dict() for lt in letters], "batches": batches[:12]}
+
+
+class MailIn(BaseModel):
+    top: int = Field(50, ge=1, le=500)
+    kinds: list[str] | None = None
+
+
+def _batch_files(batch: str) -> dict[str, str]:
+    from engine import direct_mail as dm
+    folder = dm.MAIL_DIR / batch
+    return {p.name: f"/mail/{batch}/{p.name}" for p in sorted(folder.iterdir()) if p.is_file()} if folder.exists() else {}
+
+
+@app.post("/api/mail-merge")
+def mail_batch(body: MailIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import direct_mail as dm
+    out, letters = dm.write_batch(session, body.top, kinds=set(body.kinds) if body.kinds else None)
+    return {"batch": out.name, "letters": len(letters), "proof": not dm.operator_ready(), "files": _batch_files(out.name)}
+
+
+@app.post("/api/mail-merge/{batch}/mailed")
+def mail_mailed(batch: str, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import direct_mail as dm
+    folder = (dm.MAIL_DIR / batch).resolve()
+    if not folder.is_relative_to(dm.MAIL_DIR.resolve()) or not (folder / "manifest.json").exists():
+        raise HTTPException(404, "batch not found")
+    try:
+        return {"logged": dm.mark_mailed(session, folder)}
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.get("/mail/{batch}/{filename}", include_in_schema=False)
+def mail_file(batch: str, filename: str) -> FileResponse:
+    from engine import direct_mail as dm
+    path = (dm.MAIL_DIR / batch / filename).resolve()
+    if not path.is_relative_to(dm.MAIL_DIR.resolve()) or not path.is_file():
+        raise HTTPException(404)
+    return FileResponse(path)
+
+
+class SuppressIn(BaseModel):
+    address: str = Field(min_length=6, max_length=250)
+    source: str = "internal"
+    notes: str | None = None
+
+
+@app.post("/api/mail-suppress")
+def mail_suppress(body: SuppressIn, session: Session = Depends(db)) -> dict[str, Any]:
+    if body.source not in ("internal", "daniels_law"):
+        raise HTTPException(400, "source must be internal or daniels_law")
+    row = compliance.suppress_address(session, body.address, body.source, body.notes)
+    if row is None:
+        raise HTTPException(400, "not a usable address")
+    return {"address_key": row.address_key, "source": row.source}
+
+
+@app.get("/api/hotzones")
+def hotzones(top: int = Query(10, le=50), commercial: bool = False, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine.disposition import buyer_hotzones
+    return {"zones": [z.to_dict() for z in buyer_hotzones(session, top, include_commercial=commercial)]}
+
+
+def _bid_dict(b: Any, contract: float | None) -> dict[str, Any]:
+    from engine.disposition import buyer_label
+    return {"id": b.id, "buyer_id": b.buyer_id, "buyer": buyer_label(b.buyer), "status": b.status,
+            "walkthrough_date": iso(b.walkthrough_date), "amount": b.bid_amount, "emd": b.emd_amount,
+            "fee": (b.bid_amount - contract) if b.bid_amount and contract else None, "notes": b.notes}
+
+
+@app.get("/api/leads/{lead_id}/walkthrough")
+def walkthrough(lead_id: int, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import disposition as dp
+    lead = get_lead(session, lead_id)
+    plan = dp.walkthrough_plan(lead, dp.matched_buyers(session, lead))
+    best = dp.best_bid(session, lead)
+    return {"plan": {k: ([iso(x) for x in v] if isinstance(v, list) and v and isinstance(v[0], (date, datetime))
+                         else iso(v)) for k, v in plan.items()},
+            "bids": [_bid_dict(b, lead.offer_amount) for b in dp.bids_for(session, lead)],
+            "best_bid_id": best.id if best else None, "contract_price": lead.offer_amount,
+            "asking_price": dp.asking_price(lead)}
+
+
+class BidIn(BaseModel):
+    buyer_id: int
+    action: str = "bid"             # invite | walked | bid
+    amount: float | None = Field(None, gt=0)
+    emd: float | None = Field(None, ge=0)
+    walkthrough_at: datetime | None = None
+    notes: str = ""
+
+
+@app.post("/api/leads/{lead_id}/bids")
+def add_bid(lead_id: int, body: BidIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import disposition as dp
+    lead = get_lead(session, lead_id)
+    buyer = session.get(CashBuyer, body.buyer_id)
+    if buyer is None:
+        raise HTTPException(404, "buyer not found")
+    warnings: list[str] = []
+    try:
+        if body.action == "invite":
+            bid = dp.invite(session, lead, buyer, body.walkthrough_at, body.notes)
+        elif body.action == "walked":
+            bid = dp.mark_walked(session, dp.invite(session, lead, buyer), body.walkthrough_at, body.notes)
+        elif body.action == "bid":
+            if body.amount is None:
+                raise HTTPException(400, "amount is required for a bid")
+            bid, warnings = dp.record_bid(session, lead, buyer, body.amount, body.emd, body.walkthrough_at, body.notes)
+        else:
+            raise HTTPException(400, "action must be invite, walked or bid")
+    except dp.DispositionBlocked as exc:
+        return JSONResponse({"blocked": True, "reasons": exc.reasons}, status_code=409)
+    return JSONResponse({"blocked": False, "bid": _bid_dict(bid, lead.offer_amount), "warnings": warnings})
+
+
+class AcceptIn(BaseModel):
+    structure: str = "assignment"
+    split_pct: float | None = Field(None, ge=0, le=100)
+    assignee_name: str | None = None
+
+
+@app.post("/api/bids/{bid_id}/accept")
+def accept(bid_id: int, body: AcceptIn, session: Session = Depends(db)) -> JSONResponse:
+    from db.models import BuyerBid
+    from engine import disposition as dp
+    bid = session.get(BuyerBid, bid_id)
+    if bid is None:
+        raise HTTPException(404, "bid not found")
+    try:
+        doc, notes = dp.accept_bid(session, bid, body.structure, body.split_pct, assignee_name=body.assignee_name)
+    except dp.DispositionBlocked as exc:
+        return JSONResponse({"blocked": True, "reasons": exc.reasons}, status_code=409)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    lead = get_lead(session, bid.lead_id)
+    return JSONResponse({"blocked": False, "notes": notes, "stage": lead.status_stage,
+                         "files": _doc_files(lead.property_id, doc.doc_type)})

@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.text import normalize_phone
-from db.models import Contact, DncEntry
+from db.models import Contact, DncEntry, MailSuppression
 
 NJ_AREA_CODES = ["201", "551", "973", "862", "908", "732", "848", "856", "609", "640"]
 FTC_MAX_AGE_DAYS = 31
@@ -155,3 +155,29 @@ def suppressed_for_daniels_law(session: Session, phone: str | None) -> bool:
 def stale_after(list_date: date) -> date:
     return list_date + timedelta(days=FTC_MAX_AGE_DAYS)
 
+
+
+# -- postal mail -------------------------------------------------------------------------------------
+def address_key(address: str | None) -> str | None:
+    from agents.scrapers.nj_tax_assessment_agent import address_mailing_key
+    return address_mailing_key(address) if address else None
+
+
+def suppress_address(session: Session, address: str, source: str = "internal", notes: str | None = None) -> MailSuppression | None:
+    """Daniel's Law nondisclosure (honor within 10 business days) or a stop-mail request: never mail or share it."""
+    key = address_key(address)
+    if not key:
+        return None
+    row = session.get(MailSuppression, (key, source))
+    if row is None:
+        row = MailSuppression(address_key=key, source=source, address=address[:250], notes=notes)
+        session.add(row)
+    session.flush()
+    return row
+
+
+def address_suppressed(session: Session, address: str | None) -> list[str]:
+    key = address_key(address)
+    if not key:
+        return []
+    return [r.source for r in session.scalars(select(MailSuppression).where(MailSuppression.address_key == key))]

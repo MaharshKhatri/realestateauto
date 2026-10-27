@@ -27,13 +27,32 @@ MULTI_TYPES = {"multi_family", "duplex_triplex", "apartment"}
 CONDO_TYPES = {"condos", "condo", "condop", "coop"}
 
 
-def subject_type(units: int | None, building_desc: str | None) -> set[str]:
+def subject_type(units: int | None, building_desc: str | None, listing_type: str | None = None) -> set[str]:
+    """Comparable property types. MOD-IV facts win; without them (listing-only parcels) use the MLS type."""
     desc = (building_desc or "").upper()
-    if "CONDO" in desc:
+    lt = (listing_type or "").lower()
+    if "CONDO" in desc or (not desc and not units and lt in CONDO_TYPES):
         return CONDO_TYPES | {"townhomes", "condo_townhome"}
-    if (units or 1) >= 2:
+    if (units or 1) >= 2 or (not desc and not units and lt in MULTI_TYPES):
         return MULTI_TYPES
     return SINGLE_TYPES
+
+
+def listing_type(prop) -> str | None:
+    """MLS property type from the property's own listing (stale/active listing signal → listings row)."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import object_session
+
+    from db.models import Listing, SignalType
+    session = object_session(prop)
+    if session is None:
+        return None
+    for sig in prop.active_signals:
+        if sig.signal_type in (SignalType.STALE_LISTING, SignalType.ACTIVE_LISTING) and sig.source_ref:
+            kind = session.scalar(select(Listing.property_type).where(Listing.source_ref == sig.source_ref))
+            if kind:
+                return kind
+    return None
 
 
 class _DiskCache:
@@ -128,7 +147,8 @@ class ListingComps:
                 prop.baths = subject["baths"]
         sqft_known = bool(prop.sqft)
         tol = float(cfg.get("comp_sqft_tolerance", 0.25)) * (1 if sqft_known else 1.6)
-        allowed = subject_type(prop.dwellings, prop.building_desc)
+        allowed = subject_type(prop.dwellings, prop.building_desc,
+                               None if (prop.dwellings or prop.building_desc) else listing_type(prop))
         past_days = int(cfg.get("comp_sold_days", 180))
         min_comps = int(cfg.get("min_comps", 3))
         notes: list[str] = []

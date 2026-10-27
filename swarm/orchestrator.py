@@ -10,7 +10,8 @@
 Jobs (each composed of agents; every agent logs its own agent_runs row):
     SheriffSaleMonitorAgent      sheriff_sales
     DataRefreshAgent             tax_assessment + cash_buyers + stale_listings + tax_sales → owner_enrichment
-    ContactEnrichmentAgent       municipal_owners → listing_agents → owner_resolver (names, agents, heirs, mailing matches)
+    ContactEnrichmentAgent       municipal_owners → listing_agents → owner_resolver → signal_stacker
+                                 (names, agents, heirs, mailing matches; listed distress + portfolio owners)
     CompUnderwriterAgent         lead_scoring → underwriter(top N) → lead_scoring → buyer_matcher (top-5 buyers/deal)
     PipelineSelfImprovementAgent self_improvement
 """
@@ -69,6 +70,11 @@ def _buyer_matcher(**opts: Any) -> BaseAgent:
     return BuyerMatcherAgent(**opts)
 
 
+def _signal_stacker(**opts: Any) -> BaseAgent:
+    from agents.enrichment.signal_stacker import SignalStackerAgent
+    return SignalStackerAgent(**opts)
+
+
 def _tax_sale_agent(**opts: Any) -> BaseAgent:
     from agents.scrapers.tax_sale_agent import TaxSaleAgent
     return TaxSaleAgent(**opts)
@@ -93,6 +99,7 @@ REGISTRY: dict[str, AgentSpec] = {spec.name: spec for spec in [
     AgentSpec("listing_agents", _listing_agent_enricher, "Listing-agent contacts (name, brokerage, phones) for stale MLS leads.", "enrich"),
     AgentSpec("municipal_owners", _municipal_owners, "Owner names from Jersey City / New Brunswick / Plainfield parcel layers.", "enrich"),
     AgentSpec("owner_resolver", _owner_resolver, "Defendants/heirs/executors, mailing cross-reference, entity lookups, municipal owner layers.", "enrich"),
+    AgentSpec("signal_stacker", _signal_stacker, "Stacked distress: listed foreclosures/absentee/tax leads, portfolio owners.", "enrich"),
     AgentSpec("lead_scoring", LeadScoringAgent, LeadScoringAgent.description, "analyze"),
     AgentSpec("underwriter", UnderwriterAgent, UnderwriterAgent.description, "analyze", {"top": 25}),
     AgentSpec("buyer_matcher", _buyer_matcher, "Top-5 recorded cash buyers for each top underwritten deal.", "analyze", {"top": 50}),
@@ -102,7 +109,7 @@ REGISTRY: dict[str, AgentSpec] = {spec.name: spec for spec in [
 JOBS: dict[str, list[str]] = {
     "SheriffSaleMonitorAgent": ["sheriff_sales"],
     "DataRefreshAgent": ["tax_assessment", "cash_buyers", "stale_listings", "tax_sales", "owner_enrichment"],
-    "ContactEnrichmentAgent": ["municipal_owners", "listing_agents", "owner_resolver"],
+    "ContactEnrichmentAgent": ["municipal_owners", "listing_agents", "owner_resolver", "signal_stacker"],
     "CompUnderwriterAgent": ["lead_scoring", "underwriter", "lead_scoring", "buyer_matcher"],
     "PipelineSelfImprovementAgent": ["self_improvement"],
 }

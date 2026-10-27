@@ -80,6 +80,11 @@ def nj_business_days_after(start: date, days: int = 3) -> date:
     return d
 
 
+def long_date(d: date, year: bool = True) -> str:
+    """'November 6, 2026' (no zero padding, unlike %d)."""
+    return f"{d:%B} {d.day}, {d.year}" if year else f"{d:%B} {d.day}"
+
+
 def parse_modiv_date(value: str | None) -> date | None:
     """MOD-IV DEED_DATE is YYMMDD. Two-digit years: 00-(current+1) -> 2000s, else 1900s."""
     if not value:

@@ -90,6 +90,12 @@ Full evidence: `docs/recon/comps_listings.md`. Highlights:
   address is exact; unresolved addresses fall back to an area search (capped with `limit=5`).
 - Terms: Realtor.com prohibits scraping. We keep it low-volume, cached (24 h), internal-only, and
   never republish listing text/photos. Public-record comps are the automatic fallback.
+- Listing-only parcels (condo units and addresses that never matched a MOD-IV parcel) have no building
+  description, so comps use the listing's own MLS property type (condos / multi_family) — learned 2026-10-27:
+  without it, 114 condo/multi listings found no comps.
+- Cross-matching the active-listing table against foreclosure/absentee/tax leads (street + ZIP, or ≤ 40 m with
+  the same house number) found 93 listed-distress properties (30 listed foreclosures) on 2026-10-27; several
+  condo parcels sharing one listing are matched only on an exact unit.
 
 ## 5. Owner names and deed (SR1A) records
 
@@ -158,6 +164,7 @@ Full evidence (12/12 PINs matched NJGIN `PAMS_PIN`, field lists, counts, vintage
   are free; `manage.py dnc --status` recommends the five that cover the most of our contacts), load with
   `manage.py dnc --load`. Data older than 31 days stops counting as a scrub.
 - Listing agents: names/phones/emails come with the listing payload (stale-listing agent) — no skip trace needed.
+  On 2026-10-27, 144 underwritten deals were ready to call (141 via a listing agent's phone, 3 by agent e-mail).
 
 ## 6. Tax sales, tax delinquency, county clerk (lis pendens), open data
 

@@ -24,7 +24,8 @@ from datetime import date
 from typing import Any
 
 from core.config import settings
-from core.text import format_phone, is_entity, split_person_name
+from core.dates import long_date
+from core.text import format_phone, is_entity, postal_title, split_person_name
 from db.models import CashBuyer, Contact, ContactType, Lead, SignalType
 
 TWO_PARTY_CONSENT_STATES = {"CA", "CT", "FL", "IL", "MD", "MA", "MI", "MT", "NV", "NH", "PA", "WA", "OR"}
@@ -83,7 +84,8 @@ def lead_facts(lead: Lead) -> dict[str, Any]:
     v = p.current_valuation
     a = (v.assumptions_json or {}) if v else {}
     sheriff = next((s for s in p.active_signals if s.signal_type == SignalType.SHERIFF_SALE), None)
-    stale = next((s for s in p.active_signals if s.signal_type == SignalType.STALE_LISTING), None)
+    stale = next((s for s in p.active_signals if s.signal_type == SignalType.STALE_LISTING), None) or \
+        next((s for s in p.active_signals if s.signal_type == SignalType.ACTIVE_LISTING), None)
     smeta = (sheriff.raw_metadata_json or {}) if sheriff else {}
     lmeta = (stale.raw_metadata_json or {}) if stale else {}
     days = (sheriff.scheduled_auction_date - date.today()).days if sheriff and sheriff.scheduled_auction_date else None
@@ -91,12 +93,12 @@ def lead_facts(lead: Lead) -> dict[str, Any]:
     debt = sheriff.amount_owed if sheriff else None
     fmv = v.as_is_value if v else p.estimated_value
     return {
-        "address": f"{(p.street_address or '').title()}, {(p.city or p.municipality or '').title()}",
-        "town": (p.city or p.municipality or "").title(), "county": p.county, "zip": p.zip_code,
+        "address": f"{postal_title(p.street_address)}, {postal_title(p.city or p.municipality)}",
+        "town": postal_title(p.city or p.municipality), "county": p.county, "zip": p.zip_code,
         "year_built": p.year_built, "units": p.dwellings, "sqft": p.sqft or (v.sqft_used if v else None),
         "annual_taxes": p.annual_taxes, "tenure_years": round(tenure) if tenure else None,
         "owner_state": p.owner_state, "owner_name": p.owner_name,
-        "sale_date": sheriff.scheduled_auction_date.strftime("%B %d") if sheriff and sheriff.scheduled_auction_date else None,
+        "sale_date": long_date(sheriff.scheduled_auction_date, year=False) if sheriff and sheriff.scheduled_auction_date else None,
         "days_to_sale": days, "plaintiff": (sheriff.plaintiff_or_lienholder or "").title()[:80] if sheriff else None,
         "upset": debt, "adjournments": smeta.get("adjournments_total"),
         "defendant_adjournments": smeta.get("defendant_adjournments"), "docket": sheriff.case_number if sheriff else None,

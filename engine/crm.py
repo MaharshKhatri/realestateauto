@@ -26,7 +26,8 @@ from engine import compliance
 
 TZ = ZoneInfo("America/New_York")
 STAGE_ORDER = [LeadStage.NEW, LeadStage.SKIP_TRACE, LeadStage.CONTACT_ATTEMPTED, LeadStage.CONTACTED,
-               LeadStage.INTERESTED, LeadStage.APPOINTMENT, LeadStage.OFFER_MADE, LeadStage.NEGOTIATING,
+               LeadStage.INTERESTED, LeadStage.APPOINTMENT, LeadStage.OFFER_SENT_TO_AGENT, LeadStage.OFFER_MADE,
+               LeadStage.NEGOTIATING,
                LeadStage.UNDER_CONTRACT, LeadStage.ASSIGNED, LeadStage.CLOSED]
 TERMINAL = {LeadStage.DEAD, LeadStage.DO_NOT_CONTACT, LeadStage.CLOSED}
 OUTCOME_STAGE = {
@@ -37,6 +38,7 @@ OUTCOME_STAGE = {
     CallOutcome.SPOKE_NEEDS_OFFER: LeadStage.INTERESTED,
     CallOutcome.SPOKE_NOT_INTERESTED: LeadStage.CONTACTED,
     CallOutcome.AGENT_WILL_PRESENT_LOI: LeadStage.OFFER_MADE,
+    CallOutcome.OFFER_SENT_TO_AGENT: LeadStage.OFFER_SENT_TO_AGENT,
     CallOutcome.OFFER_ACCEPTED: LeadStage.NEGOTIATING,
     CallOutcome.DEAD: LeadStage.DEAD,
     CallOutcome.DNC: LeadStage.DO_NOT_CONTACT,
@@ -45,7 +47,8 @@ OUTCOME_LABELS = {
     CallOutcome.NO_ANSWER: "No answer", CallOutcome.LEFT_VM: "Left voicemail", CallOutcome.WRONG_NUMBER: "Wrong number",
     CallOutcome.SPOKE_WARM_FOLLOWUP: "Spoke — warm, follow up", CallOutcome.SPOKE_NEEDS_OFFER: "Spoke — needs an offer",
     CallOutcome.SPOKE_NOT_INTERESTED: "Spoke — not interested", CallOutcome.AGENT_WILL_PRESENT_LOI:
-    "Agent will present LOI", CallOutcome.OFFER_ACCEPTED: "Offer accepted (verbal)", CallOutcome.DEAD: "Dead",
+    "Agent will present LOI", CallOutcome.OFFER_SENT_TO_AGENT: "LOI sent to agent",
+    CallOutcome.OFFER_ACCEPTED: "Offer accepted (verbal)", CallOutcome.DEAD: "Dead",
     CallOutcome.DNC: "Do not call",
 }
 NO_CONTACT = {CallOutcome.NO_ANSWER, CallOutcome.LEFT_VM, CallOutcome.WRONG_NUMBER}

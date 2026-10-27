@@ -5,13 +5,14 @@ New Jersey (Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden). It harves
 motivated-owner leads from free public NJ data, finds the cash buyers who are actively buying,
 underwrites every top lead (comps → ARV → rehab → MAO → opening offer), ranks them, finds who to call,
 writes the call script, logs the call, drafts the paperwork and matches the deal to buyers — so the operator
-spends their time on the phone and at the kitchen table.
+spends their time on the phone and e-mail. It is built for a **laptop-and-phone operator with no car**:
+condition checks, owner outreach and buyer walkthroughs are all done remotely.
 
 > **Read `CLAUDE.md` first** — it is the architecture memory and the NJ legal rulebook the code
 > enforces (attorney review, tax sale certificates, sheriff-sale adjournments, the Foreclosure Rescue
 > Fraud Prevention Act 82%-of-FMV floor, Consumer Fraud Act disclosures, TCPA/DNC, Daniel's Law).
 
-## What it does today (Phases 1–2)
+## What it does today (Phases 1–3)
 
 | Component | Source (all free) | Output |
 |---|---|---|
@@ -30,7 +31,12 @@ spends their time on the phone and at the kitchen table.
 | `engine/contracts.py` | lead + valuation | LOI, NJ purchase-agreement draft, assignment, JV, 1-page deal sheet → `deals/<id>/` (md, html, pdf) behind FRFPA / attorney-review gates |
 | `engine/crm.py` + `web/` | operator | Call logging → stage → follow-up → re-score → post-call coach; local cockpit at http://127.0.0.1:8000 |
 | `engine/buyer_matcher.py` | recorded cash buyers | Top 5 buyers per top deal with reasons |
-| `manage.py briefing` | DB | The Daily Action Briefing (top leads with ARV, MAO, fee, FRFPA track, contact status, top buyers and *why*) |
+| `manage.py briefing` | DB | The Daily Action Briefing: (A) ready-to-call deals with phone/e-mail and the ask-to-MAO gap, (B) high-spread sheriff/estate deals, (C) stacked-distress and portfolio leads |
+| `agents/enrichment/signal_stacker.py` | listings table + owner/mailing data | Foreclosure/absentee/tax leads that are also listed (ACTIVE_LISTING + listing agent), portfolio owners, `[2x/3x STACKED]` bonus |
+| `engine/agent_outreach.py` | stale / listed-distress leads with an agent | Personalized listing-agent e-mail + SMS + 1-page LOI with two cash options; mailto / copy / Gmail SMTP (25/day); logs OFFER_SENT_TO_AGENT with a 48-hour follow-up |
+| `engine/virtual_inspector.py` | lead + listing text | Street View / satellite / FEMA / listing links, condition flags (roof, water, wiring, oil tank…), remote checklist, photo/video request |
+| `engine/direct_mail.py` | leads without a phone | Pre-auction, compassionate-estate and tired-landlord letters → PDF + Click2Mail CSV, suppression list, proof mode |
+| `engine/disposition.py` | recorded cash-buyer purchases | Buyer hotzones (town + product + price band) with our deals in each, remote walkthrough plans/scripts, buyer bids → assignment/JV auto-fill |
 
 ## Quickstart
 
@@ -84,7 +90,15 @@ Set `WHOLESALING_DATABASE_URL` to a Postgres URL (e.g. a free Supabase project) 
   Rescue Fraud Prevention Act applies to your deals. Register as a telemarketer and subscribe to the
   National DNC registry before cold calling.
 
+- **Agent offers land at roughly 65–80% of ask**: that is what the 70%/75% MAO math supports for most stale
+  listings; the engine only contacts listings where the 75% ceiling is within 25% of the asking price.
+- **E-mail sending** needs `SMTP_USER` / `SMTP_APP_PASSWORD` (a Gmail app password) in `.env` and
+  `operator.mailing_address` in settings; until then use the mailto / copy buttons. Letters stay watermarked
+  proofs until operator name, phone and mailing address are set.
+- **Buyer hotzones** reflect the deed data on file: Union County's export currently covers Elizabeth only, and
+  NJGIN mailing-cluster buyers carry no names (Daniel's Law) — load more county deed exports to widen them.
+
 ## Roadmap
 
-Sprint 3 — clerk lis pendens, NJ permits, paid skip-trace adapters, outcome-trained scoring · Sprint 4 —
-deal blasts to matched buyers, attorney-reviewed templates, closing coordinator. See `CLAUDE.md`.
+Sprint 4 — clerk lis pendens, NJ permits, paid skip-trace adapters, outcome-trained scoring, valuation sanity
+checks · Sprint 5 — attorney-reviewed templates, closing coordinator. See `CLAUDE.md`.

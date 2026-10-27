@@ -275,6 +275,7 @@ class Underwriter:
                 "comp_notes": result.notes, "renovated_comps": result.renovated_count,
                 "distressed_comps": result.distressed_count, "dispersion": result.dispersion,
                 "radius_miles": result.radius_used, "valued_on": date.today().isoformat(), **frfpa_fields,
+                "listing": listing_gap(asking_price(prop), om.mao_conservative, om.mao_aggressive, om.arv),
             })
         session.add(val)
         prop.estimated_value = as_is
@@ -317,6 +318,40 @@ def decide_offer(prop: Property, *, arv: float, repairs: float, as_is: float | N
     return om, decision, fields
 
 
+def asking_price(prop: Property) -> float | None:
+    """Current list price of an active (stale/distressed) MLS listing on the property, if any."""
+    sig = next((s for s in prop.active_signals if s.signal_type == SignalType.STALE_LISTING), None) or next(
+        (s for s in prop.active_signals if s.signal_type == SignalType.ACTIVE_LISTING), None)
+    price = (sig.raw_metadata_json or {}).get("list_price") if sig else None
+    return float(price) if price else None
+
+
+LISTING_ARV_CONFLICT = 1.6   # ARV above 1.6x a stale listing's ask: the comps, not the seller, are probably wrong
+
+
+def listing_gap(list_price: float | None, mao_conservative: float | None, mao_aggressive: float | None,
+                arv: float | None = None) -> dict[str, Any]:
+    """How far our wholesale numbers sit from the seller's asking price (1.0 = we can pay full ask).
+
+    A listing that has sat 90+ days will often take 80-92% of ask in cash; `list_to_mao_75 >= 0.75` means
+    our ceiling is within realistic striking distance of the asking price.
+    """
+    if not list_price or list_price <= 0:
+        return {}
+    out: dict[str, Any] = {"list_price": round(list_price)}
+    if mao_conservative is not None:
+        out["list_to_mao_70"] = round(mao_conservative / list_price, 3)
+        out["discount_off_ask_70"] = round(1 - mao_conservative / list_price, 3)
+    if mao_aggressive is not None:
+        out["list_to_mao_75"] = round(mao_aggressive / list_price, 3)
+    if arv:
+        out["arv_to_list"] = round(arv / list_price, 2)
+    out["valuation_conflict"] = bool(arv and arv > LISTING_ARV_CONFLICT * list_price)
+    out["striking_distance"] = bool(mao_aggressive is not None and mao_aggressive >= 0.75 * list_price
+                                    and not out["valuation_conflict"])
+    return out
+
+
 FRFPA_FIELDS = ("frfpa_applies", "frfpa_floor", "frfpa_track", "frfpa_confidence", "frfpa_basis",
                 "verify_before_contract", "exempt_scenario", "compliant_offer", "track_buyer_price", "track_fee",
                 "equity_at_risk")
@@ -341,7 +376,8 @@ def reprice(session: Session, prop: Property) -> Valuation | None:
         a.pop(k, None)
     a.update(fields)
     a.update({"buyer_purchase_price": om.buyer_purchase_price, "buyer_profit": om.buyer_profit,
-              "buyer_roi": om.buyer_roi, "flags": om.flags, "repriced_from": cur.id})
+              "buyer_roi": om.buyer_roi, "flags": om.flags, "repriced_from": cur.id,
+              "listing": listing_gap(asking_price(prop), om.mao_conservative, om.mao_aggressive, om.arv)})
     cur.is_current = False
     val = Valuation(
         property=prop, arv_estimate=om.arv, as_is_value=cur.as_is_value, est_repair_cost=om.repairs,
@@ -382,7 +418,7 @@ class UnderwriterAgent(BaseAgent):
     def run(self, ctx: AgentContext) -> None:
         top = int(self.options.get("top", 15))
         stale_days = int(self.options.get("stale_days", 7))
-        scope = self.options.get("scope", "top")      # top | valued | sheriff
+        scope = self.options.get("scope", "top")      # top | valued | sheriff | stale_listing
         listing = None if self.options.get("public_only") else (
             self.options.get("listing_provider") or _default_listing_provider())
         underwriter = Underwriter(listing_provider=listing)
@@ -392,6 +428,9 @@ class UnderwriterAgent(BaseAgent):
         elif scope == "sheriff":
             q = q.join(DistressSignal, DistressSignal.property_id == Lead.property_id).where(
                 DistressSignal.signal_type == SignalType.SHERIFF_SALE, DistressSignal.active.is_(True))
+        elif scope == "stale_listing":
+            q = q.join(DistressSignal, DistressSignal.property_id == Lead.property_id).where(
+                DistressSignal.signal_type == SignalType.STALE_LISTING, DistressSignal.active.is_(True))
         lead_ids = [int(i) for i in (self.options.get("lead_ids") or [])]
         if lead_ids:
             q = q.where(Lead.id.in_(lead_ids))

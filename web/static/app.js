@@ -40,6 +40,9 @@ function contactPill(s) {
   const cls = s.startsWith("phone") ? (s.includes("unscrubbed") ? "warn" : "good") : s.startsWith("agent") ? "acc" : s.includes("DNC") ? "bad" : "";
   return `<span class="pill ${cls}">${esc(s)}</span>`;
 }
+function stackPill(b) {
+  return b ? `<span class="pill stack">${esc(b)}</span>` : "";
+}
 function daysBadge(n) {
   if (n === null || n === undefined) return "";
   return `<span class="days ${n <= 7 ? "hot" : n <= 14 ? "warm" : ""}">${n}d</span>`;
@@ -51,8 +54,16 @@ async function route() {
   const [path, query] = hash.slice(1).split("?");
   const params = new URLSearchParams(query || "");
   try {
+    const section = (path.match(/^\/(ready|agents|inspect|dispo|lead)/) || [])[1] || "dash";
+    document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === section));
     const m = path.match(/^\/lead\/(\d+)/);
     if (m) return await renderLead(+m[1], params.get("contact"));
+    if (path === "/ready") return await renderReady();
+    if (path === "/agents") return await renderAgents();
+    const ins = path.match(/^\/inspect(?:\/(\d+))?/);
+    if (ins) return await renderInspect(ins[1] ? +ins[1] : null);
+    const dsp = path.match(/^\/dispo(?:\/(\d+))?/);
+    if (dsp) return await renderDispo(dsp[1] ? +dsp[1] : null);
     STATE.tab = params.get("tab") || STATE.tab || "all";
     await renderDashboard(params.get("q"));
   } catch (e) {
@@ -83,6 +94,7 @@ async function renderDashboard(q) {
   app.innerHTML = `
     <div class="kpis">
       <div class="kpi"><b>${d.open_leads.toLocaleString()}</b><span>open leads (${f.NEW.toLocaleString()} new)</span></div>
+      <div class="kpi click" data-href="#/ready"><b>${d.kpis.ready_to_call}</b><span>ready to call now</span></div>
       <div class="kpi"><b>${d.kpis.contact_ready_top100}%</b><span>top-100 contact-ready</span></div>
       <div class="kpi"><b>${d.kpis.deals}</b><span>deals with an offer verdict</span></div>
       <div class="kpi"><b>${d.kpis.followups_due}</b><span>follow-ups due now</span></div>
@@ -145,7 +157,7 @@ async function loadTab(q) {
     <th class="num">ARV</th><th class="num">Anchor</th><th class="num">Pri</th></tr></thead>
     <tbody>${data.rows.map((r) => `
       <tr class="click" data-href="#/lead/${r.id}">
-        <td><b>${esc(r.address)}</b><br><span class="muted">${esc(r.town)} · ${esc(r.county)}</span></td>
+        <td><b>${esc(r.address)}</b> ${stackPill(r.badge)}${r.ready ? ' <span class="pill good">ready</span>' : ""}<br><span class="muted">${esc(r.town)} · ${esc(r.county)}</span></td>
         <td>${r.days_to_sale !== null && r.days_to_sale >= 0 ? daysBadge(r.days_to_sale) + " " : ""}<span class="muted">${esc(r.reasons[0] || r.source || "")}</span></td>
         <td>${label(r.stage)}${r.next_followup_at ? "<br><span class='muted'>next " + fmtDate(r.next_followup_at) + "</span>" : ""}</td>
         <td>${contactPill(r.contact_status)}</td>
@@ -169,7 +181,8 @@ async function renderLead(id, contactId) {
         <h1>${esc(L.address)}, ${esc(L.town)} <span class="muted">${esc(L.county)} · ${esc(L.zip || "")}</span></h1>
         <div class="row">${verdictPill(L.verdict)} <span class="pill">${label(L.stage)}</span>
           <span class="pill acc">priority ${L.priority}</span> ${L.days_to_sale !== null ? daysBadge(L.days_to_sale) + " sale " + day(L.sale_date) : ""}
-          <span class="pill">playbook ${esc(d.playbook)}</span> ${L.next_followup_at ? `<span class="pill warn">next touch ${fmtDate(L.next_followup_at)}</span>` : ""}</div>
+          <span class="pill">playbook ${esc(d.playbook)}</span> ${L.next_followup_at ? `<span class="pill warn">next touch ${fmtDate(L.next_followup_at)}</span>` : ""}
+          ${stackPill(L.badge)} <a class="btn" href="#/inspect/${L.id}">Virtual inspection</a> <a class="btn" href="#/dispo/${L.id}">Walkthroughs &amp; bids</a></div>
       </div>
     </div>
     <div class="grid g-lead">
@@ -446,6 +459,253 @@ function wireDocs(d, root) {
       ${Object.entries(data.files).map(([e, u]) => `<a href="${esc(u)}" target="_blank">${e}</a>`).join(" · ")}
       ${data.warnings.length ? `<ul>${data.warnings.map((w) => `<li class="flag">${esc(w)}</li>`).join("")}</ul>` : ""}</div>`;
     toast("Document generated.");
+  }));
+}
+
+
+// -- Phase 3: ready to call ------------------------------------------------------------------------
+const reach = (r) => r.who ? `${esc(r.who)} <span class="muted">${label(r.role)}</span><br><span class="mono">${esc(r.phone_display || r.email || "")}</span>`
+  : '<span class="muted">no contact</span>';
+const place = (r) => `<b>${esc(r.address)}</b> ${stackPill(r.badge)}<br><span class="muted">${esc(r.town)} · ${esc(r.county)}</span>`;
+function wireHrefs(root = app) {
+  root.querySelectorAll("[data-href]").forEach((el) => el.addEventListener("click", (e) => {
+    if (!["A", "BUTTON"].includes(e.target.tagName)) location.hash = el.dataset.href;
+  }));
+}
+
+async function renderReady() {
+  const { data: d } = await api("/api/briefing?top=50");
+  const c = d.counts;
+  app.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><b>${c.ready_to_call}</b><span>ready to call now</span></div>
+      <div class="kpi"><b>${c.stacked_2x}</b><span>2x stacked distress</span></div>
+      <div class="kpi"><b>${c.stacked_3x_plus}</b><span>3x+ stacked</span></div>
+      <div class="kpi"><b>${c.portfolio_owners}</b><span>portfolio-owner signals</span></div>
+      <div class="kpi click" data-href="#/agents"><b>LOI →</b><span>send agent offers</span></div>
+    </div>
+    <div class="card"><div class="row spread"><h2>(A) Ready to call now</h2><span class="muted">underwritten · live phone or agent e-mail · ask within reach of our 75% ceiling</span></div>
+      <div class="tablewrap"><table><thead><tr><th>Lead</th><th>Property</th><th>Call / e-mail</th><th class="num">Ask</th>
+        <th class="num">MAO 70 / 75</th><th class="num">75% ÷ ask</th><th class="num">Gap to ask</th><th>Verdict</th><th class="num">Pri</th></tr></thead>
+      <tbody>${d.ready.map((r) => {
+        const ask = r.ask || r.upset;
+        return `<tr class="click" data-href="#/lead/${r.lead_id}${r.contact_id ? "?contact=" + r.contact_id : ""}">
+          <td>#${r.lead_id}</td><td>${place(r)}</td><td>${reach(r)}</td>
+          <td class="num">${r.ask ? kmoney(r.ask) : r.upset ? "upset " + kmoney(r.upset) : "—"}</td>
+          <td class="num">${kmoney(r.mao_70)} / ${kmoney(r.mao_75)}</td><td class="num">${pct(r.list_to_mao_75)}</td>
+          <td class="num">${ask && r.mao_70 ? kmoney(ask - r.mao_70) : "—"}</td>
+          <td>${verdictPill(r.verdict)}${r.striking_distance ? '<br><span class="pill acc">striking distance</span>' : ""}</td>
+          <td class="num">${Math.round(r.priority)}</td></tr>`;
+      }).join("") || '<tr><td colspan="9" class="muted">Nothing ready: underwrite + score (swarm run-all) or add phones (skip-trace).</td></tr>'}</tbody></table></div></div>
+    <div class="grid g-dash" style="margin-top:14px">
+      <div class="card"><h2>(B) High-spread sheriff-sale / estate deals</h2><div class="tablewrap"><table>
+        <thead><tr><th>Property</th><th>Sale</th><th class="num">Upset</th><th class="num">ARV</th><th class="num">MAO 70</th><th class="num">Spread</th><th>Verdict</th><th>Contact</th></tr></thead>
+        <tbody>${d.spread.map((r) => `<tr class="click" data-href="#/lead/${r.lead_id}"><td>${place(r)}</td><td>${r.sale_date ? day(r.sale_date) : label(r.kind)}</td>
+          <td class="num">${kmoney(r.upset)}</td><td class="num">${kmoney(r.arv)}</td><td class="num">${kmoney(r.mao_70)}</td><td class="num">${kmoney(r.spread)}</td>
+          <td>${verdictPill(r.verdict)}${r.frfpa_track ? `<br><span class="muted">${label(r.frfpa_track)}</span>` : ""}</td><td>${reach(r)}</td></tr>`).join("")}</tbody></table></div></div>
+      <div class="card"><h2>(C) Stacked distress &amp; portfolio owners</h2><div class="tablewrap"><table>
+        <thead><tr><th>Property</th><th>Signals</th><th>Verdict</th><th>Contact</th><th class="num">Pri</th></tr></thead>
+        <tbody>${d.stacked.map((r) => `<tr class="click" data-href="#/lead/${r.lead_id}"><td>${place(r)}</td>
+          <td>${r.families.map(label).join(" + ")}${r.portfolio_size ? `<br><span class="muted">owner holds ${r.portfolio_size} properties</span>` : ""}</td>
+          <td>${verdictPill(r.verdict)}</td><td>${reach(r)}</td><td class="num">${Math.round(r.priority)}</td></tr>`).join("")}</tbody></table></div></div>
+    </div>`;
+  wireHrefs();
+}
+
+// -- Phase 3: B2B listing-agent LOI blast ----------------------------------------------------------
+async function renderAgents() {
+  const { data: d } = await api("/api/agent-outreach?top=50");
+  const smtp = d.smtp.ready ? `<span class="pill good">SMTP ready · ${d.sent_24h}/${d.daily_limit} today</span>`
+    : `<span class="pill warn">SMTP off: ${esc(d.smtp.why)}</span>`;
+  app.innerHTML = `
+    <div class="card"><div class="row spread"><h2>B2B listing-agent offers</h2><div class="row">${smtp}</div></div>
+      <p class="muted">Two cash options per listing (anchor and best), unrepresented-buyer language, investor/assignment disclosure,
+      opt-out line. Review each one, send it (mailto, copy, or SMTP), then it is logged as <b>offer sent to agent</b> with a
+      48-hour follow-up call. SMS is always sent by you from your phone — copy it, never automated.</p>
+      <div class="tablewrap" style="max-height:none"><table><thead><tr><th>Listing</th><th>Agent</th><th class="num">Ask</th>
+        <th class="num">Anchor / best</th><th class="num">75% ÷ ask</th><th>Send</th></tr></thead>
+      <tbody>${d.packets.map((p, i) => `<tr>
+        <td><a href="#/lead/${p.lead_id}"><b>${esc(p.address)}</b></a><br><span class="muted">${p.dom || "?"} DOM · ${esc(p.reasons.join(" · "))}</span>
+          ${p.warnings.length ? `<details><summary class="flag">${p.warnings.length} note(s)</summary><ul>${p.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></details>` : ""}</td>
+        <td>${esc(p.agent_name)}<br><span class="muted">${esc(p.brokerage || "")}</span><br><span class="mono">${esc(p.agent_phone || "")}</span><br><span class="muted">${esc(p.agent_email || "")}</span></td>
+        <td class="num">${kmoney(p.list_price)}</td>
+        <td class="num">${p.kind === "offer" ? `${kmoney(p.anchor)} / ${kmoney(p.best)}` : '<span class="pill warn">inquiry</span>'}</td>
+        <td class="num">${pct(p.list_to_mao_75)}</td>
+        <td><div class="btns">
+          ${p.mailto ? `<a class="btn" href="${esc(p.mailto)}" data-sent="${i}" data-channel="mailto">Open e-mail</a>` : ""}
+          <button class="btn" data-copy="${i}" data-what="email">Copy e-mail</button>
+          <button class="btn" data-copy="${i}" data-what="sms">Copy SMS</button>
+          ${p.kind === "offer" ? `<button class="btn" data-loi="${i}">LOI PDF</button>` : ""}
+          ${d.smtp.ready && p.agent_email ? `<button class="btn primary" data-smtp="${i}">Send (SMTP)</button>` : ""}
+          <button class="btn good" data-mark="${i}">Mark sent</button>
+          <button class="btn bad" data-optout="${i}">Opted out</button></div>
+          <details><summary class="muted">preview</summary><pre class="pre">${esc(p.email_body)}</pre><p><b>SMS:</b> ${esc(p.sms_text)}</p></details></td>
+      </tr>`).join("") || '<tr><td colspan="6" class="muted">No eligible listings: underwrite stale listings and run listing_agents.</td></tr>'}</tbody></table></div></div>`;
+  const P = d.packets;
+  app.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
+    const p = P[+b.dataset.copy];
+    const text = b.dataset.what === "sms" ? p.sms_text : `Subject: ${p.subject}\n\n${p.email_body}`;
+    try { await navigator.clipboard.writeText(text); toast("Copied — send it, then press Mark sent."); }
+    catch { toast("Clipboard blocked: open preview and copy by hand.", true); }
+  }));
+  app.querySelectorAll("[data-loi]").forEach((b) => b.addEventListener("click", async () => {
+    const p = P[+b.dataset.loi];
+    const { data } = await post(`/api/agent-outreach/${p.lead_id}/loi`, {});
+    if (data.files && data.files.pdf) window.open(data.files.pdf, "_blank"); else toast("LOI blocked: " + (data.packet?.warnings || []).join("; "), true);
+  }));
+  const send = async (p, channel) => {
+    try {
+      const { data } = await post(`/api/agent-outreach/${p.lead_id}/send`, { channel });
+      toast(`Logged (${channel}): stage ${label(data.stage)}, follow-up ${fmtDate(data.followup_at)}`);
+    } catch (e) { toast(e.message, true); }
+  };
+  app.querySelectorAll("[data-mark]").forEach((b) => b.addEventListener("click", () => send(P[+b.dataset.mark], "email")));
+  app.querySelectorAll("[data-smtp]").forEach((b) => b.addEventListener("click", () => {
+    if (confirm("Send this e-mail now from your Gmail account?")) send(P[+b.dataset.smtp], "smtp");
+  }));
+  app.querySelectorAll("[data-sent]").forEach((a) => a.addEventListener("click", () => {
+    setTimeout(() => { if (confirm("Did you send the e-mail? Log it as sent?")) send(P[+a.dataset.sent], "mailto"); }, 400);
+  }));
+  app.querySelectorAll("[data-optout]").forEach((b) => b.addEventListener("click", async () => {
+    const p = P[+b.dataset.optout];
+    if (!confirm(`${p.agent_name} asked to stop? Their number goes on the internal do-not-call list.`)) return;
+    await post("/api/agent-outreach/opt-out", { contact_id: p.agent_contact_id });
+    toast("Opted out.");
+    renderAgents();
+  }));
+}
+
+// -- Phase 3: virtual inspector + mail merge -------------------------------------------------------
+async function renderInspect(id) {
+  if (id) {
+    const { data: x } = await api(`/api/leads/${id}/inspect`);
+    app.innerHTML = `<a href="#/lead/${id}">← Lead #${id}</a> · <a href="#/inspect">Inspector home</a>
+      <h1>${esc(x.address)}</h1>
+      <div class="grid g-lead">
+        <div class="card"><h2>Look at it from here</h2><div class="btns">${Object.entries(x.links).map(([k, u]) =>
+          `<a class="btn" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${label(k)} ↗</a>`).join("")}</div>
+          ${x.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join("")}
+          ${x.listing_excerpt ? `<h3 style="margin-top:12px">Listing text</h3><p class="muted">${esc(x.listing_excerpt)}</p>` : ""}</div>
+        <div class="card"><h2>Condition flags</h2>${x.flags.length ? `<ul>${x.flags.map((f) => `<li><b class="flag">${label(f.flag)}</b> <span class="muted">(${esc(f.evidence)})</span><br>${esc(f.advice)}</li>`).join("")}</ul>` : '<p class="muted">No flags in the listing text — ask for photos.</p>'}
+          ${x.occupancy_hint ? `<p><span class="pill warn">${esc(x.occupancy_hint)}</span></p>` : ""}
+          <h3>Remote due-diligence checklist</h3><ul>${x.checklist.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>
+        <div class="card"><h2>Photo / video requests</h2>${Object.entries(x.requests).map(([k, v]) => `<h3>${label(k)}</h3>
+          <pre class="pre">${esc(v)}</pre><button class="btn" data-copytext="${esc(v)}">Copy</button>`).join("")}</div>
+      </div>`;
+    app.querySelectorAll("[data-copytext]").forEach((b) => b.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copytext); toast("Copied."); } catch { toast("Clipboard blocked.", true); }
+    }));
+    return;
+  }
+  const { data: m } = await api("/api/mail-merge?top=50");
+  const counts = m.letters.reduce((a, l) => ((a[l.kind] = (a[l.kind] || 0) + 1), a), {});
+  app.innerHTML = `
+    <div class="grid g-dash">
+      <div class="card"><div class="row spread"><h2>Mail merge — owners we can't call</h2>
+        <div class="row">${m.operator_ready ? '<span class="pill good">operator details set</span>' : '<span class="pill warn">PROOF mode: set operator name, phone, mailing address</span>'}</div></div>
+        <p class="muted">${m.letters.length} letters ready (${Object.entries(counts).map(([k, v]) => `${label(k)} ${v}`).join(", ")}). Pre-auction, compassionate-estate and
+          tired-landlord templates with investor disclosure, HUD / Legal Services resources and a STOP line. Suppressed (Daniel's Law / stop-mail) addresses are skipped.</p>
+        <div class="btns"><button class="btn primary" id="mm-go">Generate PDFs + Click2Mail CSV</button></div><div id="mm-out"></div>
+        <div class="tablewrap"><table><thead><tr><th>Lead</th><th>Letter</th><th>To</th><th>Property</th></tr></thead><tbody>
+          ${m.letters.map((l) => `<tr class="click" data-href="#/inspect/${l.lead_id}"><td>#${l.lead_id}</td><td>${label(l.kind)}</td>
+            <td>${esc(l.recipient)}<br><span class="muted">${esc(l.address_lines.join(", "))}</span></td><td>${esc(l.property_address)}</td></tr>`).join("")}</tbody></table></div></div>
+      <div>
+        <div class="card"><h2>Inspect a lead</h2><form id="ins-form" class="row"><input type="number" id="ins-id" placeholder="lead #" style="max-width:140px">
+          <button class="btn">Open dossier</button></form>
+          <p class="muted">Street View, satellite, FEMA flood map, the listing photos, condition flags and a photo/video request — no driving.</p></div>
+        <div class="card"><h2>Batches</h2><ul>${m.batches.map((b) => `<li>${esc(b)} <button class="btn" data-mailed="${esc(b)}">Mark mailed</button></li>`).join("") || '<li class="muted">none yet</li>'}</ul></div>
+        <div class="card"><h2>Stop mailing an address</h2><form id="sup-form"><input type="text" id="sup-addr" placeholder="12 Main St, Newark NJ 07102">
+          <label><input type="checkbox" id="sup-dl"> Daniel's Law request (honor within 10 business days)</label><button class="btn bad">Suppress</button></form></div>
+      </div>
+    </div>`;
+  wireHrefs();
+  $("#ins-form").addEventListener("submit", (e) => { e.preventDefault(); if ($("#ins-id").value) location.hash = `#/inspect/${$("#ins-id").value}`; });
+  $("#mm-go").addEventListener("click", async () => {
+    const { data } = await post("/api/mail-merge", { top: 50 });
+    $("#mm-out").innerHTML = `<div class="objection-resp">${data.letters} letters in <b>${esc(data.batch)}</b>${data.proof ? ' <span class="pill warn">proof</span>' : ""}:
+      ${Object.entries(data.files).map(([n, u]) => `<a href="${esc(u)}" target="_blank">${esc(n)}</a>`).join(" · ")}</div>`;
+  });
+  app.querySelectorAll("[data-mailed]").forEach((b) => b.addEventListener("click", async () => {
+    try { const { data } = await post(`/api/mail-merge/${encodeURIComponent(b.dataset.mailed)}/mailed`, {}); toast(`${data.logged} letters logged as mailed.`); }
+    catch (e) { toast(e.message, true); }
+  }));
+  $("#sup-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { await post("/api/mail-suppress", { address: $("#sup-addr").value, source: $("#sup-dl").checked ? "daniels_law" : "internal" }); toast("Address suppressed."); }
+    catch (err) { toast(err.message, true); }
+  });
+}
+
+// -- Phase 3: reverse wholesaling — hotzones, remote walkthroughs, bids ---------------------------
+async function renderDispo(id) {
+  if (!id) {
+    const { data } = await api("/api/hotzones?top=10");
+    app.innerHTML = `<div class="card"><h2>Buyer hotzones — where cash buyers pay the most</h2>
+      <p class="muted">Town + product + price band from recorded cash-buyer purchases (recent buys weigh more; one buyer's bulk buy counts at most 3 times).
+      Our underwritten deals that fit each pocket are listed with the headroom between the median price paid and our buyer price.</p>
+      <form id="dsp-form" class="row"><input type="number" id="dsp-id" placeholder="lead # under contract" style="max-width:200px"><button class="btn">Walkthroughs &amp; bids</button></form></div>
+      ${data.zones.map((z, i) => `<div class="card"><div class="row spread"><h2>${i + 1}. ${esc(z.label)}</h2><span class="muted">score ${Math.round(z.score).toLocaleString()}</span></div>
+        <ul>${z.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
+        <p class="muted">Buyers: ${z.top_buyers.map((b) => `#${b.buyer_id} ${esc(b.name)} (${b.purchases})`).join(" · ")}</p>
+        ${z.leads.length ? `<table><thead><tr><th>Our deal</th><th>Verdict</th><th class="num">Buyer price</th><th class="num">Headroom</th><th></th></tr></thead><tbody>
+          ${z.leads.map((h) => `<tr class="click" data-href="#/lead/${h.lead_id}"><td>#${h.lead_id} ${esc(h.address)}</td><td>${verdictPill(h.verdict)}</td>
+            <td class="num">${kmoney(h.buyer_price)}</td><td class="num ${h.headroom >= 0 ? "good" : "bad"}">${kmoney(h.headroom)}</td>
+            <td>${h.under_contract ? `<a class="btn" href="#/dispo/${h.lead_id}">bids</a>` : ""}</td></tr>`).join("")}</tbody></table>` : ""}</div>`).join("")}`;
+    wireHrefs();
+    $("#dsp-form").addEventListener("submit", (e) => { e.preventDefault(); if ($("#dsp-id").value) location.hash = `#/dispo/${$("#dsp-id").value}`; });
+    return;
+  }
+  const { data: w } = await api(`/api/leads/${id}/walkthrough`);
+  const P = w.plan;
+  app.innerHTML = `<a href="#/lead/${id}">← Lead #${id}</a> · <a href="#/dispo">Hotzones</a>
+    <h1>Remote walkthrough &amp; bids — ${esc(P.address)}</h1>
+    <div class="grid g-lead">
+      <div class="card"><h2>Inspection window</h2>
+        <p><span class="pill ${P.status === "open" ? "good" : "warn"}">${label(P.status)}</span> ${P.opens ? `${day(P.opens)} → ${day(P.closes)}` : ""}</p>
+        <p><b>Access:</b> ${esc(P.access)}</p>
+        ${P.blocked.length ? `<div class="objection-resp bad"><ul>${P.blocked.map((b) => `<li>${esc(b)}</li>`).join("")}</ul></div>` : ""}
+        ${P.slots.length ? `<p><b>Proposed slots:</b> ${P.slots.map(fmtDate).join(" · ")}</p>` : ""}
+        ${P.tip ? `<p class="muted">${esc(P.tip)}</p>` : ""}
+        ${P.access_request ? `<h3>Access request</h3><pre class="pre">${esc(P.access_request)}</pre>` : ""}
+        ${(P.steps || []).map((s) => `<p class="muted">${esc(s)}</p>`).join("")}</div>
+      <div class="card"><h2>Matched buyers</h2>${(P.invites || []).map((v) => `<div class="contact"><b>#${v.buyer_id} ${esc(v.buyer)}</b> <span class="mono">${esc(v.phone || "")}</span>
+          <details><summary class="muted">invite text / e-mail</summary><pre class="pre">${esc(v.sms)}</pre><pre class="pre">${esc(v.email)}</pre></details>
+          <div class="btns"><button class="btn" data-act="invite" data-buyer="${v.buyer_id}">Invited</button><button class="btn" data-act="walked" data-buyer="${v.buyer_id}">Walked it</button></div></div>`).join("")
+        || '<p class="muted">Invites unlock once attorney review has ended (and buyers are matched).</p>'}</div>
+      <div class="card"><h2>Bids</h2><p class="muted">Contract ${money(w.contract_price)} · asking buyers ${money(w.asking_price)}</p>
+        <table><thead><tr><th>Buyer</th><th>Status</th><th class="num">Bid</th><th class="num">Fee</th><th class="num">EMD</th><th></th></tr></thead><tbody>
+        ${w.bids.map((b) => `<tr><td>${esc(b.buyer)}${b.id === w.best_bid_id ? ' <span class="pill good">best</span>' : ""}</td><td>${label(b.status)}</td>
+          <td class="num">${money(b.amount)}</td><td class="num">${money(b.fee)}</td><td class="num">${money(b.emd)}</td>
+          <td>${b.amount && b.status !== "accepted" ? `<button class="btn good" data-accept="${b.id}">Accept</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="6" class="muted">No bids yet.</td></tr>'}</tbody></table>
+        <form id="bid-form"><label>Buyer #</label><input type="number" id="bid-buyer"><label>Total price (contract + fee)</label><input type="number" id="bid-amt">
+          <label>Deposit offered</label><input type="number" id="bid-emd"><label>Notes</label><input type="text" id="bid-notes">
+          <button class="btn primary" style="margin-top:8px">Record bid</button></form><div id="bid-out"></div></div>
+    </div>`;
+  const out = (data) => {
+    $("#bid-out").innerHTML = data.blocked ? `<div class="objection-resp bad"><ul>${data.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>`
+      : `<div class="objection-resp">${(data.warnings || data.notes || []).map((x) => `<p>${esc(x)}</p>`).join("")}</div>`;
+  };
+  app.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", async () => {
+    const { data } = await post(`/api/leads/${id}/bids`, { buyer_id: +b.dataset.buyer, action: b.dataset.act });
+    if (data.blocked) return out(data);
+    toast(`Buyer #${b.dataset.buyer}: ${label(data.bid.status)}`);
+    renderDispo(id);
+  }));
+  $("#bid-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const { data } = await post(`/api/leads/${id}/bids`, { buyer_id: +$("#bid-buyer").value, action: "bid", amount: +$("#bid-amt").value,
+      emd: $("#bid-emd").value ? +$("#bid-emd").value : null, notes: $("#bid-notes").value });
+    out(data);
+    if (!data.blocked) setTimeout(() => renderDispo(id), 1500);
+  });
+  app.querySelectorAll("[data-accept]").forEach((b) => b.addEventListener("click", async () => {
+    const structure = confirm("OK = Assignment of Contract · Cancel = single-deal JV agreement") ? "assignment" : "jv";
+    const assignee = prompt("Assignee legal name / entity (leave blank if the buyer's name on file is correct):") || null;
+    const { data } = await post(`/api/bids/${b.dataset.accept}/accept`, { structure, assignee_name: assignee });
+    if (data.blocked) return out(data);
+    $("#bid-out").innerHTML = `<div class="objection-resp">${data.notes.map((n) => `<p>${esc(n)}</p>`).join("")}
+      ${Object.entries(data.files).map(([e, u]) => `<a href="${esc(u)}" target="_blank">${e}</a>`).join(" · ")}</div>`;
+    toast("Bid accepted — document generated.");
   }));
 }
 

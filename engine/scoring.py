@@ -43,6 +43,7 @@ def default_weights() -> dict[str, Any]:
     s = settings().get("scoring", {})
     return {"motivation": dict(s.get("motivation", {})),
             "priority_mix": dict(s.get("priority_mix", {"motivation": 0.55, "viability": 0.45})),
+            "listing_striking_distance": dict(s.get("listing_striking_distance", {})),
             "source_viability_prior": {}}
 
 
@@ -66,6 +67,29 @@ def _fmt_money(v: float | None) -> str:
 
 def days_phrase(days: int) -> str:
     return "today" if days == 0 else "tomorrow" if days == 1 else f"in {days} days"
+
+
+SIGNAL_FAMILIES = {
+    SignalType.SHERIFF_SALE: "foreclosure", SignalType.LIS_PENDENS: "foreclosure",
+    SignalType.STALE_LISTING: "listing", SignalType.FAILED_LISTING: "listing", SignalType.ACTIVE_LISTING: "listing",
+    SignalType.LONG_TERM_ABSENTEE: "absentee", SignalType.OUT_OF_STATE_OWNER: "absentee",
+    SignalType.TAX_DELINQUENT: "tax", SignalType.TAX_SALE_CERTIFICATE: "tax",
+    SignalType.ESTATE_OWNER: "estate", SignalType.PROBATE: "estate",
+    SignalType.VACANT: "vacant", SignalType.CODE_VIOLATION: "code", SignalType.PORTFOLIO_OWNER: "portfolio",
+}
+
+
+def signal_families(prop: Property) -> list[str]:
+    """Distinct kinds of distress on the property (several signals of one kind count once)."""
+    fams = {SIGNAL_FAMILIES[s.signal_type] for s in prop.active_signals if s.signal_type in SIGNAL_FAMILIES}
+    if prop.is_estate_owned:
+        fams.add("estate")
+    return sorted(fams)
+
+
+def stack_badge(prop: Property) -> str | None:
+    n = len(signal_families(prop))
+    return f"[{n}x STACKED]" if n >= 2 else None
 
 
 def motivation_factors(prop: Property, today: date | None = None) -> tuple[dict[str, float], list[str]]:
@@ -157,9 +181,36 @@ def motivation_factors(prop: Property, today: date | None = None) -> tuple[dict[
             f["distress_keywords"] = min(len(meta["keywords"]) / 3, 1.0)
             txt += f" — \"{', '.join(meta['keywords'])}\""
         reasons.append(txt)
+    portfolio = by_type.get(SignalType.PORTFOLIO_OWNER, [])
+    if portfolio:
+        meta = portfolio[0].raw_metadata_json or {}
+        f["portfolio_owner"] = 1.0
+        reasons.append(f"Portfolio owner: same owner/mailing on {meta.get('properties', '?')} distressed/absentee "
+                       "leads — one conversation can cover several houses")
     if prop.is_corporate_owned:
         f["corporate_owner"] = 1.0
+    fams = signal_families(prop)
+    if len(fams) >= 2:
+        f["stack_4x" if len(fams) >= 4 else "stack_3x" if len(fams) == 3 else "stack_2x"] = 1.0
+        reasons.insert(0, f"{len(fams)}x stacked distress: {' + '.join(fams)}")
     return f, reasons
+
+
+def listing_terms(prop: Property) -> dict[str, Any]:
+    """Asking-price gap (list_price, list_to_mao_70/75, striking_distance, valuation_conflict), recomputed from the
+    current valuation so older valuations get the ARV-vs-ask sanity check too."""
+    from engine.underwriter import asking_price, listing_gap
+    val = prop.current_valuation
+    if val is None:
+        return {}
+    ask = asking_price(prop) or ((val.assumptions_json or {}).get("listing") or {}).get("list_price")
+    return listing_gap(ask, val.mao_conservative, val.mao_aggressive, val.arv_estimate) if ask else {}
+
+
+def has_agent_contact(prop: Property) -> bool:
+    lead = prop.lead
+    return bool(lead and any(c.contact_type == "LISTING_AGENT" and (c.phone or c.email) and c.dnc_status != "dnc"
+                             for c in lead.contacts))
 
 
 def viability(prop: Property, weights: dict[str, Any], primary_source: str | None) -> tuple[float, list[str], str]:
@@ -177,6 +228,15 @@ def viability(prop: Property, weights: dict[str, Any], primary_source: str | Non
         score += 8 if lo <= val.arv_estimate <= hi else 0
         reasons.append(f"Underwritten {val.verdict}: ARV {_fmt_money(val.arv_estimate)}, MAO "
                        f"{_fmt_money(val.mao_conservative)}, fee {_fmt_money(val.target_assignment_fee)}")
+        gap = listing_terms(prop)
+        if gap.get("striking_distance") and has_agent_contact(prop):
+            cfg = weights.get("listing_striking_distance") or settings().get("scoring", {}).get(
+                "listing_striking_distance", {})
+            close = (gap.get("list_to_mao_75") or 0) >= 0.90
+            score += float(cfg.get("viability_close" if close else "viability", 22 if close else 15))
+            reasons.append(f"Within striking distance of ask: our 75% ceiling is {gap['list_to_mao_75']:.0%} of the "
+                           f"{_fmt_money(gap['list_price'])} list price (70% MAO = {gap.get('list_to_mao_70', 0):.0%}); "
+                           "listing agent reachable")
         return max(0.0, min(score, 100.0)), reasons, "valuation"
 
     # Not underwritten yet: equity proxies + learned prior for this lead source.
@@ -222,6 +282,11 @@ def score_property(prop: Property, weights: dict[str, Any], primary_source: str 
     # Urgency: a near auction with real equity is the most valuable call of the day.
     if factors.get("sale_within_30_days") and via >= 40:
         priority += 5
+    gap = listing_terms(prop)
+    if gap.get("striking_distance") and has_agent_contact(prop):
+        cfg = weights.get("listing_striking_distance") or settings().get("scoring", {}).get(
+            "listing_striking_distance", {})
+        priority += float(cfg.get("priority", 8))
     # A motivated seller with no compliant/profitable wholesale offer is a referral, not a deal.
     verdict = prop.current_valuation.verdict if prop.current_valuation else None
     priority *= NON_DEAL_PRIORITY_FACTOR.get(verdict, 1.0)
@@ -273,7 +338,8 @@ class LeadScoringAgent(BaseAgent):
 
 
 # Pipeline stage → priority points: a seller who engaged is worth more than any cold record.
-STAGE_BONUS = {"CONTACTED": 4, "INTERESTED": 12, "APPOINTMENT": 15, "OFFER_MADE": 18, "NEGOTIATING": 20,
+STAGE_BONUS = {"CONTACTED": 4, "INTERESTED": 12, "APPOINTMENT": 15, "OFFER_SENT_TO_AGENT": 16, "OFFER_MADE": 18,
+               "NEGOTIATING": 20,
                "UNDER_CONTRACT": 25, "ASSIGNED": 25}
 
 
@@ -293,6 +359,38 @@ def engagement_adjustment(lead: Lead) -> tuple[float, list[str]]:
     return bonus, why
 
 
+READY_VERDICTS = {"STRONG", "WORKABLE", "WORKABLE_82_PCT_FLOOR", "TIGHT"}
+
+
+def ready_to_call(lead: Lead) -> tuple[bool, str | None]:
+    """An underwritten deal with an offer path AND someone reachable right now (phone or listing-agent e-mail)."""
+    if lead.status_stage in TERMINAL:
+        return False, None
+    val = lead.property.current_valuation
+    if val is None:
+        return False, None
+    gap = listing_terms(lead.property)
+    if gap.get("valuation_conflict"):
+        return False, None          # ARV far above ask: re-check comps before anyone calls with a number
+    if val.verdict in NO_OFFER_VERDICTS or val.verdict == "SHORT_SALE_ONLY":
+        return False, None
+    if gap.get("list_price"):
+        # Listed: the asking price is the obstacle, not the spread — only listings our 75% ceiling can reach.
+        if not gap.get("striking_distance"):
+            return False, None
+    elif val.verdict not in READY_VERDICTS:
+        return False, None
+    for c in sorted(lead.contacts, key=lambda c: (c.contact_type != "LISTING_AGENT", -(c.confidence_score or 0))):
+        if c.dnc_status == "dnc" or (c.confidence_score or 0) <= 0:
+            continue
+        if c.phone:
+            return True, ("listing agent phone" if c.contact_type == "LISTING_AGENT" else
+                          f"{c.contact_type.lower().replace('_', ' ')} phone")
+        if c.email and c.contact_type == "LISTING_AGENT":
+            return True, "listing agent e-mail"
+    return False, None
+
+
 def apply_score(lead: Lead, version: int, weights: dict[str, Any]) -> Score:
     from engine.underwriter import frfpa_decision   # local import: underwriter imports this module
     if any(s.signal_type in (SignalType.SHERIFF_SALE, SignalType.LIS_PENDENS) for s in lead.property.active_signals):
@@ -304,8 +402,11 @@ def apply_score(lead: Lead, version: int, weights: dict[str, Any]) -> Score:
         sc.factors["engagement"] = bonus
         sc.reasons.extend(why)
     lead.motivation_score, lead.deal_viability_score, lead.priority_rank_score = sc.motivation, sc.viability, sc.priority
+    ready, via = ready_to_call(lead)
+    lead.ready_to_call = ready
     lead.score_breakdown_json = {"factors": sc.factors, "reasons": sc.reasons,
-                                 "viability_basis": sc.viability_basis, "scored_at": utcnow().isoformat()}
+                                 "viability_basis": sc.viability_basis, "scored_at": utcnow().isoformat(),
+                                 "stack": signal_families(lead.property), "ready_via": via}
     lead.scoring_version = version
     lead.ai_strategy_brief = strategy_brief(lead, sc)
     return sc
