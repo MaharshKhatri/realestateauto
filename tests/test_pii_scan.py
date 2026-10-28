@@ -17,3 +17,10 @@ def test_scan_finds_database_names_in_files(db, tmp_path, monkeypatch):
     monkeypatch.setattr(pii_scan, "ROOT", tmp_path)
     hits = scan(db, [leaky, clean])
     assert sorted((h.path, h.line) for h in hits) == [("notes.md", 2), ("notes.md", 3)]
+
+
+def test_lender_and_trust_fragments_are_not_people(db):
+    lead = make_lead(db, defendant="SAMPLE BANK NATIONAL TRUST COMPANY, AS TRUSTEE FOR ASSET-BACKED CERTIFICATES")
+    add_contact(db, lead, name="Asset-Backed Pass Through Certificates", phone=None)
+    add_contact(db, lead, name="Mortgage Pass-Through Certificates Series", phone=None)
+    assert not {n for n in person_names(db) if "CERTIFICATES" in n or "ASSET-BACKED" in n}

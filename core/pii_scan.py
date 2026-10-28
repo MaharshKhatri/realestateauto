@@ -25,7 +25,10 @@ SKIP_SUFFIXES = {".db", ".zip", ".png", ".jpg", ".pdf", ".pyc"}
 NOT_NAMES = {"NEW", "JERSEY", "STATE", "UNITED", "STATES", "AMERICA", "NOT", "CAPACITY", "INDIVIDUAL", "TRUST",
              "TRUSTEE", "BANK", "CITY", "COUNTY", "TOWNSHIP", "BOROUGH", "HEIRS", "ESTATE", "UNKNOWN", "SPOUSE",
              "OCCUPANTS", "TENANTS", "TENANT", "OCCUPANT", "MRS", "MR", "DOE", "ROE", "THE", "AND", "ITS", "SOLELY",
-             "DEPARTMENT", "TREASURY", "REVENUE", "INTERNAL", "SERVICE", "ASSOCIATION", "NATIONAL"}
+             "DEPARTMENT", "TREASURY", "REVENUE", "INTERNAL", "SERVICE", "ASSOCIATION", "NATIONAL",
+             # securitization-trust fragments that lender names leave behind ("Asset-Backed Pass Through Certificates")
+             "CERTIFICATES", "CERTIFICATE", "CERTIFICATEHOLDERS", "SECURITIES", "SERIES", "PASS", "THROUGH",
+             "ASSET-BACKED", "MORTGAGE", "LOAN", "LOANS", "HOLDERS", "FUNDING", "ACQUISITION"}
 MIN_PART = 3
 
 
