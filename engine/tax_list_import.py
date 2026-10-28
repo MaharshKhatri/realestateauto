@@ -172,13 +172,18 @@ def import_tax_list(session: Session, data: bytes, filename: str, *, county: str
     local = local_parcels(session, mun[1], list(groups))
     features: dict[tuple[str, str, str], dict] = {}
     if gis is not None:
+        from core.http import FetchError
         blocks = sorted({k[0] for k in groups if k not in local and (k[0], k[1], "") not in local})
-        for i in range(0, len(blocks), 40):
-            chunk = ",".join("'" + b.replace("'", "''") + "'" for b in blocks[i:i + 40])
-            for f in gis.query(f"PCL_MUN='{mun[1]}' AND PCLBLOCK IN ({chunk})"):
-                a = f["attributes"]
-                features.setdefault((normalize_block_lot(a.get("PCLBLOCK")), normalize_block_lot(a.get("PCLLOT")),
-                                     (a.get("PCLQCODE") or "").strip().upper()), f)
+        try:
+            for i in range(0, len(blocks), 40):
+                chunk = ",".join("'" + b.replace("'", "''") + "'" for b in blocks[i:i + 40])
+                for f in gis.query(f"PCL_MUN='{mun[1]}' AND PCLBLOCK IN ({chunk})"):
+                    a = f["attributes"]
+                    features.setdefault((normalize_block_lot(a.get("PCLBLOCK")), normalize_block_lot(a.get("PCLLOT")),
+                                         (a.get("PCLQCODE") or "").strip().upper()), f)
+        except FetchError as exc:
+            result.notes.append(f"MOD-IV (NJGIN) didn't answer ({exc}); only parcels we already track were matched. "
+                                "Upload the same file again later to pick up the rest; re-imports don't duplicate.")
     year = list_year or str(date.today().year)
     for key, items in groups.items():
         prop = local.get(key) or local.get((key[0], key[1], ""))

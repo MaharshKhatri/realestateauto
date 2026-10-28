@@ -970,9 +970,11 @@ def autopilot_outcome(lead_id: int, body: AutoOutcomeIn, session: Session = Depe
 
 # -- Phase 5: public records (OPRA tax lists, clerk filings, uploads) ----------------------------------------
 def records_gis() -> Any:
-    """NJGIN client for parcel lookups from the records page (tests replace it)."""
+    """NJGIN client for parcel lookups from the records page (tests replace it). Someone is waiting on the page, so
+    a slow NJGIN gets a short timeout and one retry; the import then falls back to parcels we already track."""
     from agents.scrapers.njgis_client import NJGISClient
-    return NJGISClient()
+    from core.http import PoliteSession
+    return NJGISClient(http=PoliteSession(min_interval=0.5, timeout=20, max_retries=1))
 
 
 @app.get("/api/opra")

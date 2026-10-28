@@ -291,3 +291,20 @@ def test_kpis_survive_a_stage_change_from_another_session(db):
         other.get(Lead, lead.id).status_stage = "OFFER_SENT_TO_AGENT"
     k = ap.kpis(db)
     assert k["open_leads"] == 1 and k["pipeline_value"] >= 0
+
+
+def test_tax_list_import_falls_back_when_njgin_is_down(db, tmp_path, monkeypatch):
+    import engine.tax_list_import as tli
+    from core.http import FetchError
+    monkeypatch.setattr(tli, "IMPORT_DIR", tmp_path / "tax_lists")
+
+    class DownGIS:
+        def resolve_municipality(self, county, town):
+            return ("NEWARK CITY", "0714")
+
+        def query(self, where):
+            raise FetchError("GET parcels failed after retries: read timed out")
+    a = make_lead(db, sheriff_days=None, block="100", lot="5")
+    r = import_tax_list(db, TAX_CSV.encode(), "list.csv", county="Essex", town="Newark", gis=DownGIS())
+    assert r.matched_local == 1 and r.matched_njgin == 0 and any("didn't answer" in n for n in r.notes)
+    assert db.query(DistressSignal).filter_by(property_id=a.property_id, signal_type=SignalType.TAX_DELINQUENT).count() == 1
