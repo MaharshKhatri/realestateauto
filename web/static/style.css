@@ -111,3 +111,60 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .pre { white-space: pre-wrap; font-family: var(--mono); font-size: 12px; background: #10141a; border: 1px solid var(--line);
   border-radius: 7px; padding: 8px; max-height: 320px; overflow: auto; }
 .kpi.click { cursor: pointer; } .kpi.click:hover { border-color: var(--accent); }
+
+/* -- Phase 5: command center ------------------------------------------------------------------------- */
+.cmdbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between;
+  padding: 10px 18px; background: #0d1116; border-bottom: 1px solid var(--line); }
+.kpills { display: flex; flex-wrap: wrap; gap: 8px; }
+.kpill { display: flex; flex-direction: column; min-width: 120px; padding: 6px 12px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text); }
+.kpill:hover { border-color: var(--accent); text-decoration: none; }
+.kpill b { font-size: 17px; } .kpill span { font-size: 11px; color: var(--muted); }
+.kpill.bad b { color: #ff9c9c; } .kpill.good b { color: #7ee2ad; } .kpill.acc b { color: #8cc0ff; }
+.kpill.vio b { color: #c7b6ff; } .kpill.warn b { color: #ffd37a; }
+.cmd-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pill.live { font-weight: 600; }
+
+.modal { width: min(640px, 94vw); max-height: 90vh; overflow: auto; background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.modal::backdrop { background: rgba(0, 0, 0, .6); }
+.modal input[type=email], .modal input[type=tel], .modal input[type=password] { width: 100%; padding: 7px 9px;
+  border-radius: 7px; border: 1px solid var(--line); background: #10141a; color: var(--text); font: inherit; }
+.modal small { display: block; min-height: 1em; }
+.modal summary { cursor: pointer; margin-top: 10px; color: var(--accent); }
+.steps { list-style: none; padding: 0; margin: 12px 0 0; columns: 2; }
+.steps li { padding: 3px 0; } .steps li.running { color: var(--warn); } .steps li.failed { color: var(--bad); }
+
+.autopilot h1 { margin: 0; }
+.progress { height: 12px; background: var(--panel2); border-radius: 999px; overflow: hidden; margin: 8px 0 12px;
+  border: 1px solid var(--line); }
+.progress div { height: 100%; background: linear-gradient(90deg, #23593e, #34c27a); transition: width .4s; }
+.banner { padding: 10px 12px; border-radius: 8px; background: #2a2210; border: 1px solid #6b5413; margin-bottom: 12px; }
+.ap-nav { margin-bottom: 8px; }
+.ap-title { margin-bottom: 10px; } .ap-title h2 { margin: 0; font-size: 18px; }
+.ap-grid { grid-template-columns: 1fr 1.1fr; align-items: start; }
+@media (max-width: 1100px) { .ap-grid { grid-template-columns: 1fr; } }
+.whybox { padding: 10px 12px; border-radius: 8px; background: #121c15; border: 1px solid #23593e; margin: 8px 0 12px; }
+.whybox ul { margin: 4px 0 0 18px; padding: 0; }
+.action { font-weight: 600; font-size: 15px; }
+.ap-script { margin: 4px 0 10px 18px; padding: 0; } .ap-script li { margin-bottom: 4px; }
+.ap-outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+#ap-body { min-height: 300px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; }
+.bigbtn { display: block; width: 100%; margin: 10px 0 4px; padding: 14px 16px; font: inherit; font-size: 17px;
+  font-weight: 700; color: #fff; background: linear-gradient(180deg, #2b65a8, #1f4f87); border: 1px solid #3a78c2;
+  border-radius: 10px; cursor: pointer; }
+.bigbtn:hover { filter: brightness(1.1); } .bigbtn:disabled { opacity: .45; cursor: not-allowed; }
+.smsbox { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); }
+.smsbox p { margin: 4px 0 8px; }
+
+#kanban { margin-top: 14px; }
+.kanban { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 1100px) { .kanban { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .kanban { grid-template-columns: 1fr; } }
+.kcol { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; max-height: 460px;
+  overflow: auto; }
+.kcol h2 { font-size: 14px; }
+.kcard { display: block; padding: 8px 10px; margin-bottom: 6px; border-radius: 8px; background: var(--panel);
+  border: 1px solid var(--line); color: var(--text); }
+.kcard:hover { border-color: var(--accent); text-decoration: none; }
+.kcard b { display: block; } .kcard span { color: var(--muted); font-size: 12px; }

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from core.config import ROOT
 from core.text import clean, is_entity, is_government, split_person_name
-from db.models import Contact, DistressSignal, Property
+from db.models import ClerkFiling, Contact, DistressSignal, Property
 
 SKIP_SUFFIXES = {".db", ".zip", ".png", ".jpg", ".pdf", ".pyc"}
 # Words that turn up as "names" when a party line is a government, a trustee clause or boilerplate.
@@ -47,6 +47,11 @@ def person_names(session: Session) -> set[tuple[str, str]]:
                                                                          Contact.contact_type != "LISTING_AGENT")))
     for (d,) in session.execute(select(DistressSignal.defendant).where(DistressSignal.defendant.is_not(None))):
         raw.add(first_defendant(d))
+    from agents.scrapers.lis_pendens_agent import JUNIOR_DEFENDANT_RE
+    for (parties,) in session.execute(select(ClerkFiling.defendants)):     # lis pendens, matched or not
+        raw.update(re.sub(r"\(?ESTATE OF\)?", "", p) for p in (parties or []) if isinstance(p, str)
+                   and not JUNIOR_DEFENDANT_RE.search(p)
+                   and not re.search(r"\d|LLC|\bN\.?A\.?$|TRUST|\bINC\b|CORP", p.upper()))
     out: set[tuple[str, str]] = set()
     for name in raw:
         up = clean(name).upper()

@@ -271,34 +271,34 @@ def title_order_email(lead: Lead, partner: dict[str, Any] | None = None, structu
     lines = [
         f"Hello {to},", "",
         f"I'd like to open a title order for a residential purchase in {legal['municipality']}, {legal['county']}.", "",
-        f"  • Property: {legal['address']} — Block {legal['block']}, Lot {legal['lot']}"
+        f"  • Property: {legal['address']}, Block {legal['block']}, Lot {legal['lot']}"
         + (f", Qual {legal['qual']}" if legal.get("qual") else ""),
         f"  • Seller(s): {seller_parties(lead)[0]}",
         f"  • Buyer: {buyer_entity()}",
-        f"  • Contract price: {money(lead.offer_amount)}; contract dated {lead.contract_date or '—'}; attorney review "
-        f"{'ended' if review and review < date.today() else 'ends'} {long_date(review) if review else '—'}",
+        f"  • Contract price: {money(lead.offer_amount)}; contract dated {lead.contract_date or 'TBD'}; attorney review "
+        f"{'ended' if review and review < date.today() else 'ends'} {long_date(review) if review else 'TBD'}",
         f"  • Earnest money: {money(cfg.get('earnest_money', 1000))} to be held in your escrow",
-        f"  • Target closing: on or before {long_date(closing) if closing else '—'}",
+        f"  • Target closing: on or before {long_date(closing) if closing else 'TBD'}",
         f"  • Structure: we expect {struct}. Please confirm you will insure this structure.", "",
         "Please order:",
         "  1. Full title search and commitment (judgments, liens, open mortgages, lis pendens)",
-        "  2. Municipal lien search — taxes, water/sewer, special assessments, any tax sale certificate",
+        "  2. Municipal lien search: taxes, water/sewer, special assessments, any tax sale certificate",
         "  3. Certificate of occupancy / resale inspection and smoke-CO-fire extinguisher certificate requirements "
         "for the town",
         "  4. Flood zone determination",
     ]
     sheriff = next((s for s in lead.property.active_signals if s.signal_type == "SHERIFF_SALE"), None)
     if sheriff:
-        lines.append(f"  5. Foreclosure: docket {sheriff.case_number or '—'}, plaintiff "
-                     f"{(sheriff.plaintiff_or_lienholder or '—').title()}; sheriff's sale scheduled "
-                     f"{long_date(sheriff.scheduled_auction_date) if sheriff.scheduled_auction_date else '—'}. "
+        lines.append(f"  5. Foreclosure: docket {sheriff.case_number or 'unknown'}, plaintiff "
+                     f"{(sheriff.plaintiff_or_lienholder or 'unknown').title()}; sheriff's sale scheduled "
+                     f"{long_date(sheriff.scheduled_auction_date) if sheriff.scheduled_auction_date else 'TBD'}. "
                      "Please request the payoff/judgment figure from plaintiff's counsel.")
     if f.get("year_built") and f["year_built"] < 1980:
         lines.append("  • Built before 1980: the buyer will order an underground oil tank sweep.")
     lines += ["", "The signed contract is attached. Let me know the fee schedule and anything else you need.", "",
               f"Thank you,\n{op.get('name')}\n{op.get('company_name')}"
               + (f"\n{op.get('phone')}" if op.get("phone") else "") + (f"\n{op.get('email')}" if op.get("email") else "")]
-    subject = f"New title order — {legal['address']} (Block {legal['block']}, Lot {legal['lot']})"
+    subject = f"New title order: {legal['address']} (Block {legal['block']}, Lot {legal['lot']})"
     return {"to": to, "email_to": (partner or {}).get("email") or "", "subject": subject, "body": "\n".join(lines),
             "partner": partner or {}}
 

@@ -46,6 +46,10 @@ DEFAULT_ZIPS = [
     "07601", "07026",
     # Camden: Camden, Pennsauken
     "08102", "08103", "08104", "08105", "08109", "08110",
+    # Mercer: Trenton, Hamilton, Ewing
+    "08608", "08609", "08610", "08611", "08618", "08619", "08620", "08628", "08629", "08638", "08690", "08691",
+    # Monmouth: Asbury Park, Neptune, Long Branch, Freehold
+    "07712", "07753", "07740", "07728",
 ]
 
 RESIDENTIAL = {"single_family", "multi_family", "duplex_triplex", "townhomes", "condo_townhome",

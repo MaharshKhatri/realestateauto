@@ -23,7 +23,6 @@ from urllib.parse import quote, quote_plus
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.config import settings
 from db.models import Lead, Listing, SignalType
 
 CONDITION_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
@@ -117,23 +116,30 @@ def occupancy_hint(flags: list[dict[str, str]]) -> str | None:
 
 
 def request_messages(address: str, who: str = "seller") -> dict[str, str]:
-    op = settings().operator
-    name, company = op.get("name") or "", op.get("company_name") or ""
-    phone = "".join(ch for ch in (op.get("phone") or "") if ch.isdigit())
-    callback = f" My number is {phone[:3]}-{phone[3:6]}-{phone[6:]}." if len(phone) == 10 else ""
-    shots = "front, back/roof line, kitchen, each bathroom, the basement with the boiler/furnace and electric panel, and anything that needs work"
-    sms = (f"Hi, this is {name} with {company} about {address}. Instead of a visit, could you text me 6 quick "
-           f"photos ({shots})? Or we can do a 3-minute FaceTime/WhatsApp video walk-through whenever it suits you."
+    """Photo / video-walkthrough requests (instead of a visit) to the seller, tenant or listing agent."""
+    from engine import human_copy as hc
+    op = hc.operator()
+    me = " ".join(x for x in (op["first"] or op["name"], "with " + op["company"] if op["company"] else "") if x)
+    st = hc.street(address)
+    callback = f" My number is {op['phone']}." if op["phone"] else ""
+    shots = ("the front, the back and roof line, the kitchen, each bathroom, the basement with the boiler or furnace "
+             "and electric panel, and anything that needs work")
+    sms = (f"Hi, this is {me} about {st}. Instead of a visit, could you text me 6 quick photos (front, back, kitchen, "
+           "baths, basement with the boiler and panel)? Or a 3-minute FaceTime video works too."
            f"{callback} Reply STOP and I won't text again.")
-    agent_sms = (f"Hi, {name} with {company} — I'm working on a cash offer for your listing at {address}. Could you "
-                 "send any extra interior photos (basement, mechanicals, roof) or do a 3-minute video walk-through "
-                 "next time you're there? I'll turn an offer around the same day.")
-    email = (f"Subject: Photos for {address}\n\nHi,\n\nThank you for your time. So I can give you an accurate as-is "
-             f"offer without an in-person visit, could you send about six photos — {shots}? If it's easier, a short "
-             "video call (FaceTime, WhatsApp or Zoom) works too; it takes about three minutes.\n\nIf the house is "
-             "rented, please don't disturb your tenants — exterior photos plus whatever you have on file are fine."
-             f"\n\n{name}\n{company}" + (f"\n{op.get('mailing_address')}" if op.get("mailing_address") else ""))
-    return {"sms_owner": sms, "sms_agent": agent_sms, "email": email} if who != "agent" else {"sms_agent": agent_sms}
+    agent_sms = (f"Hi, it's {me}. I'm working on a cash offer for your listing at {st}. Could you send any extra "
+                 "interior photos (basement, mechanicals, roof) or do a 3-minute video walk-through next time you're "
+                 "there? I'll turn an offer around the same day.")
+    email = hc.compose(
+        f"photos for {st}", "Hi,",
+        [f"So I can give you an accurate as-is number for {st} without a visit, could you send about six photos "
+         f"({shots})? If it's easier, a short FaceTime, WhatsApp or Zoom call works too and takes about three "
+         "minutes. If the house is rented, please don't disturb your tenants; outside photos plus whatever you have "
+         "on file are fine."],
+        hc.footer_lines(op, "Reply STOP and I won't contact you again."), summary_title="---", op=op)
+    out = {"sms_owner": hc.plain(sms), "sms_agent": hc.plain(agent_sms),
+           "email": f"Subject: {email.subject}\n\n{email.text}"}
+    return out if who != "agent" else {"sms_agent": out["sms_agent"]}
 
 
 def listing_text(session: Session, lead: Lead) -> tuple[str | None, list[str], str | None]:

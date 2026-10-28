@@ -4,8 +4,9 @@ For every listed property we can underwrite, the listing agent's name, brokerage
 already in `contacts` (agents/enrichment/listing_agent_enricher.py) — no skip-tracing, no driving. This
 module turns the top ones into a ready-to-send packet:
 
-  * an e-mail that names the agent and brokerage, cites days on market / price cuts / fixer language, and
-    offers two structures: a fast as-is cash offer at our anchor and a higher price with more time;
+  * a plain 3-4 sentence e-mail (engine/human_copy.py) that cites days on market / price cuts / fixer language and
+    floats a price range (our anchor to our walk-away); the two structures, the unrepresented-buyer wording, the
+    investor / may-assign disclosure, postal address and opt-out sit under the "--- Offer Summary ---" line;
   * a short SMS for the agent's cell (sent by hand from the operator's phone — never automated);
   * a 1-page LOI PDF (engine/contracts.py, addressed c/o the listing agent);
   * a `mailto:` link, copy-ready text, and an optional SMTP send (Gmail app password in .env), limited to
@@ -30,7 +31,6 @@ from datetime import datetime, time, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -78,6 +78,7 @@ class AgentPacket:
     days_to_sale: int | None = None
     upset: float | None = None
     track: str | None = None
+    phone_script: list[str] = field(default_factory=list)   # 3 sentences for the call (autopilot player)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -143,11 +144,8 @@ def candidates(session: Session, top: int = 50) -> list[Lead]:
 
 # -- packet ------------------------------------------------------------------------------------------
 def _operator() -> dict[str, str]:
-    op = settings().operator
-    digits = "".join(ch for ch in (op.get("phone") or "") if ch.isdigit())
-    return {"name": op.get("name") or "", "company": op.get("company_name") or "",
-            "phone": format_phone(digits) or "", "email": op.get("email") or "",
-            "postal": op.get("mailing_address") or ""}
+    from engine.human_copy import operator
+    return operator()
 
 
 def offer_prices(lead: Lead) -> tuple[float | None, float | None]:
@@ -169,22 +167,48 @@ def offer_prices(lead: Lead) -> tuple[float | None, float | None]:
     return anchor, best
 
 
+def price_range(anchor: float | None, best: float | None) -> str:
+    from engine.human_copy import money as plain_money
+    return f"{plain_money(anchor)} to {plain_money(best)}" if best and anchor and best > anchor else plain_money(anchor)
+
+
+def agent_terms_line() -> str:
+    """Unrepresented-buyer wording: the agent may handle both sides only as the listing agreement and NJ rules allow."""
+    return ("Agent: I'm not represented by a buyer's agent. You can act as a disclosed dual agent (with both parties' "
+            "informed written consent) or a transaction broker only as your listing agreement and NJ rules allow. "
+            "Your compensation stays whatever the listing agreement says; I'm not asking for any part of it.")
+
+
+def _why_now(f: dict[str, Any]) -> str:
+    if f.get("dom"):
+        return f"Since it's been on the market about {f['dom']} days, do you"
+    if f.get("price_reduced"):
+        return "Since the price has already come down, do you"
+    if f.get("keywords"):
+        return f"Since the listing says \"{f['keywords'][0]}\", do you"
+    return "Do you"
+
+
 def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = True,
                  out_root: Path | None = None, session: Session | None = None) -> AgentPacket:
+    """Stale-listing note to the listing agent: plain 3-4 sentences on top, the full terms under the summary line."""
+    from engine import human_copy as hc
     from engine.contracts import ContractBlocked, contract_gate, generate
     from engine.fast_track import is_listed_foreclosure
 
     if session is not None and agent is None and is_listed_foreclosure(lead.property):
-        from engine.fast_track import build_packet as urgent_packet   # sheriff sale + listing: urgent version
+        from engine.fast_track import (
+            build_packet as urgent_packet,  # sheriff sale + listing: urgent version
+        )
         return urgent_packet(session, lead, generate_loi=generate_loi, out_root=out_root)
     agent = agent or agent_contact(lead)
     if agent is None:
         raise ValueError(f"lead {lead.id} has no reachable listing agent")
     f = lead_facts(lead)
     gap = listing_gap(lead)
-    op = _operator()
+    op = hc.operator()
     cfg = _cfg()
-    first = (agent.name or "").split()[0].title() if agent.name else "there"
+    first = hc.first_name(agent.name)
     anchor, best = offer_prices(lead)
     gate = contract_gate(lead, "loi", anchor)
     kind = "offer" if gate.allowed and anchor else "inquiry"
@@ -196,66 +220,65 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
         reasons.append("a price reduction")
     if f.get("keywords"):
         reasons.append("the listing's own words: " + ", ".join(f'"{k}"' for k in f["keywords"][:3]))
-    hook = ("I noticed " + (", ".join(reasons[:-1]) + " and " + reasons[-1] if len(reasons) > 1 else reasons[0])
-            + "." if reasons else "I'm interested in your listing.")
-    addr = f["address"]
-    subject = (f"Cash offer — {addr}" if kind == "offer" else f"Question about {addr}")
-    lines = [f"Hi {first},", "",
-             f"I'm {op['name']} with {op['company']}, a real estate investor buying in {f.get('town')}. "
-             f"I'm writing about your listing at {addr}" + (f" ({agent.company})" if agent.company else "") + ". " + hook,
-             ""]
+    addr, st, town = f["address"], hc.street(f["address"]), f.get("town") or ""
+    fast, std = int(cfg.get("fast_close_days", 21)), int(cfg.get("standard_close_days", 45))
+    ask = gap.get("list_price")
+    subject = hc.pick([f"question on {st}", f"{st} - still available?"], lead.id)
     if kind == "offer":
-        fast, std = int(cfg.get("fast_close_days", 21)), int(cfg.get("standard_close_days", 45))
-        lines += [
-            "I'd like to put two clean options in front of your seller:", "",
-            f"  1) {money(anchor)} cash, as-is, no mortgage or appraisal contingency, closing in about {fast} days.",
-            f"  2) {money(best)} cash, as-is, with a 10-business-day inspection period and closing in about {std} "
-            "days." if best and anchor and best > anchor else
-            f"  2) Same price with a 10-business-day inspection period and a {std}-day close, if the seller prefers.",
-            "",
-            "No repairs, no cleanout, no credits requested — the seller picks the closing date. A 1-page letter of intent "
-            "is attached; we'd follow with a written agreement of sale that includes a 3-business-day attorney review.",
-            "",
-        ]
+        paragraphs = [
+            f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". "
+            f"{_why_now(f)} think the seller would look at a clean, as-is cash offer around "
+            f"{price_range(anchor, best)} with no mortgage contingency and a quick close? "
+            "I'm an investor buying for myself or a partner investor, and I'm not working with a buyer's agent, "
+            "so you can handle both sides if your listing agreement allows it. "
+            "Let me know if that range is workable and I'll send over the written offer today."]
+        terms = [(f"Option 1: {hc.money(anchor)} cash, as-is, no mortgage or appraisal contingency, close in about "
+                  f"{fast} days.")]
+        if best and anchor and best > anchor:
+            terms.append(f"Option 2: {hc.money(best)} cash, as-is, with a 10-business-day inspection period, close in "
+                         f"about {std} days.")
+        terms += ["No repairs, cleanout or credits requested; the seller picks the closing date.",
+                  "The agreement of sale includes a 3-business-day attorney review."
+                  + (" A 1-page written offer is attached." if generate_loi and session is not None else "")]
     else:
-        lines += [
-            "Before I send numbers, two quick questions: is the seller living in the home, or is it vacant / "
-            "tenant-occupied? And is there a date the seller needs to be out by? With that I can send a written "
-            "cash offer the same day.", ""]
-    lines += [
-        "I'm not represented by a buyer's agent. If the seller and your listing agreement allow, you're welcome to "
-        "handle both sides as a disclosed dual agent (with both parties' informed written consent) or as a transaction "
-        "broker under NJ rules; your compensation stays whatever your listing agreement provides — I'm not asking "
-        "for any part of it.",
-        "",
-        f"Full disclosure: we're investors acting as principals, not licensed agents. We buy in the name "
-        f"\"{op['company']} and/or assigns\" and may assign the contract to an affiliated investor; the seller's "
-        "price and terms don't change. Proof of funds available on request.",
-        "",
-        "Is the seller still entertaining offers? I can talk any time today.",
-        "",
-        op["name"], op["company"] + (f" · {op['phone']}" if op["phone"] else "") + (f" · {op['email']}" if op["email"] else ""),
-    ]
-    if op["postal"]:
-        lines.append(op["postal"])
-    lines += ["", "If you'd rather not get offers from me on other listings, reply \"no more\" and I'll stop."]
-    body = "\n".join(lines)
-    sms = (f"Hi {first}, {op['name']} with {op['company']} (investor, unrepresented). "
-           + (f"Sending a cash offer on {addr}: {money(anchor)} as-is, quick close." if kind == "offer"
-              else f"Quick question on {addr} — is it vacant or seller-occupied?")
-           + (f" OK to e-mail the LOI to {agent.email}?" if agent.email else "")
-           + " Reply STOP to opt out.")
-    mailto = (f"mailto:{agent.email}?subject={quote(subject)}&body={quote(body)}" if agent.email else None)
+        paragraphs = [
+            f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". "
+            "Is the seller living there, or is it vacant or rented? "
+            "I'm an investor looking at a clean, as-is cash offer, and I'm not working with a buyer's agent. "
+            "Once I know who's in the house I can send you numbers the same day."]
+        terms = ["No price yet: the offer depends on who lives in the home (NJ foreclosure-rescue rules for "
+                 "owner-occupants)." if not gate.allowed else "Numbers follow once I know the occupancy."]
+    summary = [f"Property: {addr}" + (f" (asking {hc.money(ask)})" if ask else ""), *terms, agent_terms_line(),
+               hc.investor_disclosure(op["company"]),
+               *hc.footer_lines(op, 'Reply "no more" and I won\'t send you offers on other listings.')]
+    email = hc.compose(subject, f"Hi {first},", paragraphs, summary, op=op,
+                       summary_title=hc.DIVIDER if kind == "offer" else hc.DETAILS)
+    me = " ".join(x for x in (op["first"], "with " + op["company"] if op["company"] else "") if x) or "an investor"
+    sms = (f"Hi {first}, it's {me}. Is {st} still available? I'm an investor (no buyer's agent) and could do a clean "
+           f"as-is cash offer around {hc.money(anchor)} with a quick close. OK to e-mail you the details? "
+           if kind == "offer" else
+           f"Hi {first}, it's {me}. Quick question on {st}: is the seller living there, or is it vacant or rented? "
+           "I'm an investor looking at a cash offer. ")
+    sms += "Reply STOP to opt out."
+    phone = [f"Hi {first}, this is {me}; I'm an investor calling about your listing at {st}.",
+             (f"{_why_now(f)} think the seller would look at a clean as-is cash offer around "
+              f"{price_range(anchor, best)} with a quick close?" if kind == "offer" else
+              "Is the seller living there, or is it vacant or rented? That decides how I can structure an offer."),
+             "I'm not working with a buyer's agent, so you can handle both sides if your listing agreement allows it; "
+             "can I e-mail you the written offer today?" if kind == "offer" else
+             "I'm not working with a buyer's agent; once I know who's in the house can I e-mail you numbers today?"]
     packet = AgentPacket(
         lead_id=lead.id, property_id=lead.property_id, kind=kind, agent_contact_id=agent.id,
         agent_name=agent.name or "", agent_first=first, brokerage=agent.company, agent_email=agent.email,
         agent_phone=format_phone(agent.phone) if agent.phone else None, address=addr,
-        list_price=gap.get("list_price"), dom=dom, anchor=anchor if kind == "offer" else None,
-        best=best if kind == "offer" else None, list_to_mao_75=gap.get("list_to_mao_75"), subject=subject,
-        email_body=body, sms_text=sms, mailto=mailto, reasons=reasons, warnings=list(gate.warnings))
+        list_price=ask, dom=dom, anchor=anchor if kind == "offer" else None,
+        best=best if kind == "offer" else None, list_to_mao_75=gap.get("list_to_mao_75"), subject=email.subject,
+        email_body=email.text, sms_text=sms, mailto=email.mailto(agent.email), reasons=reasons,
+        warnings=list(gate.warnings), phone_script=phone)
     if not op["postal"]:
-        packet.warnings.append("Set operator.mailing_address in config/settings.local.yaml: commercial e-mail must "
-                               "include your postal address (CAN-SPAM). SMTP sending is disabled until then.")
+        packet.warnings.append("Set your mailing address in My Setup (or operator.mailing_address in "
+                               "config/settings.local.yaml): commercial e-mail must include your postal address "
+                               "(CAN-SPAM). SMTP sending is disabled until then.")
     if kind == "inquiry":
         packet.warnings.extend(gate.reasons)
     if generate_loi and kind == "offer" and session is not None:
@@ -321,8 +344,8 @@ def record_sent(session: Session, lead: Lead, packet: AgentPacket, channel: str,
     return r.stage
 
 
-def send_smtp(session: Session, lead: Lead, packet: AgentPacket, now: datetime | None = None,
-              smtp_factory: Any = None) -> str:
+def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = None, smtp_factory: Any = None) -> None:
+    """Send one personalized e-mail over SMTP (Gmail app password), inside the rolling 24-hour limit."""
     ok, why = smtp_ready()
     if not ok:
         raise RuntimeError(why)
@@ -339,12 +362,17 @@ def send_smtp(session: Session, lead: Lead, packet: AgentPacket, now: datetime |
     pdf = packet.loi_files.get("pdf")
     if pdf and Path(pdf).exists():
         msg.add_attachment(Path(pdf).read_bytes(), maintype="application", subtype="pdf",
-                           filename=f"LOI - {packet.address}.pdf")
+                           filename=f"Offer - {packet.address}.pdf")
     host, port = _cfg().get("smtp_host", "smtp.gmail.com"), int(_cfg().get("smtp_port", 465))
     factory = smtp_factory or (lambda: smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=30))
     with factory() as smtp:
         smtp.login(os.environ["SMTP_USER"], os.environ["SMTP_APP_PASSWORD"])
         smtp.send_message(msg)
+
+
+def send_smtp(session: Session, lead: Lead, packet: AgentPacket, now: datetime | None = None,
+              smtp_factory: Any = None) -> str:
+    deliver(packet, session=session, now=now, smtp_factory=smtp_factory)
     return record_sent(session, lead, packet, "email_smtp", now)
 
 

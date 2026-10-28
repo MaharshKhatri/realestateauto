@@ -71,7 +71,7 @@ crm:
 
 markets:
   # Priority order. Names match CivilView / NJGIN county names.
-  counties: [Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden]
+  counties: [Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden, Mercer, Monmouth]
   # Focus municipalities for absentee/high-equity harvesting (NJGIN MUN_NAME values).
   # The self-improvement agent proposes additions in logs/swarm_intelligence.md.
   focus_municipalities:
@@ -93,6 +93,13 @@ markets:
     - {county: BERGEN, name: GARFIELD CITY}
     - {county: CAMDEN, name: CAMDEN CITY}
     - {county: CAMDEN, name: PENNSAUKEN TWP}
+    - {county: MERCER, name: TRENTON CITY}
+    - {county: MERCER, name: HAMILTON TWP}
+    - {county: MERCER, name: EWING TWP}
+    - {county: MONMOUTH, name: ASBURY PARK CITY}
+    - {county: MONMOUTH, name: NEPTUNE TWP}
+    - {county: MONMOUTH, name: LONG BRANCH CITY}
+    - {county: MONMOUTH, name: FREEHOLD BORO}
   arv_sweet_spot: {min: 150000, max: 650000}
 
 harvest:
@@ -188,6 +195,7 @@ agents:
   # cron: minute hour day month day_of_week (America/New_York)
   schedules:
     sheriff_sales: "30 5 * * *"
+    lis_pendens: "40 5 * * 1-5"
     tax_assessment: "0 4 * * 1"
     cash_buyers: "0 4 * * 2"
     stale_listings: "0 6 * * *"

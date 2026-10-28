@@ -170,6 +170,8 @@ county_region:
   Union: central
   Middlesex: central
   Camden: south
+  Mercer: central
+  Monmouth: central
 resources:
   - {name: NJLTA member directory, url: "https://njlta.org/members/", use: "find NJ title agents (open in a browser)"}
   - {name: NJ DOBI licensee search, url: "https://www-dobi.nj.gov/DOBI_LicSearch", use: "license status of DOBI licensees"}

@@ -4,7 +4,7 @@
 //   or written by `python manage.py site --build` for static hosting (mode "endpoint": a Formspree / webhook URL,
 //   or mode "mailto": opens an e-mail to the operator with the answers as "key: value" lines).
 (function () {
-  const cfg = window.SITE_CONFIG || { mode: "mailto", counties: ["Middlesex", "Union", "Essex", "Hudson", "Passaic", "Bergen", "Camden"] };
+  const cfg = window.SITE_CONFIG || { mode: "mailto", counties: ["Middlesex", "Union", "Essex", "Hudson", "Passaic", "Bergen", "Camden", "Mercer", "Monmouth"] };
   document.querySelectorAll("[data-cfg]").forEach((el) => {
     const v = cfg[el.dataset.cfg];
     if (v) el.textContent = v;

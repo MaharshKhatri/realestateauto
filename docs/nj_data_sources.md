@@ -13,7 +13,7 @@ SR1A deeds), `tax_sale_clerk_opendata.md` (tax sales, clerks, open data).
 | # | Source | What we get | Access | Verdict | Used by |
 |---|---|---|---|---|---|
 | 1 | NJGIN Parcels + MOD-IV composite (ArcGIS FeatureServer) | All ~3.9M NJ parcels: block/lot, class, location, owner **mailing** address, assessed land/improvement/total, last-year tax, building description, year built, dwellings, last deed date + price, parcel polygon/centroid | Free REST API, no key | **USE** | tax_assessment, cash_buyers, sheriff matching, public-record comps, market stats |
-| 2 | CivilView SalesWeb sheriff sales | Every upcoming foreclosure auction in 17 NJ counties incl. all 7 targets: sheriff #, docket, sale date, plaintiff, defendant, address, upset/judgment, block/lot, occupancy, status/adjournment history | Free HTML, session cookie | **USE** | sheriff_sales |
+| 2 | CivilView SalesWeb sheriff sales | Every upcoming foreclosure auction in 17 NJ counties incl. 8 of our 9 targets (not Mercer, §11): sheriff #, docket, sale date, plaintiff, defendant, address, upset/judgment, block/lot, occupancy, status/adjournment history | Free HTML, session cookie | **USE** | sheriff_sales |
 | 3 | Census TIGERweb ZCTA polygons | Property ZIP for parcels (NJGIN only has the owner's mailing ZIP) | Free REST API | **USE** | tax_assessment |
 | 4 | homeharvest → Realtor.com | Sold comps (radius or ZIP, last N days) with sqft/beds/baths/year; active listings with list date, DOM, description, tags, listing agent | pip library (unofficial API) | **USE (low volume)** — ToS prohibits scraping | underwriter, stale_listings |
 | 5 | Redfin `gis-csv` | Sold/active CSV per region | Unofficial endpoint; region id lookup 403 | FALLBACK | — |
@@ -195,17 +195,26 @@ Full evidence and per-town survey: `docs/recon/tax_sale_clerk_opendata.md`.
 - In-person-sale towns (Jersey City, Bayonne, Edison, Woodbridge, Hackensack) publish only a newspaper
   notice / PDF (Edison emails the list on request) → OPRA or manual.
 
-### 6.2 County clerks (lis pendens / foreclosure filings)
+### 6.2 County clerks (lis pendens / foreclosure filings) — `agents/scrapers/lis_pendens_agent.py` (Phase 5)
 | County | System | Verdict | Notes |
 |---|---|---|---|
-| Union | `clerk.ucnj.org/UCPA/DateResults` (`dt=7` lis pendens, `dt=17` foreclosure) | **USE (Sprint 2)** | Plain HTTP; 30 days = 39 foreclosure + 7 lis pendens + 34 discharges. Index has party names only; property is in the scanned PDF (needs OCR) |
-| Essex | PRESS `press.essexregister.com` doc types 23/25/21 | **USE (Sprint 2)** | 30 days = 12 foreclosure lis pendens + 30+ foreclosure-and-recovery, with town |
-| Passaic | clerk search | MANUAL | Works over HTTP but robots.txt disallows all |
-| Hudson | click-through disclaimer | MANUAL | Operator must accept terms |
+| Union | `clerk.ucnj.org/UCPA/DateResults` (`dt=7` lis pendens, `dt=17` foreclosure) | **USE (automated)** | Plain HTTP; live 30 days (2026-10-28): 44 foreclosures + 46 lis pendens entries. Party names, recorded date, instrument; no town, no address (scanned PDF only) |
+| Essex | PRESS `press.essexregister.com` doc types 23 / 25 / 21 (+ 22 discharge) | **USE (automated)** | Live 30 days: 13 + 73 + 2 filings, 75 discharges; gives the town. Paged by `__doPostBack` |
+| Monmouth | OPRS `oprs.co.monmouth.nj.us/oprs/clerk/ClerkHome.aspx?op=basic` (same PRESS form): LISPENFO / LISPEN / LISINRM (+ LISPENDI discharge) | **USE (automated, added 2026-10-28)** | No robots.txt, no CAPTCHA, terms-of-use popup with no automation clause. Grid headers DEFENDANT / PLAINTIFF and **block / lot filled in** → exact NJGIN parcel match (first run: 96 filings, 38 new leads) |
+| Mercer | NewVision `records.mercercounty.org/publicsearch/` (doc type NLP) | MANUAL (export + upload) | JSON API behind an Angular app with a login modal; not automated. Search in a browser and upload the export |
+| Passaic | clerk PRESS search | MANUAL | Works over HTTP but robots.txt disallows all → save the results page and upload it |
+| Hudson | Acclaim click-through disclaimer | MANUAL | Operator must accept terms |
 | Bergen, Middlesex, Camden | New Vision BrowserView JS app | BLOCKED/MANUAL | CAPTCHA + encrypted params; Camden charges $25/mo for lis pendens |
 | NJ Courts eCourts | case jacket | MANUAL | CAPTCHA + registration; look up specific F-dockets by hand |
-- Lis pendens indexes carry names, not addresses → match on owner names (§5) or OCR the PDF.
-  Sheriff sales (§2) already cover the late-stage foreclosure funnel automatically.
+
+Matching (a filing is never pinned to a house on a guess): block/lot → our parcel or NJGIN; street address →
+our parcel or NJGIN address search; otherwise a **unique** owner-name match in the same town (Essex, Monmouth,
+imports) or county (Union), skipping co-defendants who are lienholders or the government. For Newark filings the
+defendant is also looked up in the City of Newark 2020 ownership snapshot and accepted only when exactly one parcel
+matches and its deed book/page still equals today's MOD-IV record. First live run: Union + Essex 253 filings →
+3 exact Newark matches; the rest wait in `clerk_filings` (they re-match as owner names arrive) and are listed on the
+dashboard's 🏛️ Records page with the clerk link so the operator can read the address and attach it. Discharges
+deactivate the earlier filing's signal. Sheriff sales (§2) still cover the late-stage funnel automatically.
 
 ### 6.3 Open data
 - **NJ construction permits** (data.nj.gov `w9se-dmra`, 2.68M rows, block/lot keyed, monthly): demolition and
@@ -240,3 +249,37 @@ estimated-tax due dates and thresholds) come from the 2026 Form 1040-ES and NJ-1
 The seller/buyer pages post to the local cockpit (`/api/inbound/*`), or — when hosted statically — to a form
 service such as Formspree, whose JSON/CSV export `manage.py inbound --ingest` reads. Submissions are first-party data
 the visitor typed, with an explicit consent checkbox for calls/texts.
+
+## 11. Mercer and Monmouth (added 2026-10-28)
+- **Sheriff sales:** Monmouth is CivilView county 8 (automated; first run 89 open sales). Mercer is **not** on
+  CivilView, and mercercounty.org answers 403 (Akamai) to every automated request, robots.txt included, so Mercer
+  sheriff sales are manual (the list is linked from the Sheriff's Foreclosure Sale page; sales every other
+  Wednesday at the Civil Courthouse, 175 S Broad St, Trenton). `sheriff_sale_agent.NOT_ON_CIVILVIEW` says so in
+  every run instead of erroring.
+- **Parcels / absentee owners / listings:** NJGIN covers both counties; focus towns Trenton, Hamilton, Ewing
+  (Mercer) and Asbury Park, Neptune Twp, Long Branch, Freehold Borough (Monmouth); their ZIPs are in the stale-listing
+  harvest. NJGIN town names keep their municipal type when matched (`njgis_client.match_municipality`: Freehold
+  Borough ≠ Freehold Township, Neptune City ≠ Neptune Township; a bare ambiguous name matches nothing).
+- **Clerks:** Monmouth automated (§6.2); Mercer manual.
+
+## 12. OPRA requests for tax lists (`engine/opra_generator.py`, `config/opra_towns.yaml`)
+- P.L.2024, c.16 (in force Sept 3, 2024): a letter or e-mail with every item on the town's adopted form is a valid
+  request (N.J.S.A. 47:1A-5(f)); one agency per request (5(g)); towns may route requests to a portal (Jersey City
+  GovQA, Woodbridge / Garfield GovPilot, New Brunswick / Trenton / Long Branch NextRequest, Linden web form, Asbury
+  Park JustFOIA, Hamilton portal).
+- **Commercial purpose must be certified, truthfully** (47:1A-5(f)); failing to certify it is a $1,000 / $2,500 /
+  $5,000 civil penalty (47:1A-11(b)). Commercial requests get up to 14 business days (47:1A-5(i)(1)); paying up to
+  2× cost buys 7 days, which we don't request. Electronic records are free apart from supplies (5(b)); special
+  service charges must be quoted, so requests ask for the amount before any fee over $5 (*O'Reilly v. Lawnside*,
+  GRC 2021-173, was a $3,360 quote).
+- Name existing reports (the custodian need not create a record): the tax sale list, the municipal-held tax sale
+  certificate list (Edmunds "Condensed Foreclosure Listing"), the Tax Search Export / delinquency listing. The GRC
+  ordered these disclosed (*Hall v. Camden*, GRC 2013-305; *McBride v. Camden*, GRC 2014-54; *Wolosky v. Washington*,
+  GRC 2016-19). Camden already posts its municipal lien list (230-page PDF, no owner names); Bayonne posts its tax
+  sale ad.
+- Expect redactions: personal phones / e-mails are stripped (47:1A-5(a)), and Daniel's Law covered persons' names
+  or addresses may be withheld from tax records.
+- **Never use OPRAmachine** for these: it publishes requests and responses, i.e. owner names and addresses.
+- The spreadsheet that comes back is imported by `engine/tax_list_import.py` (CSV / XLSX, columns found by name)
+  → TAX_DELINQUENT signals on exact block / lot / qualifier matches.
+

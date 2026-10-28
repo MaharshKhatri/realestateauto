@@ -1,20 +1,22 @@
 # NJ Wholesale Engine
 
 An autonomous, zero-budget deal-finding and underwriting system for real estate wholesaling in
-New Jersey (Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden). It harvests distressed and
+New Jersey (Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden, Mercer, Monmouth). It harvests distressed and
 motivated-owner leads from free public NJ data, finds the cash buyers who are actively buying,
 underwrites every top lead (comps → ARV → rehab → MAO → opening offer), ranks them, finds who to call,
 writes the call script, logs the call, drafts the paperwork and matches the deal to buyers — so the operator
 spends their time on the phone and e-mail. It is built for a **laptop-and-phone operator with no car**:
 condition checks, owner outreach and buyer walkthroughs are all done remotely.
 
-> **Operator? Start with [`PLAYBOOK.md`](PLAYBOOK.md)** and run `python manage.py today` every morning.
+> **Operator? Start with [`PLAYBOOK.md`](PLAYBOOK.md).** Install once, run `python manage.py install-shortcut`, then
+> double-click **Launch NJ Wholesale Dashboard** on your Desktop every morning: the 🎯 Step-by-Step player walks you
+> through today's deals one card at a time.
 >
 > **Read `CLAUDE.md` first** — it is the architecture memory and the NJ legal rulebook the code
 > enforces (attorney review, tax sale certificates, sheriff-sale adjournments, the Foreclosure Rescue
 > Fraud Prevention Act 82%-of-FMV floor, Consumer Fraud Act disclosures, TCPA/DNC, Daniel's Law).
 
-## What it does today (Phases 1–4)
+## What it does today (Phases 1–5)
 
 | Component | Source (all free) | Output |
 |---|---|---|
@@ -44,6 +46,12 @@ condition checks, owner outreach and buyer walkthroughs are all done remotely.
 | `engine/closing_coordinator.py` + `engine/finance.py` | contracts, sourced partner directory | 8 NJ contract-to-close milestones on business days, title order e-mail, ledger, pipeline and the 28% quarterly tax reserve |
 | `site/` + `engine/inbound.py` | your own web pages | Seller "sell as-is" page and cash-buyer registration (local, tunnel or free static hosting) → leads with consent, underwriting and a drafted reply; buyers matched to deals |
 | `manage.py today` | DB | The 2-hour daily checklist: deadlines, 5 listed foreclosures, 15 ready calls, 10 skip-traces, 5 cash buyers |
+| `engine/autopilot.py` + `web/` | DB | Command center: KPI pills, ⚙️ My Setup (settings.local.yaml / .env), 🤖 one-click swarm refresh with live progress, 🎯 step-by-step deal cards (what it is, why the math works, the exact action, editable e-mail, SMS, 3-sentence script, outcome buttons), all-queues kanban |
+| `engine/human_copy.py` | every outgoing message | Plain 3–5 sentence e-mails and short texts; disclosures and offer terms under a `--- Offer Summary ---` line; a linter that rejects stock phrases, em-dashes, markdown and long bodies |
+| `agents/scrapers/lis_pendens_agent.py` | Union UCPA, Essex PRESS, Monmouth OPRS clerk indexes (+ saved pages / CSV for the rest) | Lis pendens / foreclosure filings → LIS_PENDENS (+ estate) signals by block/lot, address or a unique owner-name match; unmatched filings wait in `clerk_filings` |
+| `engine/opra_generator.py` + `engine/tax_list_import.py` | town clerks (OPRA) | Statutory requests for tax sale / lien / delinquency reports to the top 20 towns (commercial-purpose certified, due dates tracked) and a 1-click importer for the spreadsheets that come back |
+| `scripts/install_desktop_shortcut.py` | — | Desktop launchers (macOS / Linux / Windows): start the server if needed, wait for `/api/health`, open the browser |
+| `engine/site_build.py` + `.github/workflows/deploy_site.yml` | `site/` | Static funnel for GitHub Pages from repository variables, published only if the pii-scan and the publish check pass |
 
 ## Quickstart
 
@@ -51,6 +59,7 @@ condition checks, owner outreach and buyer walkthroughs are all done remotely.
 pip install -e ".[dev]"
 pip install homeharvest          # optional: listing comps + stale listings (needs pandas<3)
 python manage.py init            # creates wholesaling.db
+python manage.py install-shortcut  # Desktop icon: double-click to start + open the dashboard
 python -m swarm.orchestrator run-all      # live pipeline: scrape → score → underwrite → self-improve
 python manage.py briefing        # today's call list
 python manage.py lead 42         # one lead in depth (signals, comps, offer math, strategy)
@@ -62,7 +71,8 @@ python manage.py script 42       # pre-call battle card
 python manage.py call 42 --outcome SPOKE_NEEDS_OFFER --occupancy VACANT --ask 300k
 python manage.py docs 42 --type loi          # LOI / psa / assignment / jv / deal_sheet / all
 python -m swarm.orchestrator daemon       # keep it running on the cron schedules in config/settings.yaml
-pytest                           # 98 tests; parsers run against real saved pages
+python manage.py build-site --check       # static seller/buyer site + publish gate
+pytest                           # 200+ tests; parsers run against real saved pages
 ```
 
 Optional AI coach after calls: `pip install -e ".[ai]"` and set `ANTHROPIC_API_KEY`; tick "AI coach" in the
@@ -107,10 +117,13 @@ Set `WHOLESALING_DATABASE_URL` to a Postgres URL (e.g. a free Supabase project) 
 
 - **Listed foreclosures are mostly short sales.** Of the ~50 sheriff-sale properties also on the MLS, most owe more
   than an investor can pay; the fast track labels each one honestly and only a handful are straight cash offers.
+- **Lis pendens rarely name the street address.** Union and Essex index only names (Essex adds the town), so most
+  filings wait for an owner-name match or for you to read the address off the clerk's document; Monmouth's index has
+  block / lot and matches exactly. Mercer's sheriff site refuses automated access, so Mercer sheriff sales are manual.
 - **Title / attorney directory** entries were checked on each firm's own website on the date in the file; investor
   claims are their marketing — call to confirm and check licenses.
 
 ## Roadmap
 
-Sprint 5 — clerk lis pendens, NJ permits, paid skip-trace adapters, outcome-trained scoring · Sprint 6 — buyer list
-growth, deal sheets to matched buyers, attorney-reviewed templates, proof-of-funds tracking. See `CLAUDE.md`.
+Sprint 6 — NJ permits, paid skip-trace adapters, outcome-trained scoring, Mercer sheriff list import · Sprint 7 — buyer
+list growth, deal sheets to matched buyers, attorney-reviewed templates, proof-of-funds tracking. See `CLAUDE.md`.

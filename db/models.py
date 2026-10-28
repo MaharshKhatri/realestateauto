@@ -549,3 +549,56 @@ class GeneratedDocument(Base):
     path: Mapped[str] = mapped_column(String(400))
     price: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ClerkFiling(Base):
+    """A county-clerk index entry (lis pendens / foreclosure complaint / discharge), matched or not.
+
+    Clerk indexes carry party names, the recorded date and the instrument number, but rarely the street address,
+    so a filing is kept here until it can be tied to a parcel (block/lot or address in an import, or a unique
+    owner-name match in the same town); the match turns it into a LIS_PENDENS signal on that property.
+    """
+    __tablename__ = "clerk_filings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    county: Mapped[str] = mapped_column(String(32), index=True)
+    source: Mapped[str] = mapped_column(String(32))                 # ucpa | press | import
+    instrument: Mapped[str] = mapped_column(String(48))
+    doc_type: Mapped[str] = mapped_column(String(80))
+    recorded_date: Mapped[date | None] = mapped_column(Date, index=True)
+    defendants: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    plaintiffs: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    town: Mapped[str | None] = mapped_column(String(64))
+    block: Mapped[str | None] = mapped_column(String(32))
+    lot: Mapped[str | None] = mapped_column(String(32))
+    qual: Mapped[str | None] = mapped_column(String(16))
+    address: Mapped[str | None] = mapped_column(String(200))
+    docket: Mapped[str | None] = mapped_column(String(48))
+    url: Mapped[str | None] = mapped_column(String(500))
+    is_discharge: Mapped[bool] = mapped_column(Boolean, default=False)
+    estate: Mapped[bool] = mapped_column(Boolean, default=False)
+    tax_lien: Mapped[bool] = mapped_column(Boolean, default=False)
+    property_id: Mapped[int | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"), index=True)
+    match_method: Mapped[str | None] = mapped_column(String(48))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (UniqueConstraint("county", "instrument", name="uq_clerk_filing"),)
+
+
+class OpraRequest(Base):
+    """An OPRA request the operator sent to a town (engine/opra_generator.py) and its response deadline."""
+    __tablename__ = "opra_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    county: Mapped[str] = mapped_column(String(32))
+    town: Mapped[str] = mapped_column(String(64))
+    year: Mapped[int] = mapped_column(Integer)
+    channel: Mapped[str] = mapped_column(String(16))               # email | portal | mail | phone
+    status: Mapped[str] = mapped_column(String(16), default="sent")  # sent | received | denied
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (UniqueConstraint("county", "town", "year", name="uq_opra_request"),)

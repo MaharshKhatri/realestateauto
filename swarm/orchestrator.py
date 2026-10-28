@@ -8,7 +8,7 @@
     python -m swarm.orchestrator status
 
 Jobs (each composed of agents; every agent logs its own agent_runs row):
-    SheriffSaleMonitorAgent      sheriff_sales
+    SheriffSaleMonitorAgent      sheriff_sales ∥ lis_pendens (county-clerk foreclosure filings)
     DataRefreshAgent             tax_assessment + cash_buyers + stale_listings + tax_sales → owner_enrichment
     ContactEnrichmentAgent       municipal_owners → listing_agents → owner_resolver → signal_stacker
                                  (names, agents, heirs, mailing matches; listed distress + portfolio owners)
@@ -91,6 +91,11 @@ def _closing_alerts(**opts: Any) -> BaseAgent:
     return ClosingAlertsAgent(**opts)
 
 
+def _lis_pendens(**opts: Any) -> BaseAgent:
+    from agents.scrapers.lis_pendens_agent import LisPendensAgent
+    return LisPendensAgent(**opts)
+
+
 def _tax_sale_agent(**opts: Any) -> BaseAgent:
     from agents.scrapers.tax_sale_agent import TaxSaleAgent
     return TaxSaleAgent(**opts)
@@ -111,6 +116,8 @@ REGISTRY: dict[str, AgentSpec] = {spec.name: spec for spec in [
     AgentSpec("cash_buyers", CashBuyerAgent, CashBuyerAgent.description, "scrape"),
     AgentSpec("stale_listings", _stale_listing_agent, "Active listings with 90+ DOM, price cuts, distress language.", "scrape"),
     AgentSpec("tax_sales", _tax_sale_agent, "Municipal tax lien sale lists: delinquent owners, sold certificates.", "scrape"),
+    AgentSpec("lis_pendens", _lis_pendens, "County-clerk lis pendens / foreclosure filings (Union + Essex live, other "
+              "counties from saved pages) → LIS_PENDENS signals.", "scrape"),
     AgentSpec("owner_enrichment", _owner_enrichment_agent, "Owner names/sqft from county exports + Newark snapshot; name buyers, find flips.", "enrich"),
     AgentSpec("listing_agents", _listing_agent_enricher, "Listing-agent contacts (name, brokerage, phones) for stale MLS leads.", "enrich"),
     AgentSpec("municipal_owners", _municipal_owners, "Owner names from Jersey City / New Brunswick / Plainfield parcel layers.", "enrich"),
@@ -129,7 +136,7 @@ REGISTRY: dict[str, AgentSpec] = {spec.name: spec for spec in [
 ]}
 
 JOBS: dict[str, list[str]] = {
-    "SheriffSaleMonitorAgent": ["sheriff_sales"],
+    "SheriffSaleMonitorAgent": ["sheriff_sales", "lis_pendens"],
     "DataRefreshAgent": ["tax_assessment", "cash_buyers", "stale_listings", "tax_sales", "owner_enrichment"],
     "ContactEnrichmentAgent": ["municipal_owners", "listing_agents", "owner_resolver", "signal_stacker"],
     "CompUnderwriterAgent": ["lead_scoring", "underwriter", "outlier_guard", "lead_scoring", "fast_track",

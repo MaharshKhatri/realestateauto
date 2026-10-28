@@ -24,6 +24,7 @@ from sqlalchemy import select
 
 from agents.base import AgentContext, BaseAgent
 from agents.scrapers.njgis_client import NJGISClient, feature_to_property
+from core.config import settings
 from core.dates import parse_us_date
 from core.http import FetchError, PoliteSession
 from core.text import clean, muni_base, normalize_street, parse_one_line_address
@@ -40,6 +41,14 @@ NJ_COUNTY_IDS: dict[str, int] = {
     "Middlesex": 73, "Union": 15, "Essex": 2, "Hudson": 10, "Passaic": 17, "Bergen": 7,
     "Camden": 1, "Atlantic": 25, "Burlington": 3, "Cape May": 52, "Cumberland": 6,
     "Gloucester": 19, "Hunterdon": 32, "Monmouth": 8, "Morris": 9, "Ocean": 85, "Salem": 20,
+}
+
+# Counties whose sheriff does not use CivilView (checked 2026-10-28).
+NOT_ON_CIVILVIEW = {
+    "Mercer": "sheriff sales aren't on CivilView and mercercounty.org refuses automated access (Akamai 403), so they are "
+              "manual: the list is linked from the Sheriff's Foreclosure Sale page (updated Mon/Wed/Thu; sales every "
+              "other Wednesday at the Civil Courthouse, 175 S Broad St, Trenton). Mercer pre-foreclosures still arrive "
+              "through lis pendens imports and the NJGIN / listing harvests.",
 }
 
 CLOSED_STATUS = re.compile(
@@ -265,8 +274,8 @@ class SheriffSaleAgent(BaseAgent):
     description = "Scrape every upcoming NJ sheriff sale on CivilView, match to MOD-IV parcels, create leads."
 
     def run(self, ctx: AgentContext) -> None:
-        counties: list[str] = self.options.get("counties") or ctx.options.get("counties") or [
-            "Middlesex", "Union", "Essex", "Hudson", "Passaic", "Bergen", "Camden"]
+        counties: list[str] = self.options.get("counties") or ctx.options.get("counties") or list(
+            settings().markets.get("counties", []))
         limit = self.options.get("limit")
         horizon_days = int(self.options.get("horizon_days", 180))
         workers = int(self.options.get("workers", 4))
@@ -285,7 +294,10 @@ class SheriffSaleAgent(BaseAgent):
         for county in counties:
             cid = NJ_COUNTY_IDS.get(county)
             if cid is None:
-                ctx.error(f"No CivilView id for county {county}")
+                if county in NOT_ON_CIVILVIEW:
+                    ctx.note(f"{county}: {NOT_ON_CIVILVIEW[county]}")
+                else:
+                    ctx.error(f"No CivilView id for county {county}")
                 continue
             sessions[county] = PoliteSession(min_interval=1.0, cache_ttl_hours=10)
             listings = self._list_county(ctx, sessions[county], county)

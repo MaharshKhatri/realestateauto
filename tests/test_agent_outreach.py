@@ -36,7 +36,7 @@ def test_packet_wording_and_loi(db, tmp_path, postal):
     p = ao.build_packet(lead, session=db, out_root=tmp_path)
     assert p.kind == "offer" and p.agent_contact_id == agent.id and p.agent_first == "Pat"
     body = p.email_body
-    assert "$228,800" in body and "$260,000" in body and "140 days on market" in body
+    assert "$228,800 to $260,000" in body and "on the market about 140 days" in body
     assert "not represented by a buyer's agent" in body and "not asking for any part of it" in body
     assert "may assign the contract" in body and "not licensed agents" in body
     assert "attorney review" in body and "PO Box 10" in body and "no more" in body

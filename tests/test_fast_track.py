@@ -7,6 +7,7 @@ import pytest
 from core.config import settings
 from db.models import SignalType
 from db.repository import upsert_signal
+from engine import human_copy as hc
 from engine import agent_outreach as ao
 from engine import briefing, crm
 from engine import direct_mail as dm
@@ -70,7 +71,8 @@ def test_queue_order_countdown_and_script(db, operator):
     assert lf.days_to_sale == 30 and lf.upset == 150_000 and lf.list_price == 360_000 and lf.dom == 140
     sc = ft.agent_script(lf)
     text = " ".join([sc["opening"], sc["offer"], sc["close"], *sc["questions"]]).lower()
-    assert "unrepresented" in text and "30 days" in text and "upset of about $150,000" in text
+    sale = hc.short_date(date.today() + timedelta(days=30)).lower()
+    assert "unrepresented" in text and f"sheriff sale list for {sale}" in text and "around $150,000 owed" in text
     assert not any(b in text for b in BANNED)
     ss = ft.agent_script(q[ids.index(short.id)])
     assert "lender" in ss["offer"] and "stays with you and the seller's attorney" in ss["offer"]
@@ -84,8 +86,10 @@ def test_packets_offer_vs_inquiry_and_agent_blast_delegation(db, tmp_path, opera
     p = ft.build_packet(db, cash, out_root=tmp_path)
     assert p.kind == "offer" and p.track == "CASH_OFFER" and p.loi_files["pdf"].endswith("loi.pdf")
     assert p.sale_date == (date.today() + timedelta(days=12)).isoformat() and p.upset == 150_000
-    assert "sheriff's sale" in p.subject and "can't stop or postpone the sale" in p.email_body
-    assert "not asking for any part of your commission" in p.email_body and "STOP" in p.sms_text
+    assert p.subject in (f"{hc.street(p.address)} (saw the {hc.short_date(date.today() + timedelta(days=12))} sale date)",
+                         f"quick question re: {hc.street(p.address)}")
+    assert "can't stop or postpone the sale" in p.email_body and hc.lint(p.email_body) == []
+    assert "not asking for any part of it" in p.email_body and "STOP" in p.sms_text and len(p.phone_script) == 3
     confirm = listed(db, absentee=True)
     q = ft.build_packet(db, confirm, generate_loi=False)
     assert q.kind == "inquiry" and q.anchor is None and "living there" in q.email_body

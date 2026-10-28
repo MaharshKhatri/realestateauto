@@ -12,7 +12,8 @@ the data harvesting, distress detection, owner lookup, comps, ARV/MAO underwriti
 outreach drafting and disposition prep. The operator spends their time on the phone and e-mail with
 listing agents, sellers and buyers, negotiating and closing.
 
-Target counties (priority order): **Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden**.
+Target counties (priority order): **Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden, Mercer, Monmouth**
+(Mercer and Monmouth added in Phase 5: Trenton, Hamilton, Ewing; Asbury Park, Neptune, Long Branch, Freehold).
 Target outcome: assignment fees of $15K–$40K per deal.
 
 ## 100% Virtual / No-Car Operation Protocol (operator update 2026-10-27)
@@ -44,8 +45,9 @@ driving for dollars, door-knocking or an in-person visit by the operator.
 | **2. Contacts, FRFPA Tracks, Call Scripts, Deal Docs & CRM Cockpit** | Contacts table + enrichment (listing agents, foreclosure defendants/heirs/executors, municipal ArcGIS owner layers, mailing cross-reference, entity lookup links), skip-trace export/paste/import, DNC guard (FTC/internal/Daniel's Law, calling hours), FRFPA occupancy classifier + covered-deal tracks (82% floor / equity-rescue referral), battle cards (playbooks A–E, 12+ objections), LOI/PSA/assignment/JV/deal-sheet generator with compliance gates, CRM (call log → stage → follow-up → rescore → coach), local web cockpit, buyer matcher, contact-readiness audit | **Done (Phase 2)** |
 | **3. Virtual B2B Deal Machine, Signal Stacking, Virtual Inspection & Remote Disposition** | PII scrub of tracked files (`pii-scan`), all stale listings underwritten (listing-only condos via MLS type), list-to-MAO gap + striking distance, READY_TO_CALL queue, listing-agent LOI blast (email/SMS/LOI, SMTP 25/day, 48h follow-up), signal stacker (listed distress, portfolio owners, tax-sale local match) with [Nx STACKED] badges, virtual inspector dossier, direct-mail merge (Click2Mail CSV, Daniel's Law suppression), buyer hotzones, remote walkthroughs + buyer_bids → assignment/JV auto-fill, briefing A/B/C, four cockpit tabs | **Done (Phase 3)** |
 | **4. Sanity Guard, Listed-Foreclosure Fast Track, Closing Coordinator, Inbound Funnel & Daily Execution** | Comp hygiene + ARV outlier guard (package deeds, price/$-sqft/ratio bands, ask/assessment/$-sqft caps, non-residential PASS) and the `outlier_guard` agent over every valuation; listed-foreclosure sniper queue with honest tracks + urgent agent packets, portfolio-owner scripts/letters; NJ contract-to-close milestones, sourced title/attorney directory, title order e-mail, ledger + 28% tax reserve; `site/` seller + buyer funnel with consent capture and inbound ingest; `manage.py today` + cockpit Today home + `PLAYBOOK.md` | **Done (Phase 4)** |
-| **5. Lead Sources & Learning at Scale** | Union + Essex clerk lis-pendens agents (names → parcels via owner lists), NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), outcome-driven weight re-fits once calls are logged | Next |
-| **6. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
+| **5. Command Center, Guided Autopilot, Human Copy, Clerk Filings & OPRA, Mercer/Monmouth** | `engine/human_copy.py` (plain 3-5 sentence e-mails, disclosures under `--- Offer Summary ---`, linter) across agent / fast-track / buyer / inbound / inspector messages; command center (KPI pills, My Setup → settings.local.yaml + .env, one-click swarm refresh with progress, step-by-step deal cards with send/outcome logging, kanban); desktop launchers; lis pendens agent (Union UCPA, Essex PRESS, Monmouth OPRS live + drop-in imports, Newark snapshot name lookup); OPRA requests + tax-list importer + Records page; Mercer/Monmouth harvest; GitHub Pages deploy behind `build-site --check` | **Done (Phase 5)** |
+| **6. Lead Sources & Learning at Scale** | NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), Mercer sheriff list import once its format is verified, outcome-driven weight re-fits once calls are logged | Next |
+| **7. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
 
 ## Directory structure
 
@@ -55,11 +57,16 @@ manage.py                     ← operator CLI (rich): briefing (A ready-to-call
                                 lead, underwrite, buyers, stats, server, queue, script, call, occupancy, contract, docs,
                                 skiptrace, dnc (+ --suppress-address), match, pii-scan, agent-blast, mail-merge,
                                 inspect, stack, buyer-hotzones, walkthrough, bid, today, fast-track, closing, finance,
-                                partners, inbound, site, swarm passthrough
+                                partners, inbound, site, build-site, install-shortcut, swarm passthrough
+Launch_Dashboard.command / launch_dashboard.sh / Launch_Dashboard.bat ← double-click launchers (generated by
+                                scripts/install_desktop_shortcut.py; path-independent): start the server if needed,
+                                wait for /api/health, open the browser
 PLAYBOOK.md                   ← operator's step-by-step guide: setup, daily 2-hour routine, first agent calls, contract →
                                 attorney review → assignment → paid, taxes
 config/settings.yaml          ← all tunables (counties/towns, MAO %, fees, rehab $/sqft, scoring weights, cron)
 config/sources/               ← source directories (realauction_nj.yaml: 91 tax-sale sites in target counties)
+config/opra_towns.yaml        ← OPRA channel per town (clerk e-mail / portal / call first, source URL each) + the
+                                statutory rules and GRC precedents the requests rely on
 config/nj_closing_partners.yaml ← NJ title agencies / closing attorneys checked on their own pages (source URL each),
                                 county → region, verification resources, quarterly-tax dates and rates (with sources)
 core/                         ← config loader, polite HTTP client (per-host rate limit, retries, disk cache,
@@ -80,6 +87,9 @@ agents/scrapers/
   stale_listing_distress_agent.py ← homeharvest active listings: 90+ DOM, price cuts, distress keywords
   tax_sale_agent.py           ← RealAuction municipal tax lien sales (live if allowed, else saved-page import)
   owner_records_agent.py      ← imports county owner/deed exports, Newark 2020 snapshot; names buyers; flips
+  lis_pendens_agent.py        ← clerk lis pendens / foreclosure filings: Union UCPA, Essex PRESS, Monmouth OPRS live;
+                                data/imports/lis_pendens/<county>/ (saved .html / .csv) for the rest → clerk_filings →
+                                LIS_PENDENS (+ ESTATE_OWNER) by block/lot, address or unique owner-name match
 agents/enrichment/
   municipal_owner_layers.py   ← owner names from Jersey City / New Brunswick / Plainfield ArcGIS layers (PAMS_PIN join,
                                 explicit outFields, skip records older than the last deed)
@@ -108,7 +118,15 @@ engine/
   finance.py                  ← ledger (income/expense categories), pipeline weighting, 28% reserve, quarterly dates
   inbound.py                  ← web seller / buyer submissions (local API, Formspree/webhook export, mailto text) →
                                 lead + consent + underwrite + reply draft / cash_buyers + matching; site config
-  today.py                    ← the 2-hour daily checklist (deadlines, 4 blocks) for CLI + cockpit home
+  today.py                    ← the 2-hour daily checklist (deadlines, 4 blocks) for CLI + cockpit Today tab
+  human_copy.py               ← plain e-mail/SMS composition (subject variants, signature, Offer Summary block) + lint
+                                (forbidden phrases, em-dashes, markdown, bullets, >110 words above the sign-off)
+  autopilot.py                ← step-by-step deal deck (listed foreclosures → due follow-ups → MLS fixers), what/why/
+                                action, send (SMTP / mailto / SMS) with edits, outcome buttons, daily goal, KPI pills
+  operator_setup.py           ← My Setup: validate + write settings.local.yaml and .env (password never returned)
+  opra_generator.py           ← OPRA tax-list requests (commercial-purpose certified), sent / due / received tracking
+  tax_list_import.py          ← town tax-delinquent spreadsheet (CSV/XLSX) → TAX_DELINQUENT signals by block/lot
+  site_build.py               ← static funnel build + publish gate (operator details, disclosures, no foreign contacts)
   scoring.py                  ← motivation / viability / priority with reasons (+ CRM engagement, stack bonus,
                                 striking-distance boost); ready_to_call(); strategy brief
   briefing.py                 ← briefing sections shared by CLI + cockpit (ready, high-spread, stacked, counts)
@@ -127,13 +145,17 @@ engine/
   crm.py                      ← log_call, follow-up cadence, confirm_occupancy (re-price), record_contract, queues
   debrief.py / ai.py          ← rule-based post-call coach; optional Claude note (redacted payload, opt-in)
   buyer_matcher.py            ← top-5 recorded cash buyers per top deal (geography, price, units, rehab, recency)
-web/app.py + web/static/      ← local cockpit (FastAPI, 127.0.0.1 only, Host/Origin guard): Today (home), dashboard,
+web/app.py + web/static/      ← local cockpit (FastAPI, 127.0.0.1 only, Host/Origin guard): 🎯 Autopilot (home: command
+                                bar with KPI pills / My Setup / swarm refresh / OPRA, step-by-step player, kanban),
+                                🏛️ Records (OPRA, uploads, clerk filings), Today, dashboard,
                                 battle station, Fast Track, Ready to Call, Agent LOI Blast, Inspector & Mail,
                                 Walkthroughs & Bids, Closing & Money; serves site/ at /site/* (web.public_hosts may
                                 reach only /site/* and POST /api/inbound/*)
 site/                         ← static seller page + cash-buyer registration (site.js reads generated config.js;
                                 `manage.py site --build` for GitHub Pages / Netlify); config.js + site_dist/ ignored
 swarm/orchestrator.py         ← `python -m swarm.orchestrator` (list | run | job | run-all | daemon | status)
+swarm/runner.py               ← dashboard refresh: quick (offline re-analysis) | full (daily pipeline) in a background
+                                thread, one at a time, per-step progress for GET /api/swarm/status
 swarm/self_improvement.py     ← audits health/coverage/spreads → logs/swarm_intelligence.md; tunes weights;
                                 auto-adds high-spread towns (swarm_state.auto_expansion)
 docs/nj_data_sources.md       ← verified data-source report (what works, how, limits, manual checklist)
@@ -144,7 +166,11 @@ data/exports/                 ← skip-trace queues (CSV/HTML) — git-ignored
 deals/<property_id>/          ← generated LOI/PSA/assignment/JV/deal sheets — git-ignored (names sellers)
 deals/agent_blast/, deals/mail_batches/ ← agent review pages and letter batches — git-ignored
 logs/                         ← swarm_intelligence.md (committed); *.log (ignored)
-tests/                        ← pytest; parsers run against saved real pages in tests/fixtures/
+scripts/install_desktop_shortcut.py ← writes the three launchers + a Desktop copy (`manage.py install-shortcut`)
+.github/workflows/            ← ci.yml (pytest); deploy_site.yml (GitHub Pages: pii-scan + site tests + build-site
+                                --check, from repository variables; skipped until SITE_FORM_ENDPOINT is set)
+tests/                        ← pytest; parsers run against saved real pages in tests/fixtures/ (clerk/ = UCPA,
+                                PRESS, OPRS pages with every party name replaced by an invented one)
 wholesaling.db                ← SQLite database (git-ignored: contains names/addresses)
 ```
 
@@ -166,6 +192,17 @@ wholesaling.db                ← SQLite database (git-ignored: contains names/a
   are not used (use restrictions).
 - National DNC data is a manual download from the operator's FTC account (first 5 area codes free), loaded
   with `manage.py dnc --load`; it is stale after 31 days.
+- County clerks (learned 2026-10-28, `docs/nj_data_sources.md` §6.2): Union UCPA, Essex PRESS and Monmouth OPRS
+  are plain HTTP forms with no robots.txt and no CAPTCHA → automated, one search per document type per run.
+  Passaic PRESS (robots `Disallow: /`), Hudson Acclaim (click-through terms), Bergen / Middlesex / Camden BrowserView
+  (reCAPTCHA) and Mercer (login modal) are manual: the operator saves results into data/imports/lis_pendens/.
+  A filing becomes a signal only on block/lot, address or a **unique** owner-name match — never on a guess; Newark
+  name lookups in the City's 2020 snapshot count only when the deed book/page is unchanged in today's MOD-IV.
+- Mercer sheriff sales are not on CivilView and mercercounty.org returns Akamai 403 to automated requests
+  (robots.txt included): manual, never worked around.
+- OPRA (`engine/opra_generator.py`): the operator sends each request; every request certifies the commercial
+  purpose (true for house buying, required by 47:1A-5(f)); one agency per request; follow the town's own channel
+  (portal-only towns get the text to paste); never OPRAmachine (it publishes replies with owner names).
 
 ## NJ Legal & Market Rules (encode these in logic and scripts)
 
@@ -328,6 +365,24 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   claims are quoted evidence, not endorsements — confirm assignment / double-close insurance by phone and check
   licenses (NAIC / DOBI) before use.
 
+### Phase 5 operating rules — enforced in code
+- **Human copy** (`engine/human_copy.py`): every e-mail is a 3-5 sentence plain note (aim < 85 words, hard limit 110
+  above the sign-off), first name + `Full Name | Company` + phone signature, no stock phrases ("I hope this email
+  finds you well", "opportunity", "excited", "formal letter of intent", …), no em-dashes, no markdown, no bullets
+  above the signature. Everything required sits under `--- Offer Summary ---` (`--- Details ---` for a no-price
+  inquiry): terms, unrepresented-buyer wording, investor / may-assign disclosure, postal address, opt-out. Copy
+  says "I'm an investor buying for myself or a partner investor", never "we're cash buyers"; "off-market" only when
+  the house isn't listed. tests/test_human_copy.py lints every track; the live packets are linted too.
+- **Autopilot** (`engine/autopilot.py`): an edited e-mail must keep the postal address and the opt-out line or it
+  isn't sent; texts are copied, never automated; "Interested" generates the written offer only through the LOI
+  gates (no price on a presumed / covered FRFPA lead); one send = one logged interaction + 48-hour follow-up.
+- **My Setup** (`engine/operator_setup.py`): writes only git-ignored files (settings.local.yaml, .env chmod 600),
+  never returns the app password; `WHOLESALING_LOCAL_SETTINGS` / `WHOLESALING_ENV_FILE` point tests and demos at
+  scratch files. "Live mode" = name, company, 10-digit phone, e-mail, postal address with ZIP.
+- **Public site** (`engine/site_build.py`): published only when `build-site --check` passes (operator details from
+  SITE_* repository variables, every disclosure present, no e-mail / phone but the operator's and the HUD / LSNJ
+  help lines, no stray files) after pii-scan.
+
 ## Coding standards
 
 - **No placeholders, mock data or TODO stubs in shipped code.** Every scraper is tested live from
@@ -355,7 +410,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   never lets one agent's crash stop the swarm.
 - `swarm/orchestrator.py` holds the registry (`AGENTS`), dependency order and cron schedules
   (from `config/settings.yaml`). Modes:
-  - `python -m swarm.orchestrator run-all` — run the full pipeline once (scrape ∥ → owner enrichment →
+  - `python -m swarm.orchestrator run-all` — run the full pipeline once (scrape ∥ [sheriff + lis pendens, data refresh] → owner enrichment →
     contact enrichment [municipal_owners → listing_agents → owner_resolver → signal_stacker] → score → underwrite →
     outlier_guard → re-score → fast_track → buyer_matcher → closing_alerts → self-improve).
   - `python -m swarm.orchestrator run <agent>` — run one agent.
@@ -374,7 +429,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
 ```bash
 pip install -e ".[dev]"                     # install
 python manage.py init                       # create/upgrade the database
-python manage.py today                      # START HERE every day: deadlines + 4 blocks from live records
+python manage.py today                      # the daily checklist (the dashboard's 🎯 Autopilot is the click-through version)
 python -m swarm.orchestrator run-all        # full live pipeline (scrape ∥ → enrich → score → underwrite → re-score → improve)
 python manage.py briefing                   # daily action briefing (top 15 leads)
 python manage.py underwrite --top 15        # (re)underwrite the top leads
@@ -401,6 +456,9 @@ python manage.py finance [--add-expense 120 --category mail]   # ledger, pipelin
 python manage.py partners --county Essex    # sourced NJ title agencies / closing attorneys
 python manage.py inbound --ingest export.json   # Formspree / webhook / mailto submissions → leads / buyers
 python manage.py site --build site_dist --endpoint <form URL>   # static funnel for free hosting
+python manage.py build-site --out site_dist --check   # same build + the publish gate (CI: deploy_site.yml)
+python manage.py install-shortcut           # Desktop launcher: double-click → server up → browser open
+python -m swarm.orchestrator run lis_pendens --opt days=30   # clerk filings (Union, Essex, Monmouth + imports)
 python -m swarm.orchestrator run outlier_guard  # re-check every valuation (comp hygiene + ARV guard)
 python manage.py pii-scan                   # before every commit: DB names in tracked + new files → exit 1
 pytest                                      # tests

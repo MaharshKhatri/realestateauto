@@ -367,65 +367,84 @@ def _slot_text(slots: list[datetime]) -> str:
 
 def access_request(lead: Lead, who: str = "seller", slots: list[datetime] | None = None) -> str:
     """Message to the listing agent / seller asking to let our buying partner walk the house."""
-    op = settings().operator
+    from engine.human_copy import operator, plain, street
+    op = operator()
     f = lead_facts(lead)
     slots = slots if slots is not None else walkthrough_window(lead).get("slots", [])
-    opening = (f"Hi, this is {op.get('name')} with {op.get('company_name')} about {f['address']}." if who == "seller" else
-               f"Hi, {op.get('name')} with {op.get('company_name')} — following up on our signed contract for {f['address']}.")
-    tenant = (" If tenants live there, please give them written notice under their lease — we will keep it to "
-              "45 minutes and won't disturb their things.") if lead.occupancy_status == "TENANT_OCCUPIED" else ""
-    return (f"{opening} As our agreement allows during the inspection period, my buying partner — the investor I may assign the contract to — "
-            "would like to walk through, and may bring their own contractor for a repair estimate. Could we set a "
-            f"60–90 minute window on {_slot_text(slots)}? You're welcome to be there; nobody needs to clean or move "
-            f"anything.{tenant} Thank you!")
+    me = " ".join(x for x in (op["first"] or op["name"], "with " + op["company"] if op["company"] else "") if x)
+    st = street(f["address"])
+    when = f"on {_slot_text(slots)}" if slots else "sometime this week"
+    opening = (f"Hi, this is {me} about {st}." if who == "seller" else
+               f"Hi, it's {me}, following up on our signed contract for {st}.")
+    tenant = (" If tenants live there, please give them written notice under their lease; we'll keep it to 45 "
+              "minutes and won't touch their things.") if lead.occupancy_status == "TENANT_OCCUPIED" else ""
+    return plain(f"{opening} Our agreement allows inspections during the inspection period, so my buying partner, the "
+                 "investor I may assign the contract to, would like to walk through and may bring their own "
+                 f"contractor for a repair estimate. Could we do 60 to 90 minutes {when}? You're "
+                 f"welcome to be there, and nobody needs to clean or move anything.{tenant} Thank you!")
+
+
+def _listed(lead: Lead) -> bool:
+    return any(s.signal_type in ("STALE_LISTING", "ACTIVE_LISTING") for s in lead.property.active_signals)
 
 
 def buyer_invite(lead: Lead, buyer: CashBuyer, slots: list[datetime] | None = None) -> dict[str, str]:
     """SMS + e-mail inviting a matched cash buyer to walk the house and bid (only after attorney review)."""
-    op = settings().operator
+    from engine import human_copy as hc
+    op = hc.operator()
     cfg = settings().get("contracts", {})
     f = lead_facts(lead)
     slots = slots if slots is not None else walkthrough_window(lead).get("slots", [])
     name = greet_name(buyer) or "there"
     price = asking_price(lead)
-    units = f"{f['units']}-family" if f.get("units") else "residential"
-    facts = " · ".join(x for x in [
-        f"{units}", f"built {f['year_built']}" if f.get("year_built") else "", f"{f['sqft']:,} sqft" if f.get("sqft") else "",
-        f"ARV est. {money(f['arv'])}" if f.get("arv") else "", f"repairs est. {money(f['repairs'])}" if f.get("repairs") else "",
+    units = f"{f['units']}-family" if f.get("units") else "house"
+    st, town = hc.street(f["address"]), f.get("town") or ""
+    detail = ", ".join(x for x in [f"built {f['year_built']}" if f.get("year_built") else "",
+                                   f"{f['sqft']:,} sqft" if f.get("sqft") else ""] if x)
+    numbers = " ".join(x for x in [
+        f"Price to you is {hc.money(price)}." if price else "",
+        (f"Repairs look like about {hc.money(f['repairs'])}" + (f" with an ARV around {hc.money(f['arv'])}"
+                                                                if f.get("arv") else "") + ".")
+        if f.get("repairs") else (f"ARV looks like about {hc.money(f['arv'])}." if f.get("arv") else ""),
     ] if x)
-    sms = (f"Hi {name}, {op.get('name')} with {op.get('company_name')}. I have a contract in {f['town']} ({facts}) that "
-           f"fits what you've been buying. Assignment price {money(price)}. Walkthrough {_slot_text(slots)}. Want a slot? "
-           "Reply STOP to opt out.")
-    email = "\n".join([
-        f"Subject: {f['town']} {units} under contract — walkthrough {_slot_text(slots[:1])}", "",
-        f"Hi {name},", "",
-        f"I have a property under contract in {f['town']}, {f['county']} County, that fits what your recent purchases "
-        "show you buy.", "",
-        f"  • {facts}", f"  • Assignment price: {money(price)} (contract price + assignment fee, paid at closing)",
-        f"  • Walkthrough: {_slot_text(slots)} (access: {access_route(lead).split(' — ')[0]})", "",
-        "How it works:",
-        "  1. Walk it (bring your contractor). Please don't discuss price or terms with the seller, tenants or agent — "
-        "send every question to me.",
-        "  2. Send me your best price in writing within 24 hours of the walkthrough, with proof of funds.",
-        f"  3. The accepted buyer signs an Assignment of Contract and deposits {money(cfg.get('assignee_deposit', 5000))} "
-        "with the title company within 1 business day.",
-        "  4. If you can, text me the photos or video you take — it helps me answer the seller's questions.", "",
-        "So we're clear: I'm a real estate investor acting as a principal, not a licensed agent. I'm offering my "
-        "contract (equitable interest) in the property, not the property itself. All figures are estimates — rely on "
-        "your own inspection, valuation and title review.", "",
-        f"{op.get('name')}\n{op.get('company_name')}" + (f"\n{op.get('mailing_address')}" if op.get("mailing_address") else ""),
-        "Reply STOP or 'remove me' and I won't send deals again.",
-    ])
-    return {"sms": sms, "email": email}
+    walk = _slot_text(slots) if slots else "this week (time to be set)"
+    walk_first = _slot_text(slots[:1]) if slots else "this week (time to be set)"
+    # "Off-market" only when it's true: a house that is (or was) on the MLS is not off-market.
+    subject = (f"off-market fixer in {town} ({st})" if not _listed(lead) else f"fixer under contract in {town} ({st})")
+    sms = (f"Hi {name}, it's {op['first'] or op['name']}" + (f" with {op['company']}" if op["company"] else "")
+           + f". I have a {units} under contract in {town} that looks like what you've been buying. "
+           + (f"Price to you {hc.money(price)}. " if price else "")
+           + f"Walkthrough {walk_first}. Want a slot? Reply STOP to opt out.")
+    paragraphs = [
+        f"I have a {units} in {town} under contract that looks like what you've been buying"
+        + (f" ({detail})" if detail else "") + f". {numbers} The walkthrough is {walk}, and you're "
+        "welcome to bring your contractor. Want a slot?"]
+    summary = [
+        f"Property: {f['address']}, {f['county']} County" + (f" ({units}, {detail})" if detail else f" ({units})"),
+        f"Price: {hc.money(price)} (contract price plus assignment fee, paid at closing)" if price else "",
+        f"Access: {access_route(lead).split(' — ')[0]}",
+        "Bids: walk it, then send your best price in writing within 24 hours with proof of funds. Please send every "
+        "question to me and don't discuss price or terms with the seller, tenants or agent.",
+        f"Next step: the accepted buyer signs an Assignment of Contract and deposits "
+        f"{hc.money(cfg.get('assignee_deposit', 5000))} with the title company within 1 business day.",
+        "What you're buying: I'm a real estate investor acting as a principal, not a licensed agent, and I'm offering "
+        "my contract (equitable interest) in the property, not the property itself. All figures are estimates; rely on "
+        "your own inspection, valuation and title review.",
+        *hc.footer_lines(op, "Reply STOP or \"remove me\" and I won't send you deals again."),
+    ]
+    email = hc.compose(subject, f"Hi {name},", paragraphs, summary, summary_title="--- Deal Summary ---", op=op)
+    return {"sms": hc.plain(sms), "email": f"Subject: {email.subject}\n\n{email.text}", "subject": email.subject,
+            "body": email.text}
 
 
 def post_walk_followup(lead: Lead, buyer: CashBuyer) -> str:
-    op = settings().operator
+    from engine.human_copy import operator, street
+    op = operator()
     f = lead_facts(lead)
     name = greet_name(buyer)
-    return (f"Thanks for walking {f['address']}{', ' + name if name else ''}. What number works for you? I'm collecting written bids "
-            f"(with proof of funds) through tomorrow at 5pm and will tell everyone the result the same evening. "
-            f"— {op.get('name')}")
+    return (f"Thanks for walking {street(f['address'])}{', ' + name if name else ''}. What number works for you? I'm "
+            "taking written bids with proof of funds until 5pm tomorrow and will let everyone know the result that "
+            f"evening. {op['first'] or op['name']}")
 
 
 def asking_price(lead: Lead) -> float | None:

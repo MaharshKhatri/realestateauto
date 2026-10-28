@@ -54,12 +54,14 @@ async function route() {
   const [path, query] = hash.slice(1).split("?");
   const params = new URLSearchParams(query || "");
   try {
-    const section = path === "/" || path === "" ? "today"
-      : (path.match(/^\/(ready|agents|inspect|dispo|lead|fast|closing)/) || [])[1] || "dash";
+    const section = path === "/" || path === "" ? "autopilot"
+      : (path.match(/^\/(today|ready|agents|inspect|dispo|lead|fast|closing|records)/) || [])[1] || "dash";
     document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === section));
     const m = path.match(/^\/lead\/(\d+)/);
     if (m) return await renderLead(+m[1], params.get("contact"));
-    if (path === "/" || path === "") return await renderToday();
+    if (path === "/" || path === "") return await renderAutopilot();
+    if (path === "/today") return await renderToday();
+    if (path === "/records") return await renderRecords();
     if (path === "/ready") return await renderReady();
     if (path === "/fast") return await renderFast();
     const cl = path.match(/^\/closing(?:\/(\d+))?/);
@@ -901,4 +903,429 @@ async function renderToday() {
     </div>`;
 }
 
+// -- Phase 5: command center (KPI pills, My Setup, swarm refresh, step-by-step autopilot, kanban) -----------
+const AP = { deck: null, i: 0, setup: null, poll: null, wasRunning: false };
+
+function modal(html) {
+  const d = $("#dlg");
+  d.innerHTML = html;
+  if (!d.open) d.showModal();
+  return d;
+}
+function closeModal() {
+  const d = $("#dlg");
+  if (d.open) d.close();
+}
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  }
+}
+
+async function loadCmdbar() {
+  const bar = $("#cmdbar");
+  try {
+    const [{ data: k }, { data: st }] = await Promise.all([api("/api/kpis"), api("/api/settings")]);
+    AP.setup = st;
+    const pill = (icon, n, text, href, cls = "") =>
+      `<a class="kpill ${cls}" href="${href}"><b>${icon} ${esc(n)}</b><span>${esc(text)}</span></a>`;
+    bar.innerHTML = `<div class="kpills">
+        ${pill("📋", k.open_leads.toLocaleString(), "Total open leads", "#/dashboard")}
+        ${pill("🚨", k.listed_foreclosures, `Listed foreclosures · ${k.listed_actionable} actionable`, "#/fast", "bad")}
+        ${pill("📞", k.ready_to_call, "Ready-to-call now", "#/ready", "good")}
+        ${pill("📨", k.offers_sent_30d, "Offers sent (30 days)", "#/agents", "acc")}
+        ${pill("💰", k.active_cash_buyers, "Active cash buyers", "#/dispo", "vio")}
+        ${pill("🏦", kmoney(k.pipeline_value), "Pipeline value", "#/closing", "warn")}
+      </div>
+      <div class="cmd-actions">
+        ${st.live ? '<span class="pill good live" id="live-badge">✅ Setup Complete — Live Mode Active</span>'
+                  : '<span class="pill warn" id="live-badge">Setup incomplete: e-mails stay drafts</span>'}
+        <button class="btn" id="btn-setup">⚙️ My Setup &amp; Auto-Email</button>
+        <button class="btn" id="btn-swarm">🤖 Run Autopilot Data Refresh</button>
+        <button class="btn" id="btn-opra">🏛️ Request Free Town Tax-Lien Spreadsheets (OPRA)</button>
+        <span id="swarm-live" class="muted"></span>
+      </div>`;
+    $("#btn-setup").onclick = openSetup;
+    $("#btn-swarm").onclick = openSwarm;
+    $("#btn-opra").onclick = openOpra;
+    pollSwarm(false);
+  } catch (e) {
+    bar.innerHTML = `<span class="bad">Command bar: ${esc(e.message)}</span>`;
+  }
+}
+
+// -- My Setup & Auto-Email ------------------------------------------------------------------------------
+function setupProblems(b) {
+  const out = {};
+  if (!b.name || b.name.trim().toLowerCase() === "operator") out.name = "required";
+  if (!b.company_name || b.company_name.trim().toLowerCase() === "your company llc") out.company_name = "required";
+  const digits = (b.phone || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  if (digits.length !== 10) out.phone = "10-digit US number";
+  if (!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test((b.email || "").trim())) out.email = "valid e-mail";
+  if (!/\b[A-Za-z]{2}\s+\d{5}(-\d{4})?\b/.test(b.mailing_address || "")) out.mailing_address = "street or PO box, town, state and ZIP";
+  if (b.app_password && b.app_password.replace(/\s/g, "").length !== 16) out.app_password = "a Gmail app password is 16 letters";
+  return out;
+}
+async function openSetup() {
+  const { data: s } = await api("/api/settings");
+  const f = (k, lbl, type, ph, val) => `<label>${lbl}<input name="${k}" type="${type}" value="${esc(val ?? s[k] ?? "")}"
+      placeholder="${esc(ph)}" autocomplete="off"><small class="bad" data-err="${k}"></small></label>`;
+  modal(`<form id="setup-form" class="setup" novalidate>
+      <div class="row spread"><h2>⚙️ My Setup &amp; Auto-Email</h2>${s.live ? '<span class="pill good">✅ Live mode</span>' : ""}</div>
+      <p class="muted">Saved on this laptop only (${esc(s.local_file)} and .env, both git-ignored). Every e-mail, text and
+        letter signs with these details, and NJ / CAN-SPAM rules need all five.</p>
+      ${f("name", "Your full name", "text", "Jordan Smith")}
+      ${f("company_name", "Company name", "text", "Garden State Home Buyers LLC")}
+      ${f("phone", "Google Voice phone number", "tel", "(908) 555-0100")}
+      ${f("email", "E-mail address", "email", "you@gmail.com")}
+      ${f("mailing_address", "Mailing address (printed under every e-mail and on letters)", "text", "PO Box 10, Edison, NJ 08817")}
+      <details ${s.has_app_password ? "" : "open"}><summary>Optional: send e-mails straight from the dashboard (Gmail app password)</summary>
+        ${f("smtp_user", "Gmail address to send from", "email", "you@gmail.com", s.smtp_user || "")}
+        ${f("app_password", s.has_app_password ? "Gmail app password (saved, leave blank to keep it)" : "Gmail app password (16 letters)",
+            "password", s.has_app_password ? "saved" : "abcd efgh ijkl mnop", "")}
+        <p class="muted">Google Account → Security → 2-Step Verification → App passwords. The password stays in .env on this
+          laptop and is never shown again. Sending stays personal: one e-mail per click, at most 25 a day.</p>
+      </details>
+      <div class="row spread" style="margin-top:12px"><span id="setup-msg" class="muted"></span>
+        <span class="row"><button type="button" class="btn" id="setup-cancel">Cancel</button>
+        <button type="submit" class="btn good" id="setup-save">Save</button></span></div>
+    </form>`);
+  $("#setup-cancel").onclick = closeModal;
+  $("#setup-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    document.querySelectorAll("[data-err]").forEach((el) => (el.textContent = ""));
+    const local = setupProblems(body);
+    const show = (errs) => Object.entries(errs).forEach(([k, v]) => { const el = $(`[data-err="${k}"]`); if (el) el.textContent = v; });
+    if (Object.keys(local).length) return show(local);
+    const res = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return show((data.detail && data.detail.errors) || { name: data.detail || "could not save" });
+    closeModal();
+    toast(data.live ? "✅ Setup Complete — Live Mode Active" : "Saved. A few details are still missing.");
+    await loadCmdbar();
+    if (!location.hash || location.hash === "#/") renderAutopilot();
+  });
+}
+
+// -- swarm refresh --------------------------------------------------------------------------------------
+function stepsHtml(st) {
+  const icon = { pending: "·", running: "⏳", success: "✅", partial: "⚠️", failed: "❌", skipped: "–" };
+  return `<ol class="steps">${(st.steps || []).map((x) => `<li class="${esc(x.status)}">${icon[x.status] || "·"} ${label(x.agent)}
+    ${x.seconds != null ? `<span class="muted">${x.seconds}s</span>` : ""}${x.new_leads ? ` <span class="good">+${x.new_leads} leads</span>` : ""}
+    ${x.errors ? ` <span class="warn">${x.errors} errors</span>` : ""}</li>`).join("")}</ol>
+    ${st.error ? `<p class="bad">${esc(st.error)}</p>` : ""}`;
+}
+async function openSwarm() {
+  const { data: st } = await api("/api/swarm/status");
+  modal(`<h2>🤖 Run Autopilot Data Refresh</h2>
+    <p class="muted"><b>Quick</b> re-stacks, re-scores and re-checks every valuation already in the database (a few minutes, no scraping).
+      <b>Full</b> also pulls today's sheriff sales and listings, lis pendens imports and contacts, then underwrites
+      (10-30 minutes; every source keeps its polite rate limit).</p>
+    <div class="row"><button class="btn good" data-mode="quick" ${st.running ? "disabled" : ""}>Quick refresh</button>
+      <button class="btn" data-mode="full" ${st.running ? "disabled" : ""}>Full refresh (new sheriff sales + listings)</button>
+      <button class="btn" id="sw-close">Close</button></div>
+    <div id="sw-steps">${st.steps && st.steps.length ? stepsHtml(st) : ""}</div>`);
+  $("#sw-close").onclick = closeModal;
+  document.querySelectorAll("#dlg [data-mode]").forEach((b) => (b.onclick = async () => {
+    document.querySelectorAll("#dlg [data-mode]").forEach((x) => (x.disabled = true));
+    try {
+      await post("/api/swarm/trigger", { mode: b.dataset.mode });
+      toast(`${b.dataset.mode === "quick" ? "Quick" : "Full"} refresh started`);
+      pollSwarm(true);
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }));
+}
+async function pollSwarm(active) {
+  clearTimeout(AP.poll);
+  let st;
+  try {
+    ({ data: st } = await api("/api/swarm/status"));
+  } catch (e) {
+    return;
+  }
+  const done = (st.steps || []).filter((x) => !["pending", "running"].includes(x.status)).length;
+  const live = $("#swarm-live");
+  if (live) live.textContent = st.running ? `🤖 ${st.mode} refresh: ${String(st.current || "starting").replaceAll("_", " ")} (${done}/${st.steps.length})`
+    : st.finished_at ? `Last refresh ${fmtDate(st.finished_at)}` : "";
+  const box = $("#sw-steps");
+  if (box && st.steps && st.steps.length) box.innerHTML = stepsHtml(st);
+  if (st.running) {
+    AP.wasRunning = true;
+    AP.poll = setTimeout(() => pollSwarm(true), 2000);
+  } else if (AP.wasRunning || active) {
+    AP.wasRunning = false;
+    if (st.finished_at) {
+      toast(st.error ? "Refresh finished with an error" : "Refresh finished: deck and numbers updated", !!st.error);
+      document.querySelectorAll("#dlg [data-mode]").forEach((x) => (x.disabled = false));
+      const k = await api("/api/kpis").catch(() => null);
+      if (k) loadCmdbar();
+      if (!location.hash || location.hash === "#/") renderAutopilot();
+    }
+  }
+}
+
+// -- step-by-step autopilot -----------------------------------------------------------------------------
+async function renderAutopilot() {
+  const { data } = await api("/api/autopilot");
+  AP.deck = data;
+  AP.i = Math.min(AP.i, Math.max(0, data.cards.length - 1));
+  app.innerHTML = `<div class="card autopilot" id="ap"></div><div id="kanban" class="card"><p class="muted">Loading queues…</p></div>`;
+  drawCard();
+  renderKanban();
+}
+function progressHtml(d) {
+  const w = Math.min(100, Math.round((100 * d.done) / Math.max(1, d.goal)));
+  return `<div class="row spread"><h1>🎯 Step-by-Step Mode</h1><b id="ap-goal">Today's Goal: ${d.done} / ${d.goal} Deals Contacted</b></div>
+    <div class="progress" role="progressbar" aria-label="Today's goal" aria-valuemin="0" aria-valuemax="${d.goal}"
+      aria-valuenow="${d.done}"><div style="width:${w}%"></div></div>`;
+}
+function drawCard() {
+  const d = AP.deck;
+  const box = $("#ap");
+  const banner = d.setup_complete ? "" : `<div class="banner">Finish <button class="btn" id="ap-setup">⚙️ My Setup</button> first:
+    every e-mail signs with your name, phone and mailing address (CAN-SPAM), and letters print as PROOF until it's done.</div>`;
+  if (!d.cards.length) {
+    box.innerHTML = progressHtml(d) + banner + `<p class="muted">Nothing left in today's deck. Run the data refresh for new
+      sheriff sales and listings, or work the queues below.</p>`;
+    if ($("#ap-setup")) $("#ap-setup").onclick = openSetup;
+    return;
+  }
+  const c = d.cards[AP.i];
+  const a = c.agent || {};
+  const smtp = d.auto_email && c.can_smtp;
+  const cls = { listed_foreclosure: "bad", followup: "warn", mls_fixer: "good" }[c.kind] || "";
+  box.innerHTML = `${progressHtml(d)}${banner}
+    <div class="row spread ap-nav"><b>Action ${AP.i + 1} of ${d.cards.length}</b>
+      <span class="row"><button class="btn" id="ap-prev" ${AP.i === 0 ? "disabled" : ""}>◀ Previous</button>
+      <button class="btn" id="ap-next" ${AP.i >= d.cards.length - 1 ? "disabled" : ""}>Next ▶</button></span></div>
+    <div class="row ap-title"><span class="pill ${cls}">${esc(c.label)}</span>
+      <h2><a href="${esc(c.lead_url)}">${esc(c.address)}</a></h2>${c.days_to_sale != null ? daysBadge(c.days_to_sale) : ""}
+      <a class="muted" href="${esc(c.inspect_url)}">photos, maps &amp; flood →</a></div>
+    <div class="grid ap-grid">
+      <div>
+        <h3>What this property is</h3><p>${esc(c.what)}</p>
+        <div class="whybox"><h3>Why this deal makes money</h3><ul>${c.why.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>
+        <h3>Exact action to take right now</h3><p class="action">${esc(c.action)}</p>
+        <h3>Phone script (3 sentences)</h3><ol class="ap-script">${c.phone_script.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+        ${a.phone_display ? `<p>📞 <a class="phone" href="tel:${esc(a.phone)}">${esc(a.phone_display)}</a> · ${esc(a.name || "")}
+          ${a.company ? `<span class="muted">(${esc(a.company)})</span>` : ""}</p>` : '<p class="muted">No phone on file for this agent.</p>'}
+        <h3>📞 I called: log the outcome &amp; go to the next deal</h3>
+        <div class="ap-outcomes">
+          <button class="btn good" data-out="interested">✅ Interested - Send Offer</button>
+          <button class="btn" data-out="voicemail">📞 Left Voicemail</button>
+          <button class="btn" data-out="not_interested">🚫 Not Interested</button>
+          <button class="btn bad" data-out="sold">🏷️ Sold / Dead - Skip</button>
+        </div>
+        <div id="ap-result"></div>
+      </div>
+      <div>
+        <h3>E-mail to ${esc(a.name || "the listing agent")} ${a.email ? `<span class="mono">&lt;${esc(a.email)}&gt;</span>` : "(no e-mail on file)"}</h3>
+        <label>Subject<input type="text" id="ap-subject" value="${esc(c.subject)}"></label>
+        <label>Plain-text message (edit anything; keep the summary block under your name)
+          <textarea id="ap-body" rows="16" spellcheck="true">${esc(c.body)}</textarea></label>
+        ${c.style.length ? `<p class="flag">Style check: ${esc(c.style.join("; "))}</p>` : ""}
+        ${c.warnings.length ? `<ul>${c.warnings.map((w) => `<li class="flag">${esc(w)}</li>`).join("")}</ul>` : ""}
+        <button class="bigbtn" id="ap-send" ${a.email ? "" : "disabled"}>✉️ Send Email &amp; Log (Auto-Advance to Next Deal)</button>
+        <p class="muted">${smtp ? `Sends from your Gmail (${d.sent_24h}/${d.daily_email_limit} in the last 24 hours) with the 1-page offer attached.`
+          : "Opens your e-mail app with this message and logs it as sent. Add a Gmail app password in My Setup to send from here."}</p>
+        <div class="smsbox"><h3>Short text message</h3><p>${esc(c.sms)}</p>
+          <button class="btn" id="ap-sms" ${a.phone ? "" : "disabled"}>📋 Copy Short Text Message to Agent</button>
+          <span class="muted">Paste it into Google Voice; texts are always sent by you, never automated.</span></div>
+      </div>
+    </div>`;
+  if ($("#ap-setup")) $("#ap-setup").onclick = openSetup;
+  $("#ap-prev").onclick = () => { AP.i -= 1; drawCard(); };
+  $("#ap-next").onclick = () => { AP.i += 1; drawCard(); };
+  $("#ap-send").onclick = () => apSend(c, smtp);
+  $("#ap-sms").onclick = () => apSms(c);
+  document.querySelectorAll("#ap [data-out]").forEach((b) => (b.onclick = () => apOutcome(c, b.dataset.out)));
+}
+function apAdvance(r) {
+  if (r && r.done != null) AP.deck.done = r.done;
+  AP.deck.cards.splice(AP.i, 1);
+  AP.i = Math.min(AP.i, Math.max(0, AP.deck.cards.length - 1));
+  drawCard();
+  loadCmdbar();
+}
+async function apSend(c, smtp) {
+  const subject = $("#ap-subject").value;
+  const body = $("#ap-body").value;
+  $("#ap-send").disabled = true;
+  try {
+    if (!smtp) {
+      const link = document.createElement("a");
+      link.href = `mailto:${encodeURIComponent(c.agent.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      link.click();
+    }
+    const { status, data } = await post(`/api/autopilot/${c.lead_id}/send`, { channel: smtp ? "smtp" : "mailto", subject, body });
+    if (status === 409) throw new Error(data.detail || "not sent");
+    toast(smtp ? `Sent to ${c.agent.name || c.agent.email}. Follow-up scheduled.` : "Logged as sent. Finish sending in your e-mail app.");
+    apAdvance(data);
+  } catch (e) {
+    $("#ap-send").disabled = false;
+    toast(e.message, true);
+  }
+}
+async function apSms(c) {
+  const ok = await copyText(c.sms);
+  try {
+    const { status, data } = await post(`/api/autopilot/${c.lead_id}/send`, { channel: "sms" });
+    if (status === 409) throw new Error(data.detail || "not logged");
+    AP.deck.done = data.done;
+    $("#ap-goal").textContent = `Today's Goal: ${data.done} / ${data.goal} Deals Contacted`;
+    toast(ok ? "Copied. Paste it into Google Voice; logged as texted." : "Logged as texted (copy the text above by hand).");
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+async function apOutcome(c, out) {
+  try {
+    const { status, data } = await post(`/api/autopilot/${c.lead_id}/outcome`, { outcome: out });
+    if (status === 409) throw new Error(data.detail || "not logged");
+    if (out === "interested") {
+      AP.deck.done = data.done;
+      $("#ap-goal").textContent = `Today's Goal: ${data.done} / ${data.goal} Deals Contacted`;
+      $("#ap-result").innerHTML = `<div class="whybox"><b>${esc(data.message)}</b>
+        ${Object.keys(data.files).length ? `<p>Written offer: ${Object.entries(data.files).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(k.toUpperCase())}</a>`).join(" · ")}
+          (attached automatically when you send from here)</p>` : ""}
+        ${data.warnings.map((w) => `<p class="flag">${esc(w)}</p>`).join("")}</div>`;
+      toast("Logged. Send the written offer now.");
+    } else {
+      toast(data.message);
+      apAdvance(data);
+    }
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+// -- all-in-one kanban ----------------------------------------------------------------------------------
+async function renderKanban() {
+  const { data: t } = await api("/api/today");
+  const [b1, b2, , b4] = t.blocks;
+  const item = (href, title, sub) => `<a class="kcard" href="${href}"><b>${esc(title)}</b><span>${sub}</span></a>`;
+  const col = (title, cls, items, empty) => `<div class="kcol"><h2 class="${cls}">${title} <span class="muted">${items.length}</span></h2>
+    ${items.length ? items.join("") : `<p class="muted">${esc(empty)}</p>`}</div>`;
+  $("#kanban").innerHTML = `<h2>All queues</h2><div class="kanban">
+      ${col("🚨 Urgent Listed Foreclosures", "bad", b1.rows.map((r) => item(`#/lead/${r.lead_id}`, r.address,
+        `${countdown(r)} · ${esc(r.track_label)}`)), b1.empty)}
+      ${col("📞 Ready-to-Call MLS Fixers", "good", b2.rows.map((r) => item(`#/lead/${r.lead_id}`, r.address,
+        `${esc(r.town)} · ask ${kmoney(r.ask)} · MAO ${kmoney(r.mao_70)}`)), b2.empty)}
+      ${col("💰 Cash Buyers to Call", "acc", b4.rows.map((r) => item("#/today", r.name,
+        `${r.purchases_in_towns} buys · ${esc(r.recent.town)} ${kmoney(r.recent.price)}`)), b4.empty)}
+      ${col("⏰ Follow-Ups Due Today", "warn", t.deadlines.followups.map((f) => item(`#/lead/${f.lead_id}`, f.address,
+        label(f.stage))), "No follow-ups due right now.")}
+    </div>
+    <div class="row" style="margin-top:12px"><a class="btn" href="#/inspect">🔎 Virtual Inspector &amp; Mail</a>
+      <a class="btn" href="#/closing">📑 Closing Coordinator &amp; Money</a><a class="btn" href="#/today">🗒️ Full 2-hour checklist</a></div>`;
+}
+
+// -- public records: OPRA tax lists, clerk filings, uploads ---------------------------------------------------
+function openOpra() {
+  location.hash = "#/records";
+}
+const COUNTIES = ["Middlesex", "Union", "Essex", "Hudson", "Passaic", "Bergen", "Camden", "Mercer", "Monmouth"];
+async function renderRecords() {
+  const [{ data: o }, { data: cf }] = await Promise.all([api("/api/opra"), api("/api/clerk-filings")]);
+  const chan = { email: "✉️ e-mail", portal: "🌐 portal", verify: "📞 call first" };
+  const statusPill = (r) => r.status === "received" ? '<span class="pill good">list received</span>'
+    : r.status === "sent" ? `<span class="pill warn">sent · due ${day(r.due_date)}</span>` : '<span class="pill">not sent</span>';
+  const opts = COUNTIES.map((c) => `<option>${c}</option>`).join("");
+  app.innerHTML = `
+    <div class="card"><div class="row spread"><h1>🏛️ Request Free Town Tax-Lien Spreadsheets (OPRA)</h1>
+      <span class="muted">${o.requests.length} towns · commercial requests: up to ${o.rules.commercial_business_days} business days</span></div>
+      <p>Each town's tax collector keeps the tax sale list, the town-held lien certificates and the delinquency report.
+        Under the Open Public Records Act you can ask for them for free. Review each request, send it from your own e-mail or the
+        town's portal, then click <b>Mark sent</b> so the due date is tracked.</p>
+      <p class="flag">The request certifies that you WILL use the records for a commercial purpose (true for house buying; a
+        false certification carries a ${esc(o.rules.penalty || "civil penalty")}). Read the three certifications before you send, and only
+        send if each is true. Never use OPRAmachine for these: it publishes the replies.</p>
+      ${o.operator_ready ? "" : '<p class="banner">Finish ⚙️ My Setup first: the request must include your name, address, phone and e-mail.</p>'}
+      <div class="tablewrap"><table><thead><tr><th>Town</th><th class="num">Leads</th><th>How</th><th>Status</th><th></th></tr></thead><tbody>
+      ${o.requests.map((r, i) => `<tr><td><b>${esc(r.town)}</b> <span class="muted">${esc(r.county)}</span>
+          ${r.clerk ? `<br><span class="muted">${esc(r.clerk)}</span>` : ""}${r.notes.map((n) => `<br><span class="flag">${esc(n)}</span>`).join("")}</td>
+        <td class="num">${r.leads}</td><td>${chan[r.channel] || esc(r.channel)}${r.to ? `<br><span class="mono">${esc(r.to)}</span>` : ""}</td>
+        <td>${statusPill(r)}</td>
+        <td class="btns">${r.mailto ? `<a class="btn" href="${esc(r.mailto)}">✉️ Open e-mail</a>` : ""}
+          ${r.portal ? `<a class="btn" href="${esc(r.portal)}" target="_blank" rel="noopener noreferrer">🌐 Portal ↗</a>` : ""}
+          <button class="btn" data-copy="${i}">📋 Copy text</button>
+          <button class="btn good" data-sent="${i}">Mark sent</button>
+          <details><summary class="muted">read the request</summary><pre class="pre">${esc(r.subject)}\n\n${esc(r.body)}</pre>
+          ${r.source ? `<a class="muted" href="${esc(r.source)}" target="_blank" rel="noopener noreferrer">source ↗</a>` : ""}</details></td></tr>`).join("")}
+      </tbody></table></div></div>
+    <div class="grid g-dash" style="margin-top:14px">
+      <div class="card"><h2>📥 1-click import: the town's spreadsheet</h2>
+        <p class="muted">When the tax collector replies, upload their file (Excel or CSV with Block and Lot columns). Each parcel gets a
+          tax-delinquent signal that stacks on the lead.</p>
+        <form id="tax-form" class="row"><select name="county">${opts}</select><input type="text" name="town" placeholder="Town (e.g. Newark)" required>
+          <input type="file" name="file" accept=".csv,.xlsx,.xlsm,.tsv,.txt" required><button class="btn good" type="submit">Import list</button></form>
+        <div id="tax-result"></div>
+        <h2 style="margin-top:16px">📥 Lis pendens export (browser-only clerks)</h2>
+        <p class="muted">Passaic, Hudson, Bergen, Middlesex, Mercer: run the clerk's search in your browser, save the results page (.html) or
+          export (.csv), and upload it here.</p>
+        <form id="lp-form" class="row"><select name="county">${opts}</select>
+          <input type="file" name="file" accept=".csv,.html,.htm,.txt,.tsv" required><button class="btn" type="submit">Import filings</button></form>
+        <div id="lp-result"></div></div>
+      <div class="card"><h2>⚖️ New foreclosure filings (last 45 days)</h2>
+        <p class="muted">${cf.counts.total} filings from the county clerks · ${cf.counts.matched} tied to a parcel. For the rest, open the
+          clerk record, read the property address off the document, and attach it.</p>
+        ${cf.matched.length ? `<h3>Matched</h3><ul>${cf.matched.map((x) => `<li><a href="#/lead/${x.lead_id}">${esc(x.county)} · ${esc(x.town || "")} · ${esc(x.instrument)}</a>
+          ${x.estate ? '<span class="pill vio">estate</span>' : ""}${x.tax_lien ? '<span class="pill warn">tax lien</span>' : ""}</li>`).join("")}</ul>` : ""}
+        <h3>Need an address</h3><div class="tablewrap" style="max-height:420px"><table><tbody>
+        ${cf.unmatched.map((x) => `<tr><td>${esc(x.recorded || "")}<br><span class="muted">${esc(x.county)}${x.town ? " · " + esc(x.town) : ""}</span></td>
+          <td>${esc(x.defendants.join("; "))}<br><span class="muted">v. ${esc(x.plaintiffs.join("; "))}</span>
+          ${x.estate ? '<span class="pill vio">estate</span>' : ""}${x.tax_lien ? '<span class="pill warn">tax lien</span>' : ""}</td>
+          <td>${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">clerk record ↗</a>` : esc(x.instrument)}
+          <form class="row locate" data-id="${x.id}"><input type="text" name="address" placeholder="street address">
+          ${x.town ? "" : '<input type="text" name="town" placeholder="town">'}<button class="btn" type="submit">Attach</button></form></td></tr>`).join("")}
+        </tbody></table></div></div>
+    </div>`;
+  document.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = async () => {
+    const r = o.requests[+b.dataset.copy];
+    toast((await copyText(`${r.subject}\n\n${r.body}`)) ? "Copied: paste it into the e-mail or portal" : "Select the text to copy it");
+  }));
+  document.querySelectorAll("[data-sent]").forEach((b) => (b.onclick = async () => {
+    const r = o.requests[+b.dataset.sent];
+    const { data } = await post("/api/opra/sent", { county: r.county, town: r.town, channel: r.channel === "portal" ? "portal" : "email" });
+    toast(`Logged. ${r.town} should answer by ${day(data.due_date)}.`);
+    renderRecords();
+  }));
+  const upload = (formId, url, out, fmt) => $(formId).addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $(out).innerHTML = '<p class="muted">Importing… (looking parcels up in MOD-IV can take a minute)</p>';
+    const res = await fetch(url, { method: "POST", body: new FormData(e.target) });
+    const data = await res.json().catch(() => ({}));
+    $(out).innerHTML = res.ok ? fmt(data) : `<p class="bad">${esc(data.detail || res.statusText)}</p>`;
+    if (res.ok) loadCmdbar();
+  });
+  upload("#tax-form", "/api/imports/tax-list", "#tax-result", (d) => `<p class="good">${d.parcels} parcels: ${d.matched_local} already tracked,
+    ${d.matched_njgin} new from MOD-IV, ${d.new_leads} new leads, ${d.unmatched} unmatched, ${d.non_residential} non-residential skipped.</p>
+    ${d.notes.map((n) => `<p class="muted">${esc(n)}</p>`).join("")}`);
+  upload("#lp-form", "/api/imports/lis-pendens", "#lp-result", (d) => `<p class="good">${d.filings} filings read, ${d.new_leads} new leads
+    (${esc(d.status)}).</p>`);
+  document.querySelectorAll("form.locate").forEach((f) => f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(f).entries());
+    const res = await fetch(`/api/clerk-filings/${f.dataset.id}/locate`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return toast(data.detail || "not found", true);
+    toast("Attached: the filing is now a lis pendens lead");
+    location.hash = `#/lead/${data.lead_id}`;
+  }));
+}
+
+loadCmdbar();
 route();

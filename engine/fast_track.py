@@ -28,7 +28,6 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -55,10 +54,8 @@ OPEN_STAGES_EXCLUDED = [LeadStage.DEAD, LeadStage.DO_NOT_CONTACT, LeadStage.CLOS
 
 
 def _op() -> dict[str, str]:
-    op = settings().operator
-    digits = "".join(ch for ch in (op.get("phone") or "") if ch.isdigit())
-    return {"name": op.get("name") or "", "company": op.get("company_name") or "",
-            "phone": format_phone(digits) or "", "email": op.get("email") or "", "postal": op.get("mailing_address") or ""}
+    from engine.human_copy import operator
+    return operator()
 
 
 # -- listed foreclosures -----------------------------------------------------------------------------
@@ -217,111 +214,171 @@ def _countdown(lf: ListedForeclosure) -> str:
     if lf.days_to_sale is None:
         return "a scheduled sheriff's sale"
     if lf.days_to_sale <= 0:
-        return f"a sheriff's sale listed for today ({lf.sale_date}) — it may have been adjourned"
+        return f"a sheriff's sale listed for today ({lf.sale_date}); it may have been adjourned"
     when = long_date(date.fromisoformat(lf.sale_date), year=False) if lf.sale_date else ""
     return f"a {lf.county} County sheriff's sale scheduled for {when} ({lf.days_to_sale} days)"
 
 
+def _sale_seen(lf: ListedForeclosure) -> str:
+    """'saw it's on the Essex County sheriff sale list for Nov 12 with around $310,000 owed'"""
+    from engine.human_copy import money as plain_money
+    from engine.human_copy import short_date
+    county = f"{lf.county} County " if lf.county else ""
+    if lf.sale_date and (lf.days_to_sale or 0) > 0:
+        text = f"saw it's on the {county}sheriff sale list for {short_date(date.fromisoformat(lf.sale_date))}"
+    elif lf.sale_date:
+        text = (f"saw it was on the {county}sheriff sale list for {short_date(date.fromisoformat(lf.sale_date))} "
+                "(it may have been adjourned)")
+    else:
+        text = f"saw it's on the {county}sheriff sale list"
+    return text + (f" with around {plain_money(lf.upset)} owed" if lf.upset else "")
+
+
+def _offer_range(lf: ListedForeclosure) -> str:
+    from engine.agent_outreach import price_range
+    return price_range(lf.anchor, lf.best)
+
+
 def agent_script(lf: ListedForeclosure) -> dict[str, Any]:
-    """Phone script for the listing agent: urgent, B2B, truthful, FRFPA-safe."""
-    op = _op()
+    """Phone script for the listing agent: urgent, B2B, truthful, FRFPA-safe, and short enough to say out loud."""
+    from engine.human_copy import operator, street
+    op = operator()
     first = ((lf.agent or {}).get("name") or "").split(" ")[0].title() or "there"
-    intro = (f"this is {op['name']} with {op['company']} — I'm a real estate investor, unrepresented. "
-             f"I'm calling about your listing at {lf.address}. Public records show {_countdown(lf)}"
-             + (f", with an upset of about {money(lf.upset)}" if lf.upset else "") +
-             ". If it goes to the sheriff's sale your seller loses the house and the listing ends with it. "
-             "I can put an as-is cash contract in front of your seller today and close before the sale date — "
-             "no financing or appraisal contingency, no repair requests.")
+    me = " ".join(x for x in (op["first"] or op["name"], "with " + op["company"] if op["company"] else "") if x)
+    intro = (f"this is {me}. I'm a real estate investor, unrepresented, calling about your listing at "
+             f"{street(lf.address)}. I {_sale_seen(lf)}.")
     opening = f"Hi {first}, {intro}"
     questions = [
-        "Is the seller living there, or is it vacant / tenant-occupied? (Record the answer — it decides whether the "
+        "Is the seller still open to offers, or do you already have a buyer who can close before the sale date?",
+        "Is the seller living there, or is it vacant or rented? (Record the answer: it decides whether the "
         "Foreclosure Rescue Fraud Prevention Act applies.)",
-        "Do you know the current payoff, and has the lender agreed to anything — a short-sale review, a payoff letter?",
-        "Has the sale already been adjourned? (Just for timing — the seller's attorney handles the sale itself.)",
-        "What would the seller need to net to say yes?",
-        "Can you send interior photos or do a quick video walk-through? I'll firm up the number the same day.",
+        "Do you know the current payoff, and has the lender agreed to anything, like a short-sale review or a "
+        "payoff letter?",
+        "Has the sale already been adjourned? (Just for timing; the seller's attorney handles the sale itself.)",
+        "Could you send interior photos or do a quick video walk-through? I'll firm up the number the same day.",
     ]
     offer = {
-        "CASH_OFFER": f"Our number: {money(lf.anchor)} cash as-is, up to {money(lf.best)} with a 10-business-day "
-                      "inspection period. Proof of funds and a written offer within the hour.",
-        "FRFPA_FLOOR_OFFER": f"Because it's the seller's home and in foreclosure, NJ's Foreclosure Rescue Fraud "
-                             f"Prevention Act applies: an attorney drafts our contract, the seller gets a 10-business-"
-                             f"day cancellation right, and at least 82% of fair market value — our offer starts at "
-                             f"{money(lf.anchor)} (floor {money(lf.floor)}).",
-        "CONFIRM_OCCUPANCY": "Once you confirm who lives there, I'll send a written as-is cash offer the same day.",
-        "SHORT_SALE": f"The payoff looks higher than the house supports as-is, so this probably needs lender approval. "
-                      f"We'll put in a clean cash offer at {money(lf.best)} that you can send to the lender with the "
-                      "short-sale package — the negotiation stays with you and the seller's attorney.",
-        "EQUITY_MONITOR": "Honestly, with the equity your seller has, your retail sale is probably their best path. "
-                          "If the price drops or time runs out, I'm a cash backup — keep my number.",
-        "NO_OFFER": "I'd like to follow the listing — could you send me the details and any price updates?",
+        "CASH_OFFER": f"We can put in a clean, as-is cash offer today, around {_offer_range(lf)}, with no financing "
+                      "or appraisal contingency, so you can get this closed before the auction.",
+        "FRFPA_FLOOR_OFFER": "If it's the seller's own home, NJ's foreclosure rescue law applies: an attorney drafts "
+                             "our contract, the seller gets 10 business days to cancel and at least 82% of fair market "
+                             f"value. On those terms we can offer around {_offer_range(lf)} as-is.",
+        "CONFIRM_OCCUPANCY": "Once I know who lives there, I can send a clean, as-is cash offer the same day.",
+        "SHORT_SALE": "It looks like the payoff is more than the house would bring as-is, so it probably needs the "
+                      f"lender's OK. We can put in a clean cash offer around {_offer_range(lf)} that you can submit "
+                      "to the lender with the short-sale package; that negotiation stays with you and the seller's "
+                      "attorney.",
+        "EQUITY_MONITOR": "With the equity your seller seems to have, your sale is probably their best path. If time "
+                          "gets tight, I can be a clean, as-is cash backup, so keep my number.",
+        "NO_OFFER": "Could you keep me posted if the price changes? I may be able to make a cash offer if the numbers "
+                    "line up.",
     }[lf.track]
     return {
         "opening": opening, "intro": intro, "questions": questions, "offer": offer,
-        "close": "Can I send the written offer to your e-mail now so you can present it today?",
+        "close": "Want me to e-mail you the written offer now so you can present it today?",
         "never_say": DONT_SAY_FORECLOSURE + [
-            "\"We'll stop or postpone the sheriff's sale\" — we can't, and offering to is a regulated service",
-            "\"We'll negotiate with the lender\" — the short-sale negotiation belongs to the agent and the seller's "
+            "\"We'll stop or postpone the sheriff's sale\": we can't, and offering to is a regulated service",
+            "\"We'll negotiate with the lender\": the short-sale negotiation belongs to the agent and the seller's "
             "attorney",
             "Any hint you'll pay the agent or share their commission",
         ],
-        "disclosure": "We're investors acting as principals, not licensed agents; we may assign the contract to an "
-                      "affiliated investor; the seller should have an attorney review everything.",
+        "disclosure": "We're investors acting as principals, not licensed agents; we may assign the contract to "
+                      "another investor; the seller should have an attorney review everything.",
     }
+
+
+def _email_paragraph(lf: ListedForeclosure, kind: str, phone: str) -> str:
+    call = (f"Call or text me at {phone}" if phone else "Reply here")
+    seen = f"I was looking at your listing at {lf.address.split(',')[0]} and {_sale_seen(lf)}. "
+    if kind == "offer" and lf.track == "CASH_OFFER":
+        return (seen + "Do you already have a cash buyer who can close before the sale date, or is the seller still "
+                "open to offers? We're unrepresented investors and can put in a clean, as-is cash offer today, around "
+                f"{_offer_range(lf)}, so you can get this closed before the auction. "
+                f"{call} if you want me to send it over now.")
+    if kind == "offer" and lf.track == "FRFPA_FLOOR_OFFER":
+        return (seen + "Is the seller still open to offers? If it's the seller's own home, NJ's foreclosure rescue "
+                "law applies, so our contract is drafted by an attorney and the seller gets 10 business days to "
+                f"cancel. On those terms we can offer around {_offer_range(lf)} as-is. {call} and I'll send the "
+                "details.")
+    if kind == "offer" and lf.track == "SHORT_SALE":
+        return (seen + "Is the seller still open to offers? It looks like the payoff is more than the house would "
+                "bring as-is, so I'm guessing it needs the lender's OK. We're unrepresented investors and can put in "
+                f"a clean cash offer around {_offer_range(lf)} for you to submit to the lender. {call} if you want it.")
+    if lf.track == "EQUITY_MONITOR":
+        return (seen + "Is the seller still open to offers? With the equity it looks like there is, your sale is "
+                "probably their best path, but if time gets tight I can be a clean, as-is cash backup. "
+                f"{call} if that would help.")
+    if lf.track == "NO_OFFER":
+        return (seen + "Could you keep me posted if the price changes? I'm an unrepresented investor and may be able "
+                f"to make a clean, as-is cash offer if the numbers line up. {call} any time.")
+    return (seen + "Is the seller living there, or is it vacant or rented? We're unrepresented investors, and once I "
+            f"know who's in the house I can send a clean, as-is cash offer the same day. {call}.")
 
 
 def build_packet(session: Session, lead: Lead, generate_loi: bool = True, out_root: Path | None = None
                  ) -> AgentPacket:
     """Urgent listing-agent e-mail + SMS (+ LOI when the compliance gate allows a priced offer)."""
+    from engine import human_copy as hc
+    from engine.agent_outreach import agent_terms_line
     lf = listed_foreclosure(session, lead)
     if lf.agent is None:
         raise ValueError(f"lead {lead.id} has no reachable listing agent")
     agent = session.get(Contact, lf.agent["contact_id"])
-    op = _op()
+    op = hc.operator()
     script = agent_script(lf)
     priced = lf.track in ("CASH_OFFER", "FRFPA_FLOOR_OFFER", "SHORT_SALE") and lf.anchor
     gate = contract_gate(lead, "loi", lf.anchor) if priced else None
     kind = "offer" if gate is not None and gate.allowed else "inquiry"
-    subject = (f"Cash offer before the {_countdown(lf).split(' (')[0].replace('a ', '', 1)} — {lf.address}"
-               if kind == "offer" else f"Before the sheriff's sale — {lf.address}")
-    body = "\n".join(x for x in [
-        f"Hi {(agent.name or 'there').split(' ')[0].title()},", "",
-        script["intro"][0].upper() + script["intro"][1:].replace("I'm calling about", "I'm writing about"), "",
-        (script["offer"] if kind == "offer" else
-         "Before I put a number in writing: is the seller living there, and do you have a current payoff? With those "
-         "two answers I can send a written cash offer the same day."), "",
-        ("A 1-page letter of intent is attached; the agreement of sale includes a 3-business-day attorney review"
-         + (", and for the seller's own home the statutory 10-business-day cancellation right." if lf.floor else ".")
-         if kind == "offer" else None),
-        "" if kind == "offer" else None,
-        "I'm not represented by a buyer's agent and I'm not asking for any part of your commission. We're investors "
-        "acting as principals, not licensed agents, buying as \"" + op["company"] + " and/or assigns\" — we may assign "
-        "the contract to an affiliated investor; the seller's price and terms don't change. We can't stop or postpone "
-        "the sale, and we don't negotiate with the lender — that stays with you and the seller's attorney.", "",
-        "Can we talk today?", "",
-        op["name"], op["company"] + (f" · {op['phone']}" if op["phone"] else "") + (f" · {op['email']}" if op["email"] else ""),
-        op["postal"] or None, "",
-        "If you'd rather not get offers from me, reply \"no more\" and I'll stop.",
-    ] if x is not None)
-    sms = (f"Hi {(agent.name or 'there').split(' ')[0].title()}, {op['name']} with {op['company']} (investor, "
-           f"unrepresented). Re {lf.address}: saw the sheriff's sale "
-           + (f"on {long_date(date.fromisoformat(lf.sale_date), year=False)} " if lf.sale_date else "")
-           + "— we can close cash before it. "
-           + (f"Offer {money(lf.anchor)} as-is. " if kind == "offer" else "Is the seller living there? ")
-           + "OK to e-mail? Reply STOP to opt out.")
+    first = hc.first_name(agent.name)
+    st = hc.street(lf.address)
+    sale = date.fromisoformat(lf.sale_date) if lf.sale_date else None
+    subjects = [f"quick question re: {st}"]
+    if sale and (lf.days_to_sale or 0) > 0:
+        subjects.insert(0, f"{st} (saw the {hc.short_date(sale)} sale date)")
+    subject = hc.pick(subjects, lead.id)
+    summary = [f"Property: {lf.address}" + (f" (asking {hc.money(lf.list_price)})" if lf.list_price else ""),
+               (f"Sheriff's sale: {lf.county} County, {long_date(sale)}" if sale else "Sheriff's sale: scheduled")
+               + (f"; upset about {hc.money(lf.upset)} (public notice)" if lf.upset else "")]
+    if kind == "offer":
+        summary.append(f"Offer: {hc.money(lf.anchor)} cash, as-is, no mortgage or appraisal contingency"
+                       + (f"; up to {hc.money(lf.best)} with a 10-business-day inspection period"
+                          if lf.best and lf.anchor and lf.best > lf.anchor else "") + ".")
+        if lf.track == "SHORT_SALE":
+            summary.append("Short sale: the agent submits our offer to the lender; the short-sale negotiation stays "
+                           "with the agent and the seller's attorney.")
+        if lf.floor:
+            summary.append(f"Seller's own home: attorney-drafted contract under the NJ Foreclosure Rescue Fraud "
+                           f"Prevention Act, at least 82% of fair market value (floor {hc.money(lf.floor)}), and a "
+                           "10-business-day cancellation right.")
+        summary.append("The agreement of sale includes a 3-business-day attorney review."
+                       + (" A 1-page written offer is attached." if generate_loi else ""))
+    summary += ["We can't stop or postpone the sale and we don't negotiate with the lender; that stays with you and "
+                "the seller's attorney.", agent_terms_line(), hc.investor_disclosure(op["company"]),
+                *hc.footer_lines(op, 'Reply "no more" and I won\'t send you offers on other listings.')]
+    email = hc.compose(subject, f"Hi {first},", [_email_paragraph(lf, kind, op["phone"])], summary,
+                       signoff="Best,", op=op, summary_title=hc.DIVIDER if kind == "offer" else hc.DETAILS)
+    me = " ".join(x for x in (op["first"], "with " + op["company"] if op["company"] else "") if x) or "an investor"
+    when = f" for {hc.short_date(sale)}" if sale and (lf.days_to_sale or 0) > 0 else ""
+    sms = (f"Hi {first}, it's {me}. Saw {st} is on the sheriff sale list{when}. "
+           + (f"We're investors (no buyer's agent) and can do a clean as-is cash offer around {hc.money(lf.anchor)} "
+              "before the sale. OK to e-mail it? " if kind == "offer" else
+              "Is the seller living there, or is it vacant? I'm an investor looking at a cash offer. ")
+           + "Reply STOP to opt out.")
+    phone_script = [f"Hi {first}, {script['intro']}",
+                    script["questions"][0] if kind == "offer" else script["questions"][1],
+                    script["offer"] + " " + script["close"] if kind == "offer" else script["offer"]]
     packet = AgentPacket(
         lead_id=lead.id, property_id=lead.property_id, kind=kind, agent_contact_id=agent.id, agent_name=agent.name or "",
-        agent_first=(agent.name or "there").split(" ")[0].title(), brokerage=agent.company, agent_email=agent.email,
+        agent_first=first, brokerage=agent.company, agent_email=agent.email,
         agent_phone=format_phone(agent.phone) if agent.phone else None, address=lf.address, list_price=lf.list_price,
         dom=lf.dom, anchor=lf.anchor if kind == "offer" else None, best=lf.best if kind == "offer" else None,
-        list_to_mao_75=None, subject=subject, email_body=body, sms_text=sms,
-        mailto=(f"mailto:{agent.email}?subject={quote(subject)}&body={quote(body)}" if agent.email else None),
+        list_to_mao_75=None, subject=email.subject, email_body=email.text, sms_text=sms, mailto=email.mailto(agent.email),
         reasons=lf.reasons, warnings=list(gate.warnings) if gate else [], sale_date=lf.sale_date,
-        days_to_sale=lf.days_to_sale, upset=lf.upset, track=lf.track)
+        days_to_sale=lf.days_to_sale, upset=lf.upset, track=lf.track, phone_script=phone_script)
     if gate is not None and not gate.allowed:
         packet.warnings.extend(gate.reasons)
     if not op["postal"]:
-        packet.warnings.append("Set operator.mailing_address (CAN-SPAM) before e-mailing.")
+        packet.warnings.append("Set your mailing address in My Setup (CAN-SPAM) before e-mailing.")
     if generate_loi and kind == "offer":
         try:
             g = generate(session, lead, "loi", price=lf.anchor, out_root=out_root)
@@ -412,19 +469,19 @@ def portfolio_script(p: Portfolio) -> dict[str, Any]:
     op = _op()
     who = speaking_name(p.owner) if p.owner else ""
     return {
-        "opening": (f"Hi{(' ' + who) if who else ''}, this is {op['name']} with {op['company']}, a local real estate "
-                    f"investor — not an agent. I noticed you own {_address_list(p)}. I buy rentals and older houses "
+        "opening": (f"Hi{(' ' + who) if who else ''}, this is {op['name']} with {op['company']}. I'm a local real "
+                    f"estate investor, not an agent. I noticed you own {_address_list(p)}. I buy rentals and older houses "
                     "as-is, and I'm interested in one or more of yours."),
         "questions": [
-            "Are any of them a headache right now — vacancy, a tough tenant, repairs, taxes?",
+            "Are any of them a headache right now, like a vacancy, a tough tenant, repairs or taxes?",
             "Would you consider selling one, several, or the whole group if the price and timing were right?",
             "Are they rented? What are the rents, and are there leases? (We buy with tenants in place.)",
-            "Who else is on title — a partner, an LLC member, family?",
+            "Who else is on title: a partner, an LLC member, family?",
             "What would you need to walk away with on the one you'd sell first?",
         ],
         "value": [
             "One closing or several, on your schedule; no repairs, no cleanouts, no commissions.",
-            "Tenants can stay — we take over the leases and deposits at closing.",
+            "Tenants can stay; we take over the leases and deposits at closing.",
             "Your attorney reviews everything; there's a 3-business-day attorney review on the contract.",
         ],
         "disclosure": "We're investors acting as principals, not licensed agents, and may assign the contract to "
@@ -447,15 +504,15 @@ def write_portfolio_batch(session: Session, top: int = 20, out_dir: Path | None 
             continue
         recipient, lines, notes = dm.mailing_block(lead)
         paragraphs = [
-            f"I'm writing because public records show you own {_address_list(p, limit=6)}.",
-            "I'm a local real estate investor. I buy rentals and older houses as-is — tenants in place, no repairs, no "
-            "cleanout, no commissions — and I'd be glad to make an offer on one of them, several, or all of them, on "
-            "whatever timeline works for you.",
+            f"Public records show you own {_address_list(p, limit=6)}.",
+            "I'm a local real estate investor. I buy rentals and older houses as-is, with tenants in place, no repairs, "
+            "no cleanout and no commissions, and I'd be glad to make an offer on one of them, several, or all of them, "
+            "on whatever timeline works for you.",
             f"If selling any of them is on your mind, call or text me at {op['phone'] or 'the number below'}.",
             f"So you know who we are: {op['company']} is a real estate investment company. We are not licensed real "
             "estate agents and we don't represent you. If we agree on a price, we may buy the property ourselves or "
-            "assign our contract to another investor, and you should have your own attorney review any agreement — "
-            "there is a 3-business-day attorney review period before anything is binding.",
+            "assign our contract to another investor, and you should have your own attorney review any agreement. "
+            "There is a 3-business-day attorney review period before anything is binding.",
             "If you'd rather not hear from us, call or text STOP, or write to us at the address above, and we will "
             "remove your address right away.",
         ]

@@ -102,17 +102,7 @@ class NJGISClient:
 
     def resolve_municipality(self, county: str, name: str) -> tuple[str, str] | None:
         """Match a free-text town ('BLOOMFIELD', 'Township of Edison') to (MUN_NAME, PCL_MUN)."""
-        munis = self.municipalities(county)
-        target = muni_base(name)
-        if not target:
-            return None
-        for mun_name, code in munis.items():
-            if muni_base(mun_name) == target:
-                return mun_name, code
-        for mun_name, code in munis.items():  # e.g. 'WEST ORANGE' vs 'WEST ORANGE TWP'
-            if muni_base(mun_name).startswith(target) or target.startswith(muni_base(mun_name)):
-                return mun_name, code
-        return None
+        return match_municipality(self.municipalities(county), name)
 
     def find_parcel(self, mun_code: str, block: str, lot: str, qual: str | None = None) -> dict | None:
         b = _sql(_strip_zeros(block))
@@ -237,6 +227,46 @@ def estimate_sqft(desc: str | None, dwellings: int | None, default_per_unit: int
     else:
         per_unit = {1.0: 1150, 1.5: 1450, 2.0: 1700, 2.5: 2000, 3.0: 2300}.get(stories, default_per_unit)
     return int(per_unit * units)
+
+
+MUNI_TYPES = {"TOWNSHIP": "TWP", "TWP": "TWP", "TW": "TWP", "BOROUGH": "BORO", "BORO": "BORO", "CITY": "CITY",
+              "TOWN": "TOWN", "VILLAGE": "VILLAGE", "VLG": "VILLAGE"}
+
+
+def _canonical(name: str | None) -> str:
+    """'Township of Freehold' / 'FREEHOLD TOWNSHIP' -> 'FREEHOLD TWP' (type words normalized, kept)."""
+    s = clean(name).upper().replace(".", "")
+    m = re.match(r"^(TOWNSHIP|BOROUGH|CITY|TOWN|VILLAGE) OF\s+(.+)$", s)
+    if m:
+        s = f"{m.group(2)} {m.group(1)}"
+    words = s.split()
+    return " ".join(MUNI_TYPES.get(w, w) if i == len(words) - 1 or w in ("TOWNSHIP", "BOROUGH") else w
+                    for i, w in enumerate(words))
+
+
+def match_municipality(munis: dict[str, str], name: str) -> tuple[str, str] | None:
+    """Town text -> (MUN_NAME, code). The municipal type decides between same-name towns (Freehold Borough vs
+    Freehold Township, Neptune City vs Neptune Township); a bare ambiguous name matches nothing."""
+    full, target = _canonical(name), muni_base(name)
+    if not target:
+        return None
+    for mun_name, code in munis.items():                      # exact, type included
+        if _canonical(mun_name) == full:
+            return mun_name, code
+    based = [(m, c) for m, c in munis.items() if _canonical(muni_base(m)) == full]
+    if len(based) == 1:                                       # 'NEPTUNE CITY' = base of 'NEPTUNE CITY BORO'
+        return based[0]
+    same = [(m, c) for m, c in munis.items() if muni_base(m) == target]
+    if len(same) == 1:
+        return same[0]
+    if len(same) > 1:
+        kind = full.split()[-1] if full.split()[-1] in MUNI_TYPES.values() else None
+        typed = [(m, c) for m, c in same if kind and _canonical(m).split()[-1] == kind]
+        return typed[0] if len(typed) == 1 else None
+    for mun_name, code in munis.items():  # e.g. 'WEST ORANGE' vs 'WEST ORANGE TWP'
+        if muni_base(mun_name).startswith(target) or target.startswith(muni_base(mun_name)):
+            return mun_name, code
+    return None
 
 
 def feature_to_property(feature: dict[str, Any]) -> dict[str, Any]:

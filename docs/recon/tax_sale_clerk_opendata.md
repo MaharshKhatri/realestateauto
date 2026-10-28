@@ -235,8 +235,8 @@ POST same URL with:
 - **Sample rows:**
   ```
   LIS PENDENS FORECLOSURE | AUGUSTINE ESTATES LLC | WILMINGTON SAVINGS FUND SOCIETY, FSB (TRUSTEE) | 2026063996 | 9/28/2026 | NEWARK | N/A
-  LIS PENDENS FORECLOSURE | BEYER ROBERT A. (ESTATE OF) | FINANCE OF AMERICA REVERSE LLC | 2026067317 | 10/14/2026 | NUTLEY | N/A
-  LIS PENDENS FORECLOSURE AND RECOVERY | PEREZ BIANCA | WELLS FARGO BANK, N.A. | 2026063750 | 9/28/2026 | NEWARK | N/A
+  LIS PENDENS FORECLOSURE | [individual] (ESTATE OF) | FINANCE OF AMERICA REVERSE LLC | 2026067317 | 10/14/2026 | NUTLEY | N/A
+  LIS PENDENS FORECLOSURE AND RECOVERY | [individual] | WELLS FARGO BANK, N.A. | 2026063750 | 9/28/2026 | NEWARK | N/A
   ```
 - **Fields:** Type, Direct party, Indirect party, Instrument #, Recorded date, **Town**, Block, Lot (N/A on lis pendens), Book, Page.
 - **Terms (`/ProdPRESS/TermsOfUse.aspx`):** traffic is monitored; no explicit scraping ban was seen. No robots.txt (404). Keep the rate low: one search per doc type per day.
@@ -244,7 +244,7 @@ POST same URL with:
 ### 2.3 Passaic County — **MANUAL** (works, but robots.txt disallows all)
 - `https://records.passaiccountynj.org/press/clerk/ClerkHome.aspx?op=basic`. Same PRESS pattern, with field prefix `_ctl0:PageContent:`. The search button's onclick sets hidden field `hidDiv=NewSearch`. Doc types include **9 FORECLOSURE LIS PENDENS, 8 LIS PENDENS, 21 DISCHARGE OF LISPENS, 2TAX TAX SALE CERTIFICATE, 31 NOTICE OF SALE**.
 - **Tested once (30 days):**
-  - Foreclosure LP: page 1 of 2 = 100 party rows / **28 instruments**. Clifton 35, Paterson 31, Ringwood 6, Wayne 6 (party rows). Sample: `FORECLOSURE LIS PENDENS | CORTEZ JOSEPH | MIDFIRST BANK | 2026033641 | 9/28/2026 | CLIFTON CITY`.
+  - Foreclosure LP: page 1 of 2 = 100 party rows / **28 instruments**. Clifton 35, Paterson 31, Ringwood 6, Wayne 6 (party rows). Sample: `FORECLOSURE LIS PENDENS | [individual] | MIDFIRST BANK | 2026033641 | 9/28/2026 | CLIFTON CITY`.
   - Plain LP: 2 instruments.
   - 2TAX (Tax Sale Certificate) from 01/01/2025 to 10/26/2026 returned **0**, so the type is unused or indexed differently.
 - `https://records.passaiccountynj.org/robots.txt` = `User-agent: * / Disallow: /`. **Do not automate.** Run it by hand weekly, or write to the County Clerk for permission or a bulk extract. `passaiccountynj.org` itself returns Akamai 403 to our egress.

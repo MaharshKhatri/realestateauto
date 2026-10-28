@@ -20,7 +20,7 @@ import statistics
 from collections import Counter, defaultdict
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -199,6 +199,7 @@ class PipelineSelfImprovementAgent(BaseAgent):
                      f"4x+ {stacks.get(4, 0)}")
         sections["Contact readiness & CRM"] = lines
         sections["Guardrails, fast track & money"] = self._phase4(s, findings)
+        sections["Clerk filings, OPRA & outreach copy"] = self._phase5(s, findings)
         if ready_now < 50:
             findings.append(f"Only {ready_now} deals are ready to call. Underwrite more stale listings "
                             "(swarm run underwriter --opt scope=stale_listing) and refresh listing agents.")
@@ -290,6 +291,38 @@ class PipelineSelfImprovementAgent(BaseAgent):
         for n in notes:
             ctx.note(n)
         write_report(sections, findings, actions)
+
+    def _phase5(self, s: Session, findings: list[str]) -> list[str]:
+        """Lis pendens match rate, OPRA requests waiting past their due date, outreach copy that fails the linter."""
+        from db.models import ClerkFiling, OpraRequest
+        from engine import agent_outreach as ao
+        from engine import human_copy as hc
+        from engine.opra_generator import overdue
+        filings = s.scalars(select(ClerkFiling).where(ClerkFiling.is_discharge.is_(False))).all()
+        by_county: dict[str, list[int]] = {}
+        for f in filings:
+            by_county.setdefault(f.county, [0, 0])[0] += 1
+            by_county[f.county][1] += 1 if f.property_id else 0
+        late = overdue(s)
+        sent = s.scalar(select(func.count(OpraRequest.id))) or 0
+        packets = [ao.build_packet(lead, generate_loi=False, session=s) for lead in ao.candidates(s, 25)]
+        bad = [p for p in packets if hc.lint(p.email_body) or hc.lint(p.sms_text, sms=True)]
+        waiting = sum(n - m for n, m in by_county.values())
+        if waiting:
+            findings.append(f"{waiting} lis pendens filings aren't tied to a parcel yet — attach addresses on the "
+                            "dashboard's Records page, or import owner lists to raise the name-match rate.")
+        if late:
+            findings.append(f"{len(late)} OPRA request(s) are past their 14-business-day due date — follow up with "
+                            "the custodian (a non-answer counts as a denial).")
+        if bad:
+            findings.append(f"{len(bad)} of the top {len(packets)} agent packets fail the plain-copy linter — "
+                            "check engine/human_copy.py against new listing data.")
+        return [
+            "- Lis pendens filings (open): " + (", ".join(f"{c} {m}/{n} matched" for c, (n, m) in sorted(by_county.items()))
+                                               or "none yet") + " — python -m swarm.orchestrator run lis_pendens",
+            f"- OPRA tax-list requests: {sent} logged, {len(late)} overdue",
+            f"- Outreach copy: {len(packets) - len(bad)}/{len(packets)} top agent packets pass the plain-copy linter",
+        ]
 
     def _phase4(self, s: Session, findings: list[str]) -> list[str]:
         """Outlier guard coverage, listed-foreclosure follow-through, closing deadlines and the money picture."""

@@ -880,4 +880,220 @@ def today_view(session: Session = Depends(db)) -> dict[str, Any]:
     return today(session)
 
 
+# -- Phase 5: command center (health, KPIs, setup, swarm refresh, guided autopilot) ---------------------------
+@app.get("/api/health")
+def health() -> dict[str, Any]:
+    """The desktop launcher polls this before opening the browser."""
+    return {"status": "ok", "app": "nj-wholesale-cockpit", "time": datetime.now().isoformat(timespec="seconds")}
+
+
+@app.get("/api/kpis")
+def kpi_pills(session: Session = Depends(db)) -> dict[str, Any]:
+    from engine.autopilot import kpis
+    return kpis(session)
+
+
+@app.get("/api/settings")
+def get_settings() -> dict[str, Any]:
+    from engine import operator_setup
+    return operator_setup.status()
+
+
+@app.post("/api/settings")
+def post_settings(body: dict[str, Any]) -> dict[str, Any]:
+    from engine import operator_setup
+    try:
+        return operator_setup.save(body)
+    except operator_setup.SetupError as exc:
+        raise HTTPException(400, {"errors": exc.errors}) from exc
+
+
+class SwarmIn(BaseModel):
+    mode: str = "quick"
+
+
+@app.post("/api/swarm/trigger")
+def swarm_trigger(body: SwarmIn) -> dict[str, Any]:
+    from swarm import runner
+    try:
+        return runner.trigger(body.mode)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.get("/api/swarm/status")
+def swarm_status(session: Session = Depends(db)) -> dict[str, Any]:
+    from db.models import AgentRun
+    from swarm import runner
+    last = session.scalars(select(AgentRun).order_by(AgentRun.started_at.desc()).limit(8)).all()
+    return {**runner.status(), "recent": [{"agent": r.agent_name, "status": r.status, "started_at": iso(r.started_at),
+                                           "records": r.records_processed, "new_leads": r.new_leads_found,
+                                           "errors": r.error_count} for r in last]}
+
+
+@app.get("/api/autopilot")
+def autopilot_deck(session: Session = Depends(db)) -> dict[str, Any]:
+    from engine.autopilot import deck
+    return deck(session)
+
+
+class AutoSendIn(BaseModel):
+    channel: str
+    subject: str | None = None
+    body: str | None = None
+
+
+@app.post("/api/autopilot/{lead_id}/send")
+def autopilot_send(lead_id: int, body: AutoSendIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine.autopilot import AutopilotError, send
+    try:
+        return send(session, lead_id, body.channel, subject=body.subject, body=body.body)
+    except AutopilotError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+class AutoOutcomeIn(BaseModel):
+    outcome: str
+    notes: str = ""
+
+
+@app.post("/api/autopilot/{lead_id}/outcome")
+def autopilot_outcome(lead_id: int, body: AutoOutcomeIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine.autopilot import AutopilotError, outcome
+    try:
+        return outcome(session, lead_id, body.outcome, notes=body.notes)
+    except AutopilotError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+# -- Phase 5: public records (OPRA tax lists, clerk filings, uploads) ----------------------------------------
+def records_gis() -> Any:
+    """NJGIN client for parcel lookups from the records page (tests replace it)."""
+    from agents.scrapers.njgis_client import NJGISClient
+    return NJGISClient()
+
+
+@app.get("/api/opra")
+def opra_list(n: int = 20, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import operator_setup
+    from engine import opra_generator as og
+    counties = settings().markets.get("counties", [])
+    return {"requests": [d.to_dict() for d in og.drafts(session, n, extra_counties=[c for c in counties
+                                                                                    if c in ("Mercer", "Monmouth")])],
+            "rules": og.rules(), "operator_ready": operator_setup.status()["live"]}
+
+
+class OpraSentIn(BaseModel):
+    county: str
+    town: str
+    channel: str = "email"
+
+
+@app.post("/api/opra/sent")
+def opra_sent(body: OpraSentIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import opra_generator as og
+    if body.channel not in ("email", "portal", "mail", "phone"):
+        raise HTTPException(400, "channel must be email, portal, mail or phone")
+    row = og.mark_sent(session, body.county, body.town, body.channel)
+    return {"county": row.county, "town": row.town, "status": row.status, "due_date": iso(row.due_date)}
+
+
+@app.post("/api/imports/tax-list")
+async def import_tax_list(request: Request, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import opra_generator as og
+    from engine.tax_list_import import import_tax_list as run_import
+    form = await request.form()
+    upload, county, town = form.get("file"), str(form.get("county") or ""), str(form.get("town") or "")
+    if upload is None or not hasattr(upload, "read") or not county or not town:
+        raise HTTPException(400, "send the spreadsheet with its county and town")
+    data = await upload.read()
+    try:
+        r = run_import(session, data, upload.filename or "list.csv", county=county, town=town, gis=records_gis(),
+                       list_year=str(form.get("year") or "") or None)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    og.mark_received(session, county, town, notes=f"imported {r.parcels} parcels")
+    return r.to_dict()
+
+
+@app.post("/api/imports/lis-pendens")
+async def import_lis_pendens(request: Request) -> dict[str, Any]:
+    import re as _re
+
+    from agents.scrapers.lis_pendens_agent import IMPORT_DIR, LisPendensAgent
+    form = await request.form()
+    upload, county = form.get("file"), str(form.get("county") or "").strip().title()
+    if upload is None or not hasattr(upload, "read") or not county:
+        raise HTTPException(400, "send the saved results page or CSV with its county")
+    name = _re.sub(r"[^A-Za-z0-9._-]+", "_", upload.filename or "export.csv")
+    if not name.lower().endswith((".csv", ".tsv", ".txt", ".html", ".htm")):
+        raise HTTPException(400, "save the clerk's results page as .html, or export .csv")
+    folder = IMPORT_DIR / county.lower()
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{date.today():%Y-%m-%d}_{name}").write_bytes(await upload.read())
+    from starlette.concurrency import run_in_threadpool
+    agent = LisPendensAgent(import_only=True, counties=[county], imports=IMPORT_DIR, offline=records_gis() is None)
+    run = await run_in_threadpool(agent.execute)
+    return {"status": run.status, "filings": run.records_processed, "new_leads": run.new_leads_found,
+            "metrics": {k: v for k, v in (run.metrics_json or {}).items() if isinstance(v, int)}}
+
+
+@app.get("/api/clerk-filings")
+def clerk_filings(days: int = 45, session: Session = Depends(db)) -> dict[str, Any]:
+    from datetime import timedelta
+
+    from db.models import ClerkFiling
+    since = date.today() - timedelta(days=days)
+    rows = session.scalars(select(ClerkFiling).where(ClerkFiling.is_discharge.is_(False),
+                                                     or_(ClerkFiling.recorded_date >= since,
+                                                         ClerkFiling.recorded_date.is_(None)))
+                           .order_by(ClerkFiling.recorded_date.desc())).all()
+    out = []
+    for r in rows:
+        lead = session.scalar(select(Lead).where(Lead.property_id == r.property_id)) if r.property_id else None
+        out.append({"id": r.id, "county": r.county, "town": r.town, "instrument": r.instrument,
+                    "doc_type": r.doc_type, "recorded": iso(r.recorded_date), "defendants": r.defendants[:3],
+                    "plaintiffs": r.plaintiffs[:2], "estate": r.estate, "tax_lien": r.tax_lien, "url": r.url,
+                    "match": r.match_method, "lead_id": lead.id if lead else None})
+    matched = [x for x in out if x["lead_id"]]
+    return {"matched": matched, "unmatched": [x for x in out if not x["lead_id"]][:150],
+            "counts": {"total": len(out), "matched": len(matched)}}
+
+
+class LocateIn(BaseModel):
+    address: str | None = None
+    town: str | None = None
+    block: str | None = None
+    lot: str | None = None
+    qual: str | None = None
+
+
+@app.post("/api/clerk-filings/{filing_id}/locate")
+def clerk_filing_locate(filing_id: int, body: LocateIn, session: Session = Depends(db)) -> dict[str, Any]:
+    """The operator read the address (or block/lot) off the public document: tie the filing to its parcel."""
+    from agents.scrapers import lis_pendens_agent as lp
+    from db.models import ClerkFiling
+    row = session.get(ClerkFiling, filing_id)
+    if row is None:
+        raise HTTPException(404, "filing not found")
+    if not (body.address or (body.block and body.lot)):
+        raise HTTPException(400, "give the street address or the block and lot")
+    for key in ("address", "town", "block", "lot", "qual"):
+        if getattr(body, key):
+            setattr(row, key, getattr(body, key).strip())
+    f = lp.Filing(county=row.county, source=row.source, instrument=row.instrument, doc_type=row.doc_type,
+                  recorded=row.recorded_date, defendants=list(row.defendants or []), plaintiffs=list(row.plaintiffs
+                                                                                                      or []),
+                  town=row.town, block=row.block, lot=row.lot, qual=row.qual, address=row.address)
+    prop, how = lp.resolve_property(session, f, lp.OwnerIndex(), records_gis())
+    if prop is None or how in ("unmatched", "ambiguous_name"):
+        raise HTTPException(409, "no parcel found for that address / block and lot in this town")
+    row.property_id, row.match_method = prop.id, f"operator_{how}"
+    lp.apply_filing(session, row, prop)
+    lead = session.scalar(select(Lead).where(Lead.property_id == prop.id))
+    return {"lead_id": lead.id if lead else None, "property_id": prop.id, "match": row.match_method}
+
+
 app.mount("/site", StaticFiles(directory=SITE), name="site")

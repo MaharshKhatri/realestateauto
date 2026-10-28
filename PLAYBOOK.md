@@ -14,39 +14,34 @@ a contract is signed and attorney review ends, you sell the contract to a cash b
 
 ## Part 1 — one-time setup (about an hour)
 
-### 1. Install and load the data
+### 1. Install once, then use the Desktop icon
 ```bash
 pip install -e ".[dev]"
 python manage.py init
-python -m swarm.orchestrator run-all      # scrape → enrich → stack → score → underwrite → guard → match (slow first time)
+python manage.py install-shortcut          # puts "Launch NJ Wholesale Dashboard" on your Desktop
 ```
-Then let it run every morning on its own: `python -m swarm.orchestrator daemon` (leave a terminal open), or run
-`run-all` yourself each morning.
+From now on you never need the terminal: **double-click the Desktop icon**. It starts the dashboard (if it isn't
+already running), waits until it answers, and opens http://127.0.0.1:8000. The same launchers are in the project
+folder: `Launch_Dashboard.command` (Mac), `launch_dashboard.sh` (Linux), `Launch_Dashboard.bat` (Windows). If it
+ever doesn't start, `logs/server.log` says why.
 
-### 2. Put your business details in `config/settings.local.yaml`
-This file is git-ignored, so it never leaves your laptop. Create it:
-```yaml
-operator:
-  name: "Your Name"
-  company_name: "Your Company LLC"         # the name on your LOIs, letters and e-mails
-  phone: "9735550000"                       # a business line (a free Google Voice number works)
-  email: "you@yourcompany.com"
-  mailing_address: "PO Box 123, Edison, NJ 08817"   # required: e-mail footers (CAN-SPAM) and letter return address
-contracts:
-  title_company: "Agency name, address"     # once you've picked one (Part 1, step 5)
-```
-Until `name`, `phone` and `mailing_address` are set, letters print as watermarked PROOFS and SMTP e-mail is off.
+First data load: click **🤖 Run Autopilot Data Refresh → Full refresh** (10–30 minutes the first time). After that,
+a Full refresh each morning (or leave `python -m swarm.orchestrator daemon` running) keeps it current.
 
-### 3. Optional: send e-mail from the cockpit
-Put a Gmail **app password** in `.env`. It needs 2-step verification on your Google account:
-```
-SMTP_USER=you@yourcompany.com
-SMTP_APP_PASSWORD=xxxx xxxx xxxx xxxx
-```
-The engine sends at most 25 personalized e-mails in any 24 hours. Without SMTP, use the "Open e-mail" and "Copy"
-buttons, send from your own inbox, then click **Mark sent**.
+### 2. ⚙️ My Setup & Auto-Email (2 minutes)
+Click **⚙️ My Setup & Auto-Email** in the top bar and fill in: your full name, company name, Google Voice number,
+e-mail, and mailing address (a PO box is fine). Everything you send signs with these, and the law needs all five
+(CAN-SPAM postal address on every e-mail, a callback number on every call). Saving writes
+`config/settings.local.yaml` and `.env` on this laptop only (both git-ignored). The bar then shows
+**✅ Setup Complete — Live Mode Active**, and letters stop printing as watermarked PROOFS.
 
-### 4. Do-Not-Call: register, download, load (before you call any homeowner)
+**Optional, sending from the dashboard:** turn on 2-step verification for your Google account, create an **app
+password** (Google Account → Security → App passwords), and paste it into the same box. The password stays in
+`.env` and is never shown again. The dashboard then sends each e-mail itself (one click, one personal e-mail, at
+most 25 a day) and attaches the 1-page written offer. Without it, the Send button opens your own e-mail app with
+the text filled in.
+
+### 3. Do-Not-Call: register, download, load (before you call any homeowner)
 1. Register as a telemarketer with the NJ Division of Consumer Affairs (N.J.S.A. 56:8-119 et seq.). It renews yearly.
 2. Create an account at **telemarketing.donotcall.gov**. Your first five area codes are free.
 3. `python manage.py dnc --status` lists the five area codes that cover most of your contacts. Download those.
@@ -55,7 +50,7 @@ buttons, send from your own inbox, then click **Mark sent**.
 Listing agents' advertised business numbers are B2B calls, but if any agent says stop, you stop:
 `python manage.py agent-blast --opt-out <contact id>`.
 
-### 5. Pick your attorney and title company now, not on deal day
+### 4. Pick your attorney and title company now, not on deal day
 - `python manage.py partners --county Essex` lists NJ title agencies and closing attorneys we checked on their own
   websites. It shows phone numbers and quotes where a firm mentions investors, assignments or double closings.
 - Call two of them. Ask: **"Do you insure an assignment of contract, and a same-day double close with separate
@@ -63,38 +58,60 @@ Listing agents' advertised business numbers are B2B calls, but if any agent says
 - Hire a NJ real estate attorney once to review the LOI, purchase agreement and assignment drafts in `deals/`
   (`python manage.py docs <id> --type all` makes a set).
 
+### 5. Ask your top towns for their tax-lien lists (free, OPRA)
+Click **🏛️ Request Free Town Tax-Lien Spreadsheets (OPRA)**. For each of your top 20 towns you get a ready request
+to the town clerk under the Open Public Records Act, the right channel (the clerk's e-mail, or the town's portal
+when it only takes portal requests) and the source page we checked.
+- Read the three certifications before you send. The request says you **will** use the records for a commercial
+  purpose, which is true for house buying and required by law (a false certification is a $1,000+ civil penalty).
+  Commercial requests can take up to 14 business days.
+- Send it from your own e-mail or paste it into the portal, then click **Mark sent**: the due date is tracked.
+- When the tax collector replies with a spreadsheet, upload it on the same page (**1-click import**). Every parcel
+  on the list gets a tax-delinquent signal that stacks onto the lead.
+- Never use OPRAmachine for these: it publishes the replies, owner names included.
+
+The same page lists **new foreclosure filings** from the county clerks (Union, Essex and Monmouth are read
+automatically; Passaic, Hudson, Bergen, Middlesex and Mercer you export in your browser and upload). Filings the
+engine can't tie to a house yet have a **clerk record** link: read the property address off the document, type it
+in, click **Attach**, and it becomes a lead.
+
 ### 6. Optional: your seller and buyer web pages
-`python manage.py server` → http://127.0.0.1:8000/site/seller and /site/buyers. To host them free, run
-`python manage.py site --build site_dist --endpoint <your Formspree form URL>` and upload `site_dist/` to GitHub
-Pages or Netlify (see `site/README.md`). Import what comes in with `python manage.py inbound --ingest <export>`.
+They run locally at http://127.0.0.1:8000/site/seller and /site/buyers. To host them free on GitHub Pages: create a
+free Formspree form, then in the repository's Settings → Secrets and variables → Actions → Variables add
+`SITE_COMPANY`, `SITE_OPERATOR`, `SITE_PHONE`, `SITE_EMAIL`, `SITE_POSTAL` and `SITE_FORM_ENDPOINT`, and set Pages →
+Source to "GitHub Actions". Every push then rebuilds and publishes the site (`.github/workflows/deploy_site.yml`),
+but only if `python manage.py build-site --check` passes: the pages must carry your details, every disclosure, and
+no contact details but yours. Import what comes in with `python manage.py inbound --ingest <export>`.
 
 ---
 
 ## Part 2 — every day: two focused hours
 
-```bash
-python manage.py today       # the checklist with today's real records
-python manage.py server      # cockpit → http://127.0.0.1:8000 (the Today page is the same checklist, clickable)
-```
+Double-click the Desktop icon. The home page is **🎯 Step-by-Step Mode**:
 
-**First:** clear anything under *Deadlines & follow-ups*. Closing deadlines come first, then 48-hour agent
-follow-ups.
+- **Today's Goal: 0 / 15 Deals Contacted**: the bar fills as you e-mail, text or call.
+- **One deal card at a time** (Action 1 of 20), in money order: urgent listed foreclosures first, then follow-ups
+  that are due, then stale MLS fixers within reach of the ask. Each card says what the property is, **why the
+  numbers work** (ARV, repairs, our walk-away, the fee), and the **exact action to take now**.
+- The e-mail is already written: a short plain note on top, the offer terms and required disclosures under the
+  `--- Offer Summary ---` line. Edit anything, then **✉️ Send Email & Log**. It logs the send, schedules the
+  48-hour follow-up call and moves to the next deal.
+- **📋 Copy Short Text Message** copies the text for Google Voice (you always send texts yourself).
+- Calling instead? Use the 3-sentence script, then log what happened: **Interested - Send Offer** (the written
+  offer is generated for you), **Left Voicemail**, **Not Interested**, or **Sold / Dead - Skip**.
 
-| Block | Time | What you do |
-|---|---|---|
-| 1 | 30 min | Call the 5 listed foreclosures. Fast Track tab → **Script** → call → **Packet + LOI** → send → **Mark sent** |
-| 2 | 45 min | Work through the 15 ready-to-call fixers: call or e-mail the agent with the ask vs. MAO gap in front of you (Agent LOI Blast tab) |
-| 3 | 25 min | Skip-trace 10 estates / vacant sheriff-sale houses: click the people-search links, paste results into the lead's Skip-trace box |
-| 4 | 20 min | Call 5 cash buyers who bought in Elizabeth / Newark / Jersey City. Get their buy box and proof of funds *before* you have a deal |
+Below the player, the four queues (Urgent Listed Foreclosures, Ready-to-Call MLS Fixers, Cash Buyers to Call,
+Follow-Ups Due Today) and links to the Virtual Inspector and Closing Coordinator. Once a week, work the cash-buyer
+column: call 5 buyers who bought in your towns and get their buy box and proof of funds *before* you have a deal.
 
-Log every touch: in the cockpit (lead → **Log call**) or `python manage.py call <id> --outcome NO_ANSWER`.
-Logging is what schedules your follow-ups, re-ranks leads and teaches the engine.
+The old checklist is still there (**Today** tab, or `python manage.py today` in a terminal): deadlines first,
+then the same four blocks with skip-trace links for estates and vacant sheriff-sale houses.
 
 ---
 
 ## Part 3 — your first 20 listing-agent calls
 
-Start with `python manage.py today`, Block 1, then Block 2. For each one, open the script:
+Start with the Step-by-Step player (or the Today tab, Block 1, then Block 2). For each one, open the script:
 `python manage.py fast-track --script <id>` for listed foreclosures, or the cockpit lead page for the others.
 
 **Opening (first 30 seconds — NJ rules):** your name, your company, why you're calling. *"Hi, this is ___ with

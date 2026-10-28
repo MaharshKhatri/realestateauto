@@ -18,6 +18,9 @@ DATA_DIR = ROOT / "data"
 LOG_DIR = ROOT / "logs"
 CACHE_DIR = DATA_DIR / "cache"
 DEFAULT_DB_PATH = ROOT / "wholesaling.db"
+# Personal overrides and secrets. The environment variables point a scratch copy (tests, demos) elsewhere.
+LOCAL_SETTINGS = Path(os.environ.get("WHOLESALING_LOCAL_SETTINGS") or CONFIG_DIR / "settings.local.yaml")
+ENV_FILE = Path(os.environ.get("WHOLESALING_ENV_FILE") or ROOT / ".env")
 
 
 class Section(dict):
@@ -48,7 +51,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
-def load_dotenv(path: Path = ROOT / ".env") -> None:
+def load_dotenv(path: Path = ENV_FILE) -> None:
     """Minimal .env loader. Variables already set in the environment win."""
     if not path.exists():
         return
@@ -63,8 +66,8 @@ def load_dotenv(path: Path = ROOT / ".env") -> None:
 def load_settings(config_dir: Path = CONFIG_DIR) -> Section:
     load_dotenv()
     data: dict = {}
-    for name in ("settings.yaml", "settings.local.yaml"):
-        path = config_dir / name
+    local = LOCAL_SETTINGS if config_dir == CONFIG_DIR else config_dir / "settings.local.yaml"
+    for path in (config_dir / "settings.yaml", local):
         if path.exists():
             data = _deep_merge(data, yaml.safe_load(path.read_text()) or {})
     return Section.wrap(data)

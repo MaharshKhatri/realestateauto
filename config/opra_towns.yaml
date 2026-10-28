@@ -1,0 +1,205 @@
+# OPRA (N.J.S.A. 47:1A-1 et seq.) channels for the municipal clerks of our top towns, read on each town's own pages on
+# 2026-10-28 (source URL per entry). engine/opra_generator.py drafts the request; the operator sends it.
+#
+# channel: email   - e-mail the custodian (a letter or e-mail with every item on the adopted form is a valid
+#                    request, N.J.S.A. 47:1A-5(f))
+#          portal  - the town takes requests only (or preferably) through its portal: paste the generated text
+#          verify  - no verified e-mail / portal: call the clerk, then send the generated letter
+# Never use OPRAmachine for these: it publishes requests and responses (owner names / addresses) publicly.
+# Re-check entries every January; clerks change addresses and vendors.
+
+rules:
+  statute: "https://pub.njleg.state.nj.us/Bills/2024/PL24/16_.HTM"     # P.L.2024, c.16, in force Sept 3, 2024
+  grc_form: "https://www.nj.gov/grc/custodians/request/index.html"
+  grc_non_form_letter: "https://nj.gov/grc/public/faqs/OPRA%20Request%20Valid%20Non-Form%20Request%20(Oct%202024).pdf"
+  commercial_business_days: 14       # 47:1A-5(i)(1): commercial requests (notice of the extension within 7)
+  standard_business_days: 7
+  penalty: "Intentionally failing to certify a commercial purpose: $1,000 / $2,500 / $5,000 civil penalty (47:1A-11(b))."
+  precedents:
+    - {case: "Hall v. City of Camden, GRC 2013-305", url: "https://www.nj.gov/grc/decisions/pdf/2013-305.pdf",
+       holding: "the tax collector's Tax Search Export file must be disclosed"}
+    - {case: "McBride v. City of Camden, GRC 2014-54", url: "https://www.nj.gov/grc/decisions/pdf/2014-54.pdf",
+       holding: "a request for the TSE file is sufficiently specific; the custodian shall e-mail a copy"}
+    - {case: "Wolosky v. Borough of Washington, GRC 2016-19", url: "https://www.nj.gov/grc/decisions/pdf/2016-19.pdf",
+       holding: "the final tax sale list, bidder sheets and certificates were disclosed"}
+    - {case: "O'Reilly v. Lawnside, GRC 2021-173", url: "https://www.nj.gov/grc/decisions/pdf/2021-173.pdf",
+       holding: "a special service charge can be large: ask for the fee before any work over $5"}
+
+towns:
+  - county: Essex
+    town: NEWARK
+    channel: verify
+    clerk: "Office of the City Clerk, OPRA Unit, City Hall, 920 Broad St, Newark, NJ 07102"
+    notes: "E-mail requests are handled in practice (GRC 2021-262) but the address isn't published where we could read it; call the Clerk's OPRA Unit for it."
+    source: "https://www.nj.gov/grc/decisions/pdf/2022-632.pdf"
+  - county: Hudson
+    town: JERSEY CITY
+    channel: portal
+    portal: "https://jerseycity.mycusthelp.com/WEBAPP/_rs/SupportHome.aspx"
+    clerk: "City Clerk, 280 Grove St, Jersey City, NJ 07302 · (201) 547-5150"
+    notes: "Does not accept OPRA requests by fax or e-mail: use the GovQA portal."
+    source: "https://jerseycity.hosted.civiclive.com/cityhall/Clerk"
+  - county: Passaic
+    town: PATERSON
+    channel: email
+    email: "oprarequest@patersonnj.gov"
+    portal: "https://patersonnj.seamlessdocs.com/f/opra"
+    clerk: "City Clerk, City Hall 3rd Fl, 155 Market St, Paterson, NJ 07505 · (973) 321-1213"
+    source: "https://njoag.gov/?p=108368"
+  - county: Camden
+    town: CAMDEN
+    channel: email
+    email: "OPRARequest@camdennj.gov"
+    form: "https://www.camdennj.gov/wp-content/uploads/2026/03/Model-Opra-form-2024.pdf"
+    clerk: "Records unit, 520 Market St, Rm 105, Camden, NJ 08101 · 856-757-7049"
+    notes: "Camden already posts its municipal-held tax lien list (Edmunds Condensed Foreclosure Listing) under Frequently Requested Documents on the OPRA page; ask for the tax sale list and the Tax Search Export."
+    source: "https://www.camdennj.gov/open-public-records-act-opra/"
+  - county: Essex
+    town: EAST ORANGE
+    channel: email
+    email: "opra.request@eastorange-nj.gov"
+    form: "https://www.eastorange-nj.gov/DocumentCenter/View/3703/OPRA-Request-FormNEW-with-SEAL2"
+    clerk: "City Clerk, 44 City Hall Plaza, East Orange, NJ 07018 · 973-266-5110"
+    source: "https://www.eastorange-nj.gov/151/City-Clerk"
+  - county: Essex
+    town: IRVINGTON
+    channel: verify
+    clerk: "Municipal Clerk, 1 Civic Square, Irvington, NJ 07111 · 973-399-6664"
+    notes: "The township site could not be read and the old irvingtonnj.org e-mail domain is parked: call the clerk for the current OPRA address."
+    source: "https://irvington.net/twp-municipal-clerk"
+  - county: Middlesex
+    town: EDISON
+    channel: email
+    email: "OPRA@EDISONNJ.GOV"
+    form: "https://www.edisonnj.org/How%20Do%20I/2024%20OPRA%20Municipal%20Writable.pdf"
+    clerk: "Township Clerk · (732) 248-7350"
+    notes: "Written requests by e-mail are accepted if they include every item the form requires. The tax collector also e-mails the tax sale list on request (TaxCollector@edisonnj.gov)."
+    source: "https://www.edisonnj.org/departments/public_safety/opra.php"
+  - county: Union
+    town: ELIZABETH
+    channel: email
+    email: "coe-oprarequest@elizabethnj.org"
+    form: "https://www.elizabethnj.org/DocumentCenter/View/7591/OPRA-Request-Fillable-Form"
+    clerk: "City Clerk, Rm 105, 50 Winfield Scott Plaza, Elizabeth, NJ 07201 · (908) 820-4130"
+    source: "https://www.elizabethnj.org/742/OPRA-Request"
+  - county: Camden
+    town: PENNSAUKEN
+    channel: email
+    email: "OPRA@pennsauken.gov"
+    form: "https://pennsauken.gov/DocumentCenter/View/764/OPRA-Request-Form"
+    clerk: "Township Clerk, 2400 Merchantville Ave, Pennsauken, NJ 08110 · 856-665-1000"
+    source: "https://pennsauken.gov/m/directory/department?did=20"
+  - county: Union
+    town: PLAINFIELD
+    channel: portal
+    portal: "http://plainfieldnj.municipaltechnologies.com/opra.aspx"
+    clerk: "City Clerk, 515 Watchung Ave, Plainfield, NJ 07060 · (908) 753-3222"
+    notes: "The portal was down when checked (2026-10-28); if it still is, call the clerk's office for the OPRA e-mail."
+    source: "https://plainfieldnj.gov/government/plainfield_city_clerk.php"
+  - county: Hudson
+    town: BAYONNE
+    channel: email
+    email: "oprarequest@baynj.org"
+    form: "https://www.bayonnenj.org/_Content/pdf/forms/opra.pdf"
+    clerk: "City Clerk, 630 Avenue C, Bayonne, NJ 07002 · (201) 858-6028"
+    notes: "Bayonne also posts its tax sale advertisement (with the list) on its website."
+    source: "https://www.bayonnenj.org/_Content/pdf/forms/opra.pdf"
+  - county: Middlesex
+    town: WOODBRIDGE
+    channel: portal
+    portal: "https://www.govpilot.com/forms/main/e9db3133-6d9/Open-Records-Request/Township-of-Woodbridge/NJ/7221/1"
+    source: "https://www.govpilot.com/forms/main/e9db3133-6d9/Open-Records-Request/Township-of-Woodbridge/NJ/7221/1"
+  - county: Union
+    town: LINDEN
+    channel: portal
+    portal: "https://linden-nj.gov/documents/opra-request-form/"
+    clerk: "City Clerk, City Hall, 301 N Wood Ave, Linden, NJ 07036"
+    source: "https://linden-nj.gov/documents/opra-request-form/"
+  - county: Bergen
+    town: HACKENSACK
+    channel: email
+    email: "OPRA@hackensack.org"
+    form: "https://www.hackensack.org/wp-content/uploads/2025/01/Hackensack-2026-OPRA-Form-Fillable.pdf"
+    clerk: "City Clerk, 65 Central Ave, Hackensack, NJ 07601 · (201) 646-3940"
+    source: "https://www.hackensack.org/city-clerk/"
+  - county: Middlesex
+    town: PERTH AMBOY
+    channel: email
+    email: "victoria@perthamboynj.org"
+    form: "https://www.perthamboynj.org/UserFiles/Servers/Server_11204924/File/Departments/City%20Clerk/2024/09-September/Model%20OPRA%20Request%20Form%20Prod%20(1).pdf"
+    clerk: "City Clerk, 260 High St, Perth Amboy, NJ 08861 · (732) 826-0290"
+    notes: "The city says the GRC model form must be used: fill the form (attach it) with the same details as the e-mail."
+    form_required: true
+    source: "https://www.perthamboynj.org/government/departments/city_clerk/o_p_r_a_request_form_now_available"
+  - county: Passaic
+    town: PASSAIC
+    channel: email
+    email: "opra@cityofpassaicnj.gov"
+    form: "https://cityofpassaic.com/DocumentCenter/View/6291/OPRA-Application-Updated-2024"
+    clerk: "City Clerk, 330 Passaic St, Passaic, NJ 07055 · (973) 365-5584"
+    source: "https://cityofpassaic.com/DocumentCenter/View/6291/OPRA-Application-Updated-2024"
+  - county: Middlesex
+    town: NEW BRUNSWICK
+    channel: portal
+    portal: "https://cityofnewbrunswicknj.nextrequest.com/"
+    clerk: "City Clerk, City Hall, 78 Bayard St, New Brunswick, NJ 08901"
+    source: "https://www.cityofnewbrunswick.org/residents/departments/clerk_s_office/applications_forms.php"
+  - county: Bergen
+    town: GARFIELD
+    channel: portal
+    portal: "https://main.govpilot.com/web/public/31598005-65d_Open-Records-Request-garfield?uid=6890&ust=NJ&pu=1&id=1"
+    clerk: "City Clerk, 111 Outwater Lane, Garfield, NJ 07026"
+    source: "https://www.garfieldnj.org/api/data/GetFormsData"
+  - county: Camden
+    town: GLOUCESTER
+    channel: email
+    email: "GTClerk@glotwp.com"
+    form: "https://glotwp19.wpenginepowered.com/wp-content/uploads/2024/09/Government-Records-Request-Form-OPRA-Updated2024.pdf"
+    clerk: "Municipal Clerk · 856-374-3534"
+    source: "https://glotwp.com/department/municipal-clerk/"
+  - county: Camden
+    town: LINDENWOLD
+    channel: email
+    email: "clerk@lindenwold.net"
+    form: "https://www.lindenwoldnj.gov/DocumentCenter/View/127/Request-for-Public-Records-PDF"
+    clerk: "Borough Clerk, 15 N White Horse Pike, Lindenwold, NJ 08021 · (856) 783-2121 x240"
+    source: "https://www.lindenwoldnj.gov/179/Borough-Clerk-Registrar"
+  # Mercer / Monmouth expansion towns
+  - county: Mercer
+    town: TRENTON
+    channel: portal
+    portal: "https://cityoftrentonnj.nextrequest.com/requests/new"
+    source: "https://www.trentonnj.org/312/Open-Public-Records-Act-Request"
+  - county: Mercer
+    town: HAMILTON
+    channel: portal
+    portal: "https://www.hamiltonnj.com/OPRA"
+    notes: "The township says its OPRA portal is used for all requests."
+    source: "https://www.hamiltonnj.com/OPRA"
+  - county: Mercer
+    town: EWING
+    channel: email
+    email: "kmacellaro@ewingnj.org"
+    form: "https://www.ewingnj.org/documents-list/department-documents/clerk/655-ewing-opra-request-form2025/file"
+    clerk: "Township Clerk, 2 Jake Garzio Dr, Ewing, NJ 08628 · (609) 538-7609"
+    source: "https://www.ewingnj.org/documents-list/department-documents/clerk/655-ewing-opra-request-form2025/file"
+  - county: Monmouth
+    town: ASBURY PARK
+    channel: portal
+    portal: "https://asburyparknj.justfoia.com/publicportal/home/newrequest"
+    source: "https://www.cityofasburypark.com/248/City-Clerk"
+  - county: Monmouth
+    town: LONG BRANCH
+    channel: portal
+    portal: "https://longbranch.nextrequest.com/"
+    source: "https://www.longbranch.org/187/City-Clerk"
+  - county: Monmouth
+    town: NEPTUNE
+    channel: verify
+    notes: "The township site couldn't be read; its OPRA page accepts written requests with the certifications. Call the clerk for the address."
+    source: "https://neptunetownship.org/node/4316"
+  - county: Monmouth
+    town: FREEHOLD
+    channel: verify
+    clerk: "Borough Clerk, 30 Mechanic St, Freehold, NJ 07728 · (732) 462-1259"
+    source: "https://freeholdboroughnj.gov/government/clerk"

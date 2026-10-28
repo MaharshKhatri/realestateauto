@@ -34,7 +34,7 @@ from db.models import CashBuyer, ContactType, Interaction, Occupancy, Property, 
 from db.repository import ensure_lead, upsert_contact, upsert_property, upsert_signal
 
 SOURCE = "inbound_web"
-COUNTIES = ("Middlesex", "Union", "Essex", "Hudson", "Passaic", "Bergen", "Camden")
+COUNTIES = ("Middlesex", "Union", "Essex", "Hudson", "Passaic", "Bergen", "Camden", "Mercer", "Monmouth")
 SITUATIONS = {
     "behind_on_payments": "behind on payments / foreclosure", "inherited": "inherited / estate",
     "tenant": "tired landlord / tenant issues", "repairs": "needs repairs", "vacant": "vacant",
@@ -173,29 +173,30 @@ def validate_seller(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def response_drafts(name: str, address: str, phone_ok: bool) -> tuple[str, str]:
-    op = settings().operator
-    first = (name.split() or ["there"])[0].title()
-    company, me = op.get("company_name") or "", op.get("name") or ""
-    email = "\n".join([
-        f"Subject: About {address}", "", f"Hi {first},", "",
-        f"Thanks for reaching out about {address}. I'm {me} with {company}. To put together a fair as-is offer I have "
-        "a few quick questions:", "",
-        "  1. Who lives there now — you, tenants, or is it empty?",
-        "  2. What condition is it in (roof, heating, kitchen, baths, basement)? Photos or a short video help a lot.",
-        "  3. Is there a mortgage, back taxes, or a sheriff's sale date we should plan around?",
-        "  4. When would you ideally like to sell?", "",
-        f"So you know who we are: {company} is a real estate investment company — we're not agents and we don't "
+    """First reply to a website seller: a short human note, the disclosures under an "About Us" line."""
+    from engine import human_copy as hc
+    op = hc.operator()
+    first = hc.first_name(name)
+    st = hc.street(address)
+    me = " ".join(x for x in (op["first"] or op["name"], "with " + op["company"] if op["company"] else "") if x)
+    paragraphs = [
+        f"Thanks for getting in touch about {st}. This is {me}. Who lives there right now, and what shape is it in? "
+        "A few photos or a quick video call would help me give you a fair as-is number. When would you ideally "
+        "like to sell?"]
+    summary = [
+        f"Who we are: {op['company'] or 'We'} is a real estate investment company. We're not agents and we don't "
         "represent you. If we agree on a price we may buy the house ourselves or assign our contract to another "
-        "investor; you should have your own attorney review any agreement (NJ contracts include a 3-business-day "
-        "attorney review). If the home is in foreclosure, free help is available from a HUD-approved counselor "
-        "(1-800-569-4287) and Legal Services of New Jersey (1-888-576-5529); we can't stop or postpone a sale.", "",
-        me, company + (f" · {op.get('phone')}" if op.get("phone") else ""),
-        op.get("mailing_address") or "", "",
-        "Reply STOP if you'd rather not hear from us.",
-    ])
-    sms = (f"Hi {first}, {me} with {company} — thanks for your request about {address}. Is now a good time for a "
-           "quick call? Reply STOP to opt out.") if phone_ok else ""
-    return email, sms
+        "investor.",
+        "Your attorney: you should have your own attorney review any agreement. NJ contracts include a "
+        "3-business-day attorney review.",
+        "If the home is in foreclosure: free help is available from a HUD-approved housing counselor "
+        "(1-800-569-4287) and Legal Services of New Jersey (1-888-576-5529). We can't stop or postpone a sale.",
+        *hc.footer_lines(op, "Reply STOP if you'd rather not hear from us."),
+    ]
+    email = hc.compose(f"about {st}", f"Hi {first},", paragraphs, summary, summary_title="--- About Us ---", op=op)
+    sms = (f"Hi {first}, it's {me}. Thanks for your request about {st}. Is now a good time for a quick call? "
+           "Reply STOP to opt out.") if phone_ok else ""
+    return f"Subject: {email.subject}\n\n{email.text}", sms
 
 
 def ingest_seller(session: Session, data: dict[str, Any], *, gis: Any = None, underwrite: bool = True,

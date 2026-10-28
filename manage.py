@@ -38,7 +38,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections import Counter
 from datetime import date, timedelta
@@ -393,6 +392,11 @@ def cmd_server(args: argparse.Namespace) -> None:
     init_db()
     console.print(f"[green]Cockpit:[/green] http://127.0.0.1:{args.port}  (local only — Ctrl+C to stop)")
     uvicorn.run("web.app:app", host="127.0.0.1", port=args.port, log_level="warning")
+
+
+def cmd_install_shortcut(args: argparse.Namespace) -> None:
+    from scripts.install_desktop_shortcut import main as install_main
+    install_main(["--desktop", args.desktop] if args.desktop else [])
 
 
 def cmd_queue(args: argparse.Namespace) -> None:
@@ -981,22 +985,32 @@ def cmd_inbound(args: argparse.Namespace) -> None:
 
 
 def cmd_site(args: argparse.Namespace) -> None:
-    import shutil
     from pathlib import Path
 
-    from engine.inbound import site_config
-    src = Path(__file__).resolve().parent / "site"
+    from engine.site_build import build
     out = Path(args.build)
-    out.mkdir(parents=True, exist_ok=True)
-    for f in ("index.html", "buyers.html", "site.css", "site.js"):
-        shutil.copy2(src / f, out / f)
-    cfg = site_config(args.endpoint, args.buyer_endpoint)
-    (out / "config.js").write_text("window.SITE_CONFIG = " + json.dumps(cfg, indent=1) + ";\n", encoding="utf-8")
+    cfg = build(out, args.endpoint, args.buyer_endpoint)
     missing = [k for k in ("company", "phone", "email", "mailing_address") if not cfg[k]]
     console.print(f"Static site → {out} (mode: {cfg['mode']}). Upload the folder to GitHub Pages / Netlify / Vercel.")
     if missing:
         console.print(f"[yellow]Set operator {', '.join(missing)} in config/settings.local.yaml first — the pages show "
                       "your contact details and the forms need somewhere to go.[/yellow]")
+
+
+def cmd_build_site(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from engine.site_build import build, check
+    out = Path(args.out)
+    cfg = build(out, args.endpoint, args.buyer_endpoint)
+    problems = check(out, cfg)
+    console.print(f"Static site → {out} (mode: {cfg['mode']}, counties: {', '.join(cfg['counties'])})")
+    for p in problems:
+        console.print(f"[red]✗[/red] {p}")
+    if args.check:
+        console.print("[green]Publish check passed.[/green]" if not problems else
+                      f"[red]{len(problems)} problem(s): not publishing.[/red]")
+        raise SystemExit(1 if problems else 0)
 
 
 def cmd_today(args: argparse.Namespace) -> None:
@@ -1083,6 +1097,13 @@ def main(argv: list[str] | None = None) -> None:
     by = sub.add_parser("buyers")
     by.add_argument("--top", type=int, default=20)
     sub.add_parser("stats")
+    bs = sub.add_parser("build-site", help="static seller/buyer funnel for GitHub Pages (+ --check publish gate)")
+    bs.add_argument("--out", default="site_dist")
+    bs.add_argument("--endpoint", help="form endpoint for seller submissions (e.g. Formspree); default $SITE_FORM_ENDPOINT")
+    bs.add_argument("--buyer-endpoint", help="separate buyer form endpoint; default $SITE_BUYER_ENDPOINT")
+    bs.add_argument("--check", action="store_true", help="exit 1 unless the build is complete and carries no data but yours")
+    ish = sub.add_parser("install-shortcut", help="desktop launcher: double-click to start + open the dashboard")
+    ish.add_argument("--desktop", help="folder for the shortcut (default ~/Desktop)")
     sv = sub.add_parser("server")
     sv.add_argument("--port", type=int, default=8000)
     qu = sub.add_parser("queue")
@@ -1211,7 +1232,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
-     "stats": cmd_stats, "server": cmd_server, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
+     "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
      "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,
      "mail-merge": cmd_mail_merge, "inspect": cmd_inspect, "stack": cmd_stack, "buyer-hotzones": cmd_buyer_hotzones,

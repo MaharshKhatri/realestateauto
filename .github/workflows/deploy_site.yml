@@ -1,0 +1,67 @@
+name: Deploy site
+
+# Publishes site/ (the seller + cash-buyer funnel, engine/site_build.py) to GitHub Pages.
+# One-time setup: Settings → Pages → Source: "GitHub Actions"; Settings → Secrets and variables → Actions →
+# Variables: SITE_COMPANY, SITE_OPERATOR, SITE_PHONE, SITE_EMAIL, SITE_POSTAL, SITE_FORM_ENDPOINT
+# (+ optional SITE_BUYER_ENDPOINT). Until SITE_FORM_ENDPOINT is set the workflow is skipped, not failed.
+# Gates: pii-scan over tracked files, the site tests, and `build-site --check` (only the operator's own contact
+# details and the published help lines may appear in the output; every disclosure must be present).
+
+on:
+  push:
+    paths:
+      - "site/**"
+      - "engine/inbound.py"
+      - "engine/site_build.py"
+      - ".github/workflows/deploy_site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ vars.SITE_FORM_ENDPOINT != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: PII scan (tracked files)
+        run: python manage.py pii-scan
+      - name: Site tests
+        run: pytest -q tests/test_site_build.py tests/test_inbound.py
+      - name: Build + publish check
+        env:
+          SITE_COMPANY: ${{ vars.SITE_COMPANY }}
+          SITE_OPERATOR: ${{ vars.SITE_OPERATOR }}
+          SITE_PHONE: ${{ vars.SITE_PHONE }}
+          SITE_EMAIL: ${{ vars.SITE_EMAIL }}
+          SITE_POSTAL: ${{ vars.SITE_POSTAL }}
+          SITE_FORM_ENDPOINT: ${{ vars.SITE_FORM_ENDPOINT }}
+          SITE_BUYER_ENDPOINT: ${{ vars.SITE_BUYER_ENDPOINT }}
+        run: python manage.py build-site --out site_dist --check
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site_dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
