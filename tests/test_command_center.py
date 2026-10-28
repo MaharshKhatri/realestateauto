@@ -278,3 +278,16 @@ def test_records_endpoints(db, client, setup_paths, tmp_path, monkeypatch):
     assert db.get(ClerkFiling, fid).property_id == target.property_id
     assert db.query(DistressSignal).filter_by(property_id=target.property_id,
                                               signal_type=SignalType.LIS_PENDENS).count() == 1
+
+
+def test_kpis_survive_a_stage_change_from_another_session(db):
+    """Regression: /api/kpis 500'd when another request moved a lead's stage between two queries."""
+    from db.database import session_scope
+    from db.models import Lead
+    lead = deal(db)
+    db.commit()
+    assert db.get(Lead, lead.id).status_stage == "NEW"                       # cached in this session
+    with session_scope() as other:
+        other.get(Lead, lead.id).status_stage = "OFFER_SENT_TO_AGENT"
+    k = ap.kpis(db)
+    assert k["open_leads"] == 1 and k["pipeline_value"] >= 0

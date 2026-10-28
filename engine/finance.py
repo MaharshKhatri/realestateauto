@@ -120,9 +120,13 @@ def summary(session: Session, year: int | None = None, today: date | None = None
     for r in rows:
         by_cat[r.category] = round(by_cat.get(r.category, 0) + (r.amount if r.kind == "income" else -r.amount), 2)
     pipe: list[dict[str, Any]] = []
-    for lead in session.scalars(select(Lead).where(Lead.status_stage.in_(list(STAGE_PROBABILITY)))):
+    # populate_existing: another request may have just moved a lead's stage; don't trust a stale cached row.
+    for lead in session.scalars(select(Lead).where(Lead.status_stage.in_(list(STAGE_PROBABILITY)))
+                                .execution_options(populate_existing=True)):
+        p = STAGE_PROBABILITY.get(lead.status_stage)
+        if p is None:
+            continue
         fee = expected_fee(session, lead)
-        p = STAGE_PROBABILITY[lead.status_stage]
         pipe.append({"lead_id": lead.id, "stage": lead.status_stage, "expected_fee": round(fee, -2), "probability": p,
                      "weighted": round(fee * p, -2), "address": lead.property.street_address})
     pipe.sort(key=lambda x: -x["weighted"])
