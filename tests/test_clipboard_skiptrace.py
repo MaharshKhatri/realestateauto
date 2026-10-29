@@ -2,12 +2,12 @@
 names), ranking, the DNC scrub, saving and the READY_TO_CALL flip."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from db.models import Contact, SignalType
+from db.models import SignalType
 from db.repository import upsert_signal
 from engine import clipboard_skiptrace as cs
 from engine import compliance

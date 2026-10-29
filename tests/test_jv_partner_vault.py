@@ -1,7 +1,6 @@
 """engine/jv_partner_vault.py: seeding from recorded buyers, Phase 0 outreach copy, buy-box matching, proof of funds."""
 from __future__ import annotations
 
-import io
 from datetime import datetime, timedelta
 
 import pytest

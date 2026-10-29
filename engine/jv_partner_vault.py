@@ -89,11 +89,19 @@ def seed(session: Session, top: int = 30, today: date | None = None) -> list[JVP
             continue
         ranked.append((velocity(b, today), b))
     ranked.sort(key=lambda t: (-t[0], -(t[1].cash_purchases_count or 0)))
+    from engine.partner_principals import family_key
     existing = {p.buyer_id: p for p in session.scalars(select(JVPartner).where(JVPartner.buyer_id.is_not(None)))}
+    families = {family_key(p.buyer) for p in existing.values() if p.buyer is not None}
     out: list[JVPartner] = []
-    for score, b in ranked[:top]:
+    for score, b in ranked:
+        if len(out) >= top:
+            break
         box = _buy_box(b)
         p = existing.get(b.id)
+        fam = family_key(b)
+        if p is None and fam and fam in families:
+            continue                                   # another LLC of an operator already in the vault
+        families.add(fam)
         if p is None:
             p = JVPartner(buyer_id=b.id, entity_name=b.entity_name, status="TARGET")
             session.add(p)
@@ -212,7 +220,8 @@ def outreach(session: Session, p: JVPartner) -> PartnerCard:
     op = hc.operator()
     intro = re.sub(r"\s+", " ", str(settings().operator.get("intro") or "")).strip().rstrip(".")
     recent = _recent_purchase(p)
-    first = hc.first_name(p.contact_name) if p.contact_name else "there"
+    person = p.contact_name or p.principal_name
+    first = hc.first_name(person.split(" & ")[0]) if person and not is_entity(person.upper()) else "there"
     entity = p.entity_name if is_entity(p.entity_name.upper()) else "you"
     saw = (f"Saw from the county deed records that {entity} bought {recent['address']} in {recent['town']}."
            if recent else f"Saw from the county deed records that {entity} has been buying houses in "
@@ -241,8 +250,13 @@ def outreach(session: Session, p: JVPartner) -> PartnerCard:
               "What towns and price points are you buying right now, and could you send me a proof of funds letter "
               "so I can write offers in your name?"]
     reasons = []
+    fam = p.family_stats or {}
+    if fam.get("purchases_36m"):
+        llcs = len(p.family_entities or [])
+        reasons.append(f"{fam['purchases_36m']} recorded purchases in 36 months, {hc.money(fam.get('deployed'))} deployed"
+                       + (f", {llcs} LLCs at one mailing address" if llcs > 1 else ""))
     if recent:
-        reasons.append(f"{recent['count_24m']} recorded purchases in the last 24 months, latest {recent['address']}, "
+        reasons.append(f"latest {recent['address']}, "
                        f"{recent['town']} ({hc.money(recent['price'])}, {recent['date']})")
     if p.buyer and p.buyer.flips_count:
         reasons.append(f"{p.buyer.flips_count} confirmed flip(s)")
@@ -330,7 +344,9 @@ def partner_dict(p: JVPartner) -> dict[str, Any]:
             "will_walk_properties": bool(p.will_walk_properties), "default_split_pct": p.default_split_pct,
             "status": p.status, "velocity_score": p.velocity_score,
             "last_contact_at": p.last_contact_at.isoformat() if p.last_contact_at else None, "notes": p.notes,
-            "recent": _recent_purchase(p)}
+            "recent": _recent_purchase(p), "principal_name": p.principal_name, "principal_basis": p.principal_basis,
+            "mailing_address": p.mailing_address, "mailing_kind": p.mailing_kind, "phone_status": p.phone_status,
+            "family_entities": p.family_entities or [], "family_stats": p.family_stats or {}}
 
 
 def deal_partner_summary(session: Session, lead: Lead) -> dict[str, Any]:

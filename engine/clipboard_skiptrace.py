@@ -434,3 +434,61 @@ def trace(session: Session, lead_id: int, text: str, *, now: datetime | None = N
     nxt = next((row for row in queue(session, limit=5, now=now) if row["lead_id"] != lead_id), None)
     return {"lead_id": lead.id, "parsed": parsed.to_json(), "hits": [h.to_json() for h in hits], "saved": saved.to_json(),
             "stage": lead.status_stage, "ready_to_call": lead.ready_to_call, "next": nxt}
+
+
+# -- funding partners (Phase 0) ------------------------------------------------------------------------------
+def partner_queue(session: Session, limit: int = 10) -> list[dict[str, Any]]:
+    """The top open JV-partner targets with no phone yet (engine/partner_principals.py ranks and unmasks them)."""
+    from db.models import JVPartner
+    from engine import partner_principals as pp
+    rows = [p for p in session.scalars(select(JVPartner)) if p.status in ("TARGET", "CONTACTED") and not p.phone]
+    rows.sort(key=lambda p: -(p.velocity_score or 0))
+    out = []
+    for i, p in enumerate(rows[:limit], 1):
+        r = pp.desk_row(p, i)
+        r["kind"] = "partner"
+        r["look_up"] = r["principal"] or ("the residents at the mailing address" if (p.mailing_kind or "").startswith("house")
+                                          else "the LLC's registered agent / members")
+        out.append(r)
+    return out
+
+
+def trace_partner(session: Session, partner_id: int, text: str, *, now: datetime | None = None) -> dict[str, Any]:
+    """Paste the people-search page for a partner's principal: best callable mobile + e-mail onto the partner.
+
+    Proposing a joint venture to an investor is still a sales call to whatever number the page shows, so every
+    number is classified like any other (FTC registry, internal, Daniel's Law); a DNC number is never saved as the
+    partner's phone.
+    """
+    from db.models import JVPartner
+    p = session.get(JVPartner, partner_id)
+    if p is None:
+        raise ValueError(f"partner {partner_id} not found")
+    parsed = parse_page(text)
+    hits = scrub(session, rank(parsed), now=now)
+    best = next((h for h in hits if h.status != "dnc"), None)
+    today = (now or datetime.now()).date()
+    if best is not None and not p.phone:
+        p.phone, p.phone_status = best.hit.digits, best.status
+    if parsed.emails and not p.email:
+        p.email = parsed.emails[0]
+    if parsed.name and not p.principal_name:
+        p.principal_name = parsed.name
+        p.principal_basis = f"people-search page you pasted on {today:%Y-%m-%d}"
+    lines = [f"{today:%Y-%m-%d} skip trace ({parsed.site or 'pasted page'}): {parsed.name or 'name not on page'}"
+             + (f", age {parsed.age}" if parsed.age else "")]
+    lines += [f"  {h.hit.display} {h.hit.kind}{' last reported ' + h.hit.last_reported if h.hit.last_reported else ''}"
+              f" [{h.status}]" for h in hits[:5]]
+    p.notes = "\n".join(x for x in (p.notes, *lines) if x)
+    session.flush()
+    nxt = next((r for r in partner_queue(session, limit=5) if r["partner_id"] != partner_id), None)
+    notes = []
+    if not hits:
+        notes.append("no phone on this page: try the address search or the other two sites")
+    elif best is None:
+        notes.append("every number on the page is on a do-not-call list: e-mail or write to this partner instead")
+    elif best.status == "not_checked":
+        notes.append("saved, but unscrubbed: load fresh FTC DNC data (manage.py dnc --load) before you call")
+    return {"partner_id": p.id, "parsed": parsed.to_json(), "hits": [h.to_json() for h in hits],
+            "saved": {"phone": format_phone(p.phone) if p.phone else None, "phone_status": p.phone_status,
+                      "email": p.email, "principal": p.principal_name, "notes": notes}, "next": nxt}

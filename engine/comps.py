@@ -103,6 +103,101 @@ class CompHygiene:
         return self.ratio_min <= ratio <= self.ratio_max
 
 
+# -- property-type matching (learned on the Day-1 pre-flight, 2026-10-29) ---------------------------------------
+# A 1890 Jersey City house was being valued off condo units and 2023 new construction; a Long Branch townhouse
+# off a Monmouth Beach single-family; a 720 sqft Freehold condo off detached houses 2-3 miles away.
+MLS_CONDO = {"condos", "condo", "condop", "coop"}
+MLS_TOWN = {"townhomes", "condo_townhome", "condo_townhome_rowhome_coop"}
+DESC_CONDO = re.compile(r"COND|\bCO-?OP\b", re.I)
+DESC_TOWN = re.compile(r"\bTH\b|TOWN\s?H|\bROW\b", re.I)
+NEW_BUILD_YEARS = 4            # a comp built in the last 4 years is new construction ...
+OLD_SUBJECT_YEARS = 30         # ... and is no renovated-ARV comp for a house older than 30 years
+
+
+@dataclass
+class SubjectKind:
+    condo: bool = False
+    townhouse: bool = False
+    year_built: int | None = None
+    units: int = 1
+
+    @classmethod
+    def of(cls, *, building_desc: str | None, qual: str | None = None, units: int | None = None,
+           year_built: int | None = None, mls_type: str | None = None) -> "SubjectKind":
+        desc, lt = building_desc or "", (mls_type or "").lower()
+        condo = (bool(DESC_CONDO.search(desc)) or bool(TALL_BUILDING.match(desc)) or str(qual or "").upper().startswith("C")
+                 or lt in MLS_CONDO)
+        town = not condo and (bool(DESC_TOWN.search(desc)) or lt in MLS_TOWN)
+        return cls(condo=condo, townhouse=town, year_built=year_built, units=max(int(units or 1), 1))
+
+    @property
+    def attached(self) -> bool:
+        return self.condo or self.townhouse
+
+
+TALL_BUILDING = re.compile(r"^\s*(?:[4-9]|\d{2})\s*S", re.I)   # '6SCB', '5S-14U-11P-COND': 4+ stories
+
+
+def attached_addresses(comps: list[dict[str, Any]]) -> set[str]:
+    """Comps that are units in one building or complex even when MOD-IV doesn't say CONDO: the same address sold
+    more than once in the window, or 3+ sales on one street sharing an identical assessment (a townhouse row)."""
+    by_addr: dict[str, set[str]] = {}
+    by_street_assessed: dict[tuple[str, Any], set[str]] = {}
+    for c in comps:
+        addr = re.sub(r"[^A-Z0-9 ]", "", str(c.get("address") or "").upper()).strip()
+        if not addr:
+            continue
+        by_addr.setdefault(addr, set()).add(str(c.get("sold_date")))
+        street = re.sub(r"^\d+[A-Z]?(?:-\d+[A-Z]?)?\s+", "", addr)
+        if c.get("assessed_total"):
+            by_street_assessed.setdefault((street, c["assessed_total"]), set()).add(addr)
+    out = {a for a, dates in by_addr.items() if len(dates) >= 2}
+    for addrs in by_street_assessed.values():
+        if len(addrs) >= 3:
+            out |= addrs
+    return out
+
+
+def comp_kind(property_type: str | None, qual: str | None = None) -> tuple[bool, bool]:
+    """(condo, townhouse) for a comp: MLS type names or MOD-IV building descriptions."""
+    t = str(property_type or "")
+    if TALL_BUILDING.match(t):
+        return True, False
+    lt = t.lower()
+    if lt in MLS_CONDO:
+        return True, False
+    if lt in MLS_TOWN:
+        return False, True
+    if lt in ("single_family", "multi_family", "duplex_triplex", "apartment", "land", "mobile", "farm"):
+        return False, False
+    condo = bool(DESC_CONDO.search(t)) or str(qual or "").upper().startswith("C")
+    return condo, (not condo and bool(DESC_TOWN.search(t)))
+
+
+def kind_mismatch(subject: SubjectKind | None, property_type: str | None, year_built: int | None,
+                  qual: str | None = None, today: date | None = None, attached: bool = False) -> str | None:
+    """Why a comp doesn't fit the subject ('property type' / 'new construction'), or None."""
+    if subject is None:
+        return None
+    condo, town = comp_kind(property_type, qual)
+    town = town or (attached and not condo)
+    if subject.attached != (condo or town):
+        return "property type"                       # detached house vs condo / townhouse, either way
+    year = (today or date.today()).year
+    if (year_built and subject.year_built and year_built >= year - NEW_BUILD_YEARS
+            and subject.year_built <= year - OLD_SUBJECT_YEARS):
+        return "new construction"
+    return None
+
+
+def ppsf_outliers(values: list[float], high: float = 1.6, low: float = 0.6) -> tuple[float, float]:
+    """Band around the median $/sqft for small comp sets, where an IQR can't see one luxury sale."""
+    if len(values) < 3:
+        return 0.0, math.inf
+    med = statistics.median(values)
+    return low * med, high * med
+
+
 def package_deed_keys(features: list[dict]) -> set[tuple[Any, Any]]:
     """(price, deed date) pairs recorded on 2+ different parcels: one bulk deed (a building of condo units,
     a portfolio) whose total price is attached to every parcel. None of those rows is a usable comp."""
@@ -176,7 +271,7 @@ class PublicRecordComps:
               units: int | None, building_desc: str | None, radius: float, fallback_radius: float,
               months: int, appreciation: float, min_comps: int, renovated_pct: float,
               distressed_pct: float, value_hint: float | None = None,
-              hygiene: CompHygiene | None = None) -> ValueResult:
+              hygiene: CompHygiene | None = None, subject: SubjectKind | None = None) -> ValueResult:
         hygiene = hygiene or CompHygiene.from_settings()
         subject_stats = muni_stats(self.gis, mun_code, municipality)
         if not subject_stats.median_ratio:
@@ -188,7 +283,8 @@ class PublicRecordComps:
         for r in (radius, fallback_radius):
             features = self.gis.nearby_sales(lat, lon, r, months=months + 12)
             packages = package_deed_keys(features)
-            dropped = {"package deed": 0, "price band": 0, "$/sqft band": 0, "sale/assessment band": 0}
+            dropped = {"package deed": 0, "price band": 0, "$/sqft band": 0, "sale/assessment band": 0,
+                       "property type": 0, "new construction": 0}
             comps: list[Comp] = []
             for f in features:
                 a = f["attributes"]
@@ -207,6 +303,10 @@ class PublicRecordComps:
                 comp_units = max(int(a.get("DWELL") or 1), 1)
                 if (subject_units == 1) != (comp_units == 1) or abs(comp_units - subject_units) > 1:
                     continue  # don't value a 1-family off 3-families or vice versa
+                why = kind_mismatch(subject, a.get("BLDG_DESC"), a.get("YR_CONSTR") or None, a.get("PCLQCODE"))
+                if why:
+                    dropped[why] += 1
+                    continue
                 comp_stats = muni_stats(self.gis, a["PCL_MUN"], a.get("MUN_NAME") or "")
                 if not comp_stats.median_ratio:
                     continue
@@ -220,6 +320,12 @@ class PublicRecordComps:
                     property_type=a.get("BLDG_DESC"), lat=c[1] if c else None, lon=c[0] if c else None,
                     assessed_total=assessed, time_adjusted_price=round(adj, -2),
                     normalized_ratio=adj / (assessed * comp_stats.median_ratio)))
+            if subject is not None and not subject.attached:
+                cluster = attached_addresses([{"address": c.address, "sold_date": c.sold_date,
+                                               "assessed_total": c.assessed_total} for c in comps])
+                kept = [c for c in comps if re.sub(r"[^A-Z0-9 ]", "", c.address.upper()).strip() not in cluster]
+                dropped["property type"] += len(comps) - len(kept)
+                comps = kept
             kept = [c for c in comps if hygiene.ratio_ok(c.normalized_ratio)]
             dropped["sale/assessment band"] += len(comps) - len(kept)
             comps = kept

@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, selectinload
 from agents.base import AgentContext, BaseAgent
 from core.config import settings
 from db.models import Lead, LeadStage, Property, Valuation, utcnow
-from engine.comps import CompHygiene, value_from_metric
+from engine.comps import CompHygiene, SubjectKind, attached_addresses, kind_mismatch, ppsf_outliers, value_from_metric
 from engine.underwriter import (GuardResult, Underwriter, asking_price, decide_offer, guarded_confidence, known_debt,
                                 listing_gap, outlier_guard)
 
@@ -45,18 +45,33 @@ def stored_equalized(val: Valuation) -> float | None:
     return None
 
 
-def clean_stored_comps(comps: list[dict[str, Any]], hygiene: CompHygiene,
-                       value_hint: float | None = None) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def clean_stored_comps(comps: list[dict[str, Any]], hygiene: CompHygiene, value_hint: float | None = None,
+                       subject: SubjectKind | None = None, radius: float | None = None
+                       ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Apply comp hygiene to comps saved on a valuation (comps_json)."""
     addresses: dict[tuple[Any, Any], set[str]] = defaultdict(set)
     for c in comps:
         addresses[(c.get("sold_price"), c.get("sold_date"))].add(str(c.get("address")))
     packages = {k for k, addrs in addresses.items() if k[0] and k[1] and len(addrs) >= 2}
-    dropped = {"package deed": 0, "price band": 0, "$/sqft band": 0, "sale/assessment band": 0}
+    dropped = {"package deed": 0, "price band": 0, "$/sqft band": 0, "sale/assessment band": 0,
+               "property type": 0, "new construction": 0, "too far": 0, "$/sqft outlier": 0}
+    listing = [c for c in comps if "listing" in str(c.get("source") or "") and c.get("price_per_sqft")]
+    band_lo, band_hi = ppsf_outliers([float(c["price_per_sqft"]) for c in listing])
+    cluster = attached_addresses([c for c in comps if "listing" not in str(c.get("source") or "")]) \
+        if subject is not None and not subject.attached else set()
     kept: list[dict[str, Any]] = []
     for c in comps:
         price = float(c.get("sold_price") or 0)
-        if (c.get("sold_price"), c.get("sold_date")) in packages:
+        addr = re.sub(r"[^A-Z0-9 ]", "", str(c.get("address") or "").upper()).strip()
+        why = kind_mismatch(subject, c.get("property_type"), c.get("year_built"), attached=addr in cluster)
+        is_listing = "listing" in str(c.get("source") or "")
+        if why:
+            dropped[why] += 1
+        elif is_listing and radius and c.get("distance_mi") is not None and float(c["distance_mi"]) > 2.5 * radius:
+            dropped["too far"] += 1
+        elif is_listing and c.get("price_per_sqft") and not band_lo <= float(c["price_per_sqft"]) <= band_hi:
+            dropped["$/sqft outlier"] += 1
+        elif (c.get("sold_price"), c.get("sold_date")) in packages:
             dropped["package deed"] += 1
         elif not hygiene.price_ok(price, value_hint):
             dropped["price band"] += 1
@@ -87,7 +102,7 @@ def rebuild(session: Session, prop: Property, cur: Valuation, *, arv: float, as_
     a = dict(cur.assumptions_json or {})
     debt = known_debt(prop)
     om, _, fields = decide_offer(prop, arv=arv, repairs=cur.est_repair_cost or 0, as_is=as_is, debt=debt,
-                                 cfg=dict(settings().deal), guard=guard)
+                                 cfg=dict(settings().deal), guard=guard, equalized=stored_equalized(cur))
     a.update(fields)
     a.update({"arv_before_tax_drag": om.arv_before_tax_drag, "buyer_purchase_price": om.buyer_purchase_price,
               "buyer_profit": om.buyer_profit, "buyer_roi": om.buyer_roi, "flags": om.flags,
@@ -123,7 +138,11 @@ def reguard(session: Session, prop: Property, underwriter: Underwriter | None = 
     equalized = stored_equalized(cur) or (underwriter.equalized_value(prop) if underwriter else None)
     method = cur.comp_source or ""
     comps = list(cur.comps_json or [])
-    cleaned, dropped = clean_stored_comps(comps, hygiene, max(ask or 0, equalized or 0) or None)
+    from engine.listing_comps import listing_type
+    kind = SubjectKind.of(building_desc=prop.building_desc, qual=prop.qual, units=prop.dwellings,
+                          year_built=prop.year_built, mls_type=listing_type(prop))
+    cleaned, dropped = clean_stored_comps(comps, hygiene, max(ask or 0, equalized or 0) or None, subject=kind,
+                                          radius=a.get("radius_miles"))
     arv = float((prior or {}).get("original_arv") or a.get("arv_before_tax_drag") or cur.arv_estimate) \
         if (prior or {}).get("capped") else float(a.get("arv_before_tax_drag") or cur.arv_estimate)
     as_is = cur.as_is_value

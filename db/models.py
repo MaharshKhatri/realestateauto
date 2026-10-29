@@ -633,6 +633,17 @@ class JVPartner(Base):
     velocity_score: Mapped[float] = mapped_column(Float, default=0)      # why they were seeded (purchases, flips, recency)
     last_contact_at: Mapped[datetime | None] = mapped_column(DateTime)
     notes: Mapped[str | None] = mapped_column(Text)
+    # engine/partner_principals.py: the mailing-address "family" (every LLC that gets its tax bills at the same
+    # address is usually one operator) and the person most likely behind it, with the evidence.
+    mailing_address: Mapped[str | None] = mapped_column(String(250))
+    family_key: Mapped[str | None] = mapped_column(String(200), index=True)
+    family_entities: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    family_stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    mailing_kind: Mapped[str | None] = mapped_column(String(60))
+    principal_name: Mapped[str | None] = mapped_column(String(200))
+    principal_basis: Mapped[str | None] = mapped_column(Text)
+    principal_candidates: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    phone_status: Mapped[str | None] = mapped_column(String(16))         # DNC classification when the phone was saved
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 

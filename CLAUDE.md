@@ -141,6 +141,9 @@ engine/
   deal_structure.py           ← Item 14 / Section 37 attorney-review rider (assignment, CPEA disclosure, inspection +
                                 tank sweep, access, investor disclosure), Correa acknowledgment, disclosed LLC option,
                                 compare_structures (assignment vs same-day double close, RTF on leg B, C-9600)
+  partner_principals.py       ← partner mailing-address families, likely principals (evidence + confidence), rank,
+                                lookup links (people search by name/address, OpenCorporates, NJ business search)
+  preflight.py                ← GO / VERIFY / HOLD per deck card, comp talking points, cheat sheet
   clipboard_skiptrace.py      ← Fast Skip-Trace Mode: queue (exempt estates → vacant sheriff → lis pendens → absentee),
                                 parse pasted people-search pages (never fetched), rank, DNC scrub, save, READY flip
   operator_setup.py           ← My Setup: validate + write settings.local.yaml and .env (password never returned)
@@ -451,6 +454,29 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   unscrubbed = not callable until fresh FTC data is loaded); wireless + recently reported ranks first; relatives are saved only
   for estates / deceased owners; READY_TO_CALL is recomputed on save.
 
+### Day-1 deal-desk rules (learned 2026-10-29) — enforced in code
+- **Partner families** (`engine/partner_principals.py`, `manage.py vault --unmask [--gis]`): cash buyers are grouped by a
+  mailing key recomputed from the stored address (older rows kept the state in the key); untouched duplicate partners of
+  one family are merged. Rank = 3 × purchases in 36 months + 6 × flips + $ deployed / $500K (≤ 12) + 4 per priority
+  county + recency + 3 for a multi-LLC operator. A principal is named only from records we hold (imported owner lists /
+  deed exports, parcels, deed transfers, contacts, cash-buyer links) at the same mailing address or owning the parcel at
+  it; > 4 people at one address = a shared office (no principal). Every name carries basis + confidence; suppressed
+  (Daniel's Law / stop) addresses are never shown or linked. Partner phones from a pasted people-search page are DNC-
+  classified like any other number (a JV pitch is still a sales call) and never saved when on a list.
+- **Comp kinds** (`engine/comps.py`): a detached house is never valued off condo units, townhouses, units in a 4+ story
+  building, an address that sold more than once in the window, or 3+ sales on one street with an identical assessment
+  (a townhouse row); condos / townhouses only off condos / townhouses (MOD-IV "COND", qualifier C…, MLS type); no
+  new construction (built in the last 4 years) for a subject older than 30 years; listing comps beyond 2.5 × the radius
+  or outside 0.6–1.6 × the median $/sqft are dropped; a thin listing set (< 6) more than 50% from the recorded sales
+  yields to the recorded sales. The outlier guard re-applies all of it to stored comps.
+- **FRFPA fair market value** (`engine/underwriter.py::frfpa_fmv`): the 82% floor uses the highest of our as-is
+  estimate, the equalized assessment and 85% of a live ask — never our distressed-percentile number alone.
+- **Pre-flight** (`engine/preflight.py`, `manage.py preflight --out data/exports/...`): every deck card is GO / VERIFY /
+  HOLD. HOLD (comps flagged for refresh, < 3 comps, mismatched comp kinds, confidence < 45, ARV > 1.5 × ask, capped or
+  non-residential) never reaches the deck. Listed foreclosures whose payoff exceeds our walk-away (SHORT_SALE track) come
+  after the MLS fixers, labeled "lender short sale (low odds)"; a SHORT_SALE or CONFIRM_OCCUPANCY listing whose
+  walk-away is under 60% of the ask is NO_OFFER.
+
 ## Coding standards
 
 - **No placeholders, mock data or TODO stubs in shipped code.** Every scraper is tested live from
@@ -536,5 +562,7 @@ python manage.py skiptrace-fast --links     # fast skip-trace queue; --lead <id>
 python manage.py reply <id> --text '...'    # agent reply → traffic light, math, 3-sentence answer (--dry-run to preview)
 python manage.py structure <id>             # assignment vs double close net check (--contract 250k --buyer 295k works without a lead)
 python manage.py docs <id> --type rider     # Item 14 / Section 37 attorney-review assignment rider
+python manage.py vault --unmask --gis      # partner families + likely principals, re-rank, top 10 (--out data/exports/x.json)
+python manage.py preflight --top 10        # GO / VERIFY / HOLD cheat sheet for the first deck cards (--out data/exports/x.md)
 pytest                                      # tests
 ```

@@ -98,8 +98,8 @@ def why_it_works(lead: Lead, f: dict[str, Any], anchor: float | None, best: floa
         out.append(f"Buyer math: a local rehabber can pay up to {hc.money(q['buyer_max'])} "
                    f"({q.get('alpha_effective', 0):.0%} of ARV all-in) and still clear "
                    f"{hc.money((q.get('buyer') or {}).get('profit'))} ({(q.get('buyer') or {}).get('roi', 0):.0%} on cash). "
-                   f"Our target {hc.money(q['mao_target'])} keeps a {hc.money(q['fee_target'])} fee; walk away at "
-                   f"{hc.money(q['mao_walkaway'])}" + (f"; we open at {hc.money(anchor)}" if anchor else "") + ".")
+                   f"Our target {hc.money(q.get('mao_target'))} keeps a {hc.money(q.get('fee_target'))} fee; walk away at "
+                   f"{hc.money(q.get('mao_walkaway'))}" + (f"; we open at {hc.money(anchor)}" if anchor else "") + ".")
     elif v.mao_conservative:
         out.append(f"Investor math: 70% of ARV minus repairs and our fee = {hc.money(v.mao_conservative)} walk-away"
                    + (f"; we open at {hc.money(anchor)}" if anchor else "") + ".")
@@ -155,7 +155,8 @@ def _card(session: Session, lead: Lead, packet: ao.AgentPacket, kind: str, lf: A
     ok, why = ao.smtp_ready()
     return {
         "lead_id": lead.id, "kind": kind, "track": packet.track, "packet_kind": packet.kind,
-        "label": {"listed_foreclosure": "Urgent: listed foreclosure", "followup": "Follow-up due",
+        "label": ("Listed foreclosure: lender short sale (low odds)" if packet.track == "SHORT_SALE" and kind == "listed_foreclosure"
+                  else None) or {"listed_foreclosure": "Urgent: listed foreclosure", "followup": "Follow-up due",
                   "mls_fixer": "Stale MLS fixer", "touch2": "They replied: send the offer"}[kind],
         "touch": 1 if packet.kind == "opener" else 2,
         "address": f["address"], "town": f.get("town"), "county": f.get("county"),
@@ -246,18 +247,32 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
     cards: list[dict[str, Any]] = []
     seen: set[int] = set()
 
+    held: list[dict[str, Any]] = []
+
     def add(lead: Lead | None) -> None:
+        from engine import preflight
         if lead is None or lead.id in seen or len(cards) >= limit or lead.status_stage in CLOSED:
+            return
+        pf = preflight.check(lead)
+        seen.add(lead.id)
+        if pf.status == "HOLD":
+            # The number on this card isn't defensible yet: it waits for a re-underwrite instead of an agent.
+            held.append({"lead_id": lead.id, "address": lead_facts(lead)["address"], "issues": pf.issues[:3]})
             return
         card = build_card(session, lead, now)
         if card is not None:
-            seen.add(lead.id)
+            card["preflight"] = pf.to_json()
             cards.append(card)
 
+    short_sales: list[Lead] = []
     for lf in ft.listed_foreclosures(session):
         if lf.agent and lf.track not in ("NO_OFFER", "EQUITY_MONITOR") and len(cards) < min(limit, 6):
             lead = session.get(Lead, lf.lead_id)
-            if lead is not None and not _recently_contacted(lead, now_e):
+            if lead is None or _recently_contacted(lead, now_e):
+                continue
+            if lf.track == "SHORT_SALE":
+                short_sales.append(lead)       # payoff above any investor price: a lender's call, after the likelier deals
+            else:
                 add(lead)
     for lead in crm.due_followups(session, now)[:8]:
         if lead.last_contact_at and any(c.contact_type == ContactType.LISTING_AGENT for c in lead.contacts):
@@ -265,6 +280,8 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
     for lead in ao.candidates(session, limit * 3):
         if not _recently_contacted(lead, now_e, days=7) and lead.status_stage != "OFFER_SENT_TO_AGENT":
             add(lead)
+    for lead in short_sales[:3]:
+        add(lead)
     from engine import jv_partner_vault as vault
     from engine import operator_setup
     setup = operator_setup.status()
@@ -272,7 +289,7 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
             "setup_complete": setup["live"], "auto_email": setup["auto_email"],
             "sent_24h": ao.sent_last_24h(session, now),
             "daily_email_limit": int(settings().get("outreach", {}).get("daily_email_limit", 25)),
-            "first_touch": "opener" if ao.opener_enabled() else "offer",
+            "first_touch": "opener" if ao.opener_enabled() else "offer", "held": held[:12],
             # Phase 0: until `partners_needed` rehabbers are active with proof of funds, the deck opens with them.
             "partners": {"active": vault.active_count(session), "needed": vault.partners_needed(),
                          "open": vault.phase0_open(session),

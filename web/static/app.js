@@ -61,8 +61,8 @@ async function route() {
     if (m) return await renderLead(+m[1], params.get("contact"));
     if (path === "/" || path === "") return await renderAutopilot();
     if (path === "/partners") return await renderPartners();
-    const skt = path.match(/^\/skiptrace(?:\/(\d+))?/);
-    if (skt) return await renderSkiptrace(skt[1] ? +skt[1] : null);
+    const skt = path.match(/^\/skiptrace(?:\/(p?\d+))?/);
+    if (skt) return await renderSkiptrace(skt[1] || null);
     if (path === "/today") return await renderToday();
     if (path === "/records") return await renderRecords();
     if (path === "/ready") return await renderReady();
@@ -1139,6 +1139,7 @@ function drawCard() {
       <a class="muted" href="${esc(c.inspect_url)}">photos, maps &amp; flood →</a></div>
     <div class="grid ap-grid">
       <div>
+        ${preflightHtml(c.preflight)}
         <h3>What this property is</h3><p>${esc(c.what)}</p>
         <div class="whybox"><h3>Why this deal makes money</h3><ul>${c.why.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>
         <h3>Exact action to take right now</h3><p class="action">${esc(c.action)}</p>
@@ -1355,6 +1356,15 @@ async function renderRecords() {
 }
 
 
+function preflightHtml(pf) {
+  if (!pf) return "";
+  const cls = { GO: "good", VERIFY: "warn", HOLD: "bad" }[pf.status] || "";
+  return `<div class="whybox"><div class="row"><span class="pill ${cls}">Pre-flight: ${esc(pf.status)}</span>
+      <span class="muted">${esc((pf.checks || []).join(" · "))}</span></div>
+    ${pf.issues.length ? `<ul>${pf.issues.map((x) => `<li class="flag">${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${pf.comps.length ? `<details><summary>Comp talking points (${pf.comps.length})</summary><ul>${pf.comps.map((c) => `<li>${esc(c.address)}${c.town ? ", " + esc(c.town) : ""}: <b>${money(c.price)}</b> ${esc(c.date || "")}${c.distance_mi != null ? ` · ${c.distance_mi} mi` : ""}${c.ppsf ? ` · $${c.ppsf}/sqft` : ""} <span class="muted">${esc(c.type || "")}</span></li>`).join("")}</ul>
+      ${pf.talking_point ? `<p>${esc(pf.talking_point)}</p>` : ""}</details>` : ""}</div>`;
+}
 // -- Phase 6: shared reply negotiator panel -------------------------------------------------------------------
 function replyPanelHtml(leadId) {
   return `<div class="replybox" id="reply-${leadId}">
@@ -1495,7 +1505,9 @@ const REHAB = ["LIGHT", "MEDIUM", "HEAVY"], PSTATUS = ["TARGET", "CONTACTED", "A
 async function renderPartners() {
   const { data: v } = await api("/api/partners");
   const row = (p) => `<tr data-prow="${p.id}">
-      <td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.entity_name || "")}</span>${p.recent ? `<br><span class="muted">${esc(p.recent.address)}, ${esc(p.recent.town)} · ${kmoney(p.recent.price)} · ${p.recent.count_24m} buys/24m</span>` : ""}</td>
+      <td><b>${esc(p.principal_name || p.name)}</b>${p.principal_name || p.name !== p.entity_name ? `<br><span class="muted">${esc(p.entity_name || "")}</span>` : ""}${p.family_entities && p.family_entities.length > 1 ? `<span class="muted"> · ${p.family_entities.length} LLCs at one address</span>` : ""}
+        ${p.family_stats && p.family_stats.purchases_36m ? `<br><span class="muted">${p.family_stats.purchases_36m} buys / 36 months · ${kmoney(p.family_stats.deployed)} deployed</span>` : ""}
+        ${p.phone ? `<br><a class="phone" href="tel:${esc(p.phone)}">${esc(p.phone_display)}</a> <span class="pill ${p.phone_status === "clear" ? "good" : "warn"}">${esc(p.phone_status || "unscrubbed")}</span>` : `<br><a href="#/skiptrace/p${p.id}">⚡ find their phone</a>`}${p.recent ? `<br><span class="muted">latest: ${esc(p.recent.address)}, ${esc(p.recent.town)} · ${kmoney(p.recent.price)}</span>` : ""}</td>
       <td><select data-f="status">${PSTATUS.map((s) => `<option ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><br>
         ${p.pof_verified ? `<span class="pill good">POF ✓${p.pof_share_ok ? " shareable" : ""}</span>` : '<span class="pill warn">no POF</span>'}</td>
       <td><input data-f="contact_name" value="${esc(p.contact_name || "")}" placeholder="first last"><br><input data-f="phone" value="${esc(p.phone || "")}" placeholder="phone"><br><input data-f="email" value="${esc(p.email || "")}" placeholder="e-mail"></td>
@@ -1564,20 +1576,67 @@ async function renderPartners() {
 }
 
 // -- Phase 6: ⚡ Fast Skip-Trace Mode -------------------------------------------------------------------------------
-const SKT = { rows: [], id: null };
-async function renderSkiptrace(leadId) {
+const SKT = { rows: [], partners: [], id: null, pid: null };
+async function renderSkiptrace(sel) {
   const { data } = await api("/api/skiptrace/queue?limit=40");
   SKT.rows = data.rows;
-  SKT.id = leadId || (SKT.rows[0] || {}).lead_id || null;
+  SKT.partners = data.partners || [];
+  SKT.pid = sel && String(sel).startsWith("p") ? +String(sel).slice(1) : (!sel && SKT.partners.length ? SKT.partners[0].partner_id : null);
+  SKT.id = SKT.pid ? null : (sel ? +sel : (SKT.rows[0] || {}).lead_id || null);
   app.innerHTML = `<div class="card"><div class="row spread"><h1>⚡ Fast Skip-Trace Mode</h1><span class="muted">${SKT.rows.length} owners worth finding · exempt estates → vacant sheriff sales → lis pendens → absentee owners</span></div>
     <p class="muted">Click a lookup link (it opens the people-search site in a new tab), select the whole result page, copy it, then click “Paste raw page”. Numbers are DNC-checked, the best mobile is ranked first, contacts are saved and the lead flips to Ready-to-Call. The sites are never fetched by the app (their terms), only read from your clipboard.</p>
     <div class="st-grid"><div class="st-list" id="st-list"></div><div id="st-detail"></div></div></div>`;
   drawSkiptrace();
 }
+function drawPartnerTrace(r) {
+  if (!r) { $("#st-detail").innerHTML = ""; return; }
+  const L = r.links || {};
+  const link = (k, lab) => L[k] ? `<a class="btn" href="${esc(L[k])}" target="_blank" rel="noopener noreferrer">${lab} ↗</a>` : "";
+  const ice = r.icebreaker || {};
+  $("#st-detail").innerHTML = `<h2>🤝 ${esc(r.entity)} <span class="muted">#${r.rank} funding-partner target</span></h2>
+    <dl class="kv"><dt>Principal</dt><dd>${r.principal ? `<b>${esc(r.principal)}</b> <span class="pill ${r.principal_confidence >= 0.9 ? "good" : "warn"}">${Math.round((r.principal_confidence || 0) * 100)}% · verify</span>` : '<span class="muted">not on record yet</span>'}
+        <br><span class="muted">${esc(r.principal_basis || "")}</span></dd>
+      <dt>Track record</dt><dd>${r.purchases_36m} purchases in 36 months · ${money(r.deployed)} deployed${r.flips ? ` · ${r.flips} flip(s)` : ""}${r.llc_count > 1 ? ` · ${r.llc_count} LLCs at one address` : ""}</dd>
+      <dt>Buys in</dt><dd>${esc((r.top_towns || []).join(", "))}</dd>
+      <dt>Icebreaker</dt><dd>${ice.address ? `bought <b>${esc(ice.address)}</b>, ${esc(ice.town || "")} for ${money(ice.price)} (${esc(ice.date || "")})` : "—"}</dd>
+      <dt>Mailing</dt><dd>${esc(r.mailing || "—")} <span class="pill">${esc(r.mailing_kind || "")}</span></dd>
+      ${r.family_entities.length > 1 ? `<dt>Other LLCs</dt><dd class="muted">${esc(r.family_entities.slice(0, 8).join(", "))}${r.family_entities.length > 8 ? "…" : ""}</dd>` : ""}</dl>
+    <p class="muted">Look up: ${esc(r.look_up)}. Names here are leads to verify, never facts.</p>
+    <div class="links">${link("truepeoplesearch", "TruePeopleSearch (name)")}${link("fastpeoplesearch", "FastPeopleSearch (name)")}${link("cyberbackgroundchecks", "CyberBackgroundChecks")}
+      ${link("truepeoplesearch_address", "Who lives at the mailing address (TPS)")}${link("fastpeoplesearch_address", "Mailing address (FPS)")}
+      ${link("opencorporates", "OpenCorporates (LLC)")}${link("nj_business_search", "NJ Business Name Search")}</div>
+    <div class="row" style="margin-top:10px"><button class="bigbtn" id="st-paste">📋 1-Click Paste Raw Page</button><a class="btn" href="#/partners">Open the vault</a></div>
+    <details><summary class="muted">or paste it here</summary><textarea id="st-text" rows="8"></textarea><button class="btn" id="st-save">Save paste</button></details>
+    <div id="st-out"></div>`;
+  const run = async (text) => {
+    if (!text || text.trim().length < 5) return toast("Nothing to parse: copy the result page first.", true);
+    const { status, data } = await post(`/api/partners/${r.partner_id}/skiptrace-paste`, { text });
+    if (status >= 400) return toast(data.detail || "not saved", true);
+    const sv = data.saved;
+    $("#st-out").innerHTML = `<div class="whybox"><div class="row">${sv.phone ? `<b>Saved: <a class="phone" href="tel:${esc(sv.phone)}">${esc(sv.phone)}</a></b> <span class="pill ${sv.phone_status === "clear" ? "good" : "warn"}">${esc(sv.phone_status)}</span>` : "<b>No callable number saved</b>"}
+        ${sv.email ? ` · ${esc(sv.email)}` : ""}${sv.principal ? ` · ${esc(sv.principal)}` : ""}</div>
+      <table><tbody>${data.hits.map((h) => `<tr><td>${esc(h.display)}</td><td>${esc(h.kind)}</td><td>${esc(h.last_reported || "")}</td><td><span class="pill ${h.status === "dnc" ? "bad" : h.status === "clear" ? "good" : "warn"}">${esc(h.status)}</span></td></tr>`).join("")}</tbody></table>
+      ${sv.notes.map((n) => `<p class="flag">${esc(n)}</p>`).join("")}
+      <div class="row"><a class="btn good" href="#/partners">Call from the vault</a>${data.next ? `<a class="btn" href="#/skiptrace/p${data.next.partner_id}">Next: ${esc(data.next.principal || data.next.entity)} ▶</a>` : ""}</div></div>`;
+    toast("Saved to the partner.");
+  };
+  $("#st-paste").onclick = async () => {
+    try { await run(await navigator.clipboard.readText()); }
+    catch (e) { toast("Clipboard access was blocked: paste into the box below instead.", true); $("#st-detail details").open = true; }
+  };
+  $("#st-save").onclick = () => run($("#st-text").value);
+}
 function drawSkiptrace() {
-  $("#st-list").innerHTML = SKT.rows.length ? SKT.rows.map((r) => `<a class="kcard ${r.lead_id === SKT.id ? "on" : ""}" href="#/skiptrace/${r.lead_id}">
+  const prow = (r) => `<a class="kcard ${r.partner_id === SKT.pid ? "on" : ""}" href="#/skiptrace/p${r.partner_id}">
+      <b>🤝 ${esc(r.principal || r.entity)}</b><span>${r.principal ? esc(r.entity) + " · " : ""}${r.purchases_36m} buys · ${kmoney(r.deployed)} deployed${r.llc_count > 1 ? ` · ${r.llc_count} LLCs` : ""}</span></a>`;
+  const partnerHead = SKT.partners.length ? `<h3>🤝 Funding partners first (Phase 0)</h3>${SKT.partners.map(prow).join("")}<h3>Owners</h3>` : "";
+  if (SKT.pid) {
+    $("#st-list").innerHTML = partnerHead + SKT.rows.map((r) => `<a class="kcard" href="#/skiptrace/${r.lead_id}"><b>${esc(r.address)}</b><span>${esc(r.reasons.join(" · "))}</span></a>`).join("");
+    return drawPartnerTrace(SKT.partners.find((x) => x.partner_id === SKT.pid));
+  }
+  $("#st-list").innerHTML = partnerHead + (SKT.rows.length ? SKT.rows.map((r) => `<a class="kcard ${r.lead_id === SKT.id ? "on" : ""}" href="#/skiptrace/${r.lead_id}">
       <b>${esc(r.address)}</b><span>${esc(r.reasons.join(" · "))}${r.days_to_sale != null ? ` · sale in ${r.days_to_sale}d` : ""} · ${label(r.numbers.verdict)} · fee ${kmoney(r.numbers.fee)}</span></a>`).join("")
-    : '<p class="muted">Nothing to trace: every underwritten unlisted lead already has a phone (or needs underwriting first).</p>';
+    : '<p class="muted">Nothing to trace: every underwritten unlisted lead already has a phone (or needs underwriting first).</p>');
   const r = SKT.rows.find((x) => x.lead_id === SKT.id);
   if (!r) { $("#st-detail").innerHTML = ""; return; }
   const link = (k, lab) => r.links[k] ? `<a class="btn" href="${esc(r.links[k])}" target="_blank" rel="noopener noreferrer">${lab} ↗</a>` : "";

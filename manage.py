@@ -1127,6 +1127,30 @@ def cmd_vault(args: argparse.Namespace) -> None:
         if args.seed:
             rows = vault.seed(s, top=args.seed)
             console.print(f"[green]seeded {len(rows)} partners[/green]")
+        if args.unmask:
+            from agents.scrapers.njgis_client import NJGISClient
+            from engine import partner_principals as pp
+            pp.refresh(s, gis=NJGISClient() if args.gis else None)
+            rows = pp.desk_rows(s, top=10)
+            t = Table(title="Top 10 JV partner targets (grouped by mailing address; principals are leads to verify)")
+            for col in ("#", "entity / buyer", "principal (basis)", "buys 36m", "$ deployed", "buys in", "icebreaker", "look up"):
+                t.add_column(col, overflow="fold")
+            for r in rows:
+                ice = r["icebreaker"] or {}
+                link = r["links"].get("truepeoplesearch") or r["links"].get("truepeoplesearch_address") or ""
+                who = (f"{r['principal']} ({int((r['principal_confidence'] or 0) * 100)}%)" if r["principal"] else "—")
+                t.add_row(str(r["rank"]), r["entity"] + (f" + {r['llc_count'] - 1} LLCs" if r["llc_count"] > 1 else ""),
+                          who, str(r["purchases_36m"]), money(r["deployed"]), ", ".join(r["top_towns"][:3]),
+                          f"{ice.get('address', '')}, {ice.get('town', '')} {short_money(ice.get('price'))} ({ice.get('date', '')})",
+                          link)
+            console.print(t)
+            out = Path(args.out) if args.out else None
+            if out:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                import json as _json
+                out.write_text(_json.dumps(rows, indent=1, default=str))
+                console.print(f"[dim]wrote {out} (git-ignored: names and addresses)[/dim]")
+            return
         if args.touch:
             p = s.get(JVPartner, args.touch)
             if p is None:
@@ -1246,6 +1270,57 @@ def cmd_structure(args: argparse.Namespace) -> None:
     console.print(f"[dim]{c.double_close['condition']}[/dim]")
 
 
+def cmd_preflight(args: argparse.Namespace) -> None:
+    """Day-1 pre-flight cheat sheet: the first N deck cards with every number, the comps and what to verify."""
+    from engine import autopilot as ap
+    from engine import preflight
+    from engine.scripts import lead_facts
+    from engine.underwriter import asking_price
+    init_db()
+    out: list[str] = [f"# Pre-flight cheat sheet — {date.today():%A, %B %d, %Y}", ""]
+    with session_scope() as s:
+        d = ap.deck(s, limit=max(args.top, 10))
+        held = d.get("held") or []
+        for i, c in enumerate(d["cards"][:args.top], 1):
+            lead = s.get(Lead, c["lead_id"])
+            p, v = lead.property, lead.property.current_valuation
+            a = v.assumptions_json or {}
+            q = a.get("quant") or {}
+            f = lead_facts(lead)
+            pf = c.get("preflight") or preflight.check(lead).to_json()
+            ask = asking_price(p)
+            out += [f"## {i}. {f['address']} ({p.county}) — {c['label']} · pre-flight {pf['status']}",
+                    f"- Property: class {p.property_class} · {p.building_desc or '?'} · {p.dwellings or 1} unit(s) · "
+                    f"{p.beds or '?'} bd / {p.baths or '?'} ba · {('%s sqft' % format(p.sqft, ',')) if p.sqft else 'sqft unknown (est. %s)' % format(v.sqft_used or 0, ',')} · built {p.year_built or '?'}",
+                    f"- Ask {money(ask)}" + (f" · payoff (upset) {money(f.get('upset'))} · sheriff sale {f.get('sale_date')} ({f.get('days_to_sale')} days)" if f.get('upset') else "")
+                    + (f" · {f.get('dom')} days on market" if f.get('dom') else ""),
+                    f"- ARV {money(v.arv_estimate)} · repairs {money(v.est_repair_cost)} ({(v.rehab_tier or '').lower()}) · "
+                    f"buyer max {money(q.get('buyer_max'))} · target {money(q.get('mao_target'))} · walk-away "
+                    f"{money(q.get('mao_walkaway'))} · opening {money(q.get('opening_offer'))} · verdict {v.verdict}",
+                    f"- Touch {c['touch']} ({c['packet_kind']}): {c['action']}"]
+            for x in pf["issues"]:
+                out.append(f"  - ⚠ {x}")
+            if pf["comps"]:
+                out.append("- Comps to quote:")
+                for cp in pf["comps"][:5]:
+                    out.append(f"  - {cp['address']}{', ' + cp['town'] if cp.get('town') else ''}: {money(cp['price'])} "
+                               f"({cp.get('date')}, {cp.get('distance_mi')} mi{', $%s/sqft' % cp['ppsf'] if cp.get('ppsf') else ''}, {cp.get('type') or ''})")
+            if pf.get("talking_point"):
+                out.append(f"- Say: \"{pf['talking_point']}\"")
+            out.append("")
+        if held:
+            out += ["## Held back (numbers not defensible yet — re-underwrite before contacting)"]
+            out += [f"- {h['address']}: {'; '.join(h['issues'])}" for h in held]
+        s.rollback()
+    text = "\n".join(out)
+    console.print(text)
+    if args.out:
+        path = Path(args.out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text + "\n", encoding="utf-8")
+        console.print(f"[dim]wrote {path} (git-ignored)[/dim]")
+
+
 def money_arg(text: str) -> float:
     t = text.strip().lower().replace("$", "").replace(",", "")
     mult = 1_000 if t.endswith("k") else 1_000_000 if t.endswith("m") else 1
@@ -1289,6 +1364,10 @@ def main(argv: list[str] | None = None) -> None:
     va.add_argument("--pof", type=int, help="attach a proof-of-funds file to a partner id (with --file)")
     va.add_argument("--file")
     va.add_argument("--share", action="store_true", help="the partner lets us attach the POF to offers")
+    va.add_argument("--unmask", action="store_true", help="group partners by mailing address, attach likely principals, "
+                                                          "re-rank, print the top 10")
+    va.add_argument("--gis", action="store_true", help="with --unmask: classify each mailing address from NJGIN")
+    va.add_argument("--out", help="with --unmask: write the top 10 rows as JSON here (use data/exports/)")
     sk = sub.add_parser("skiptrace-fast", help="fast skip-trace queue with lookup links; --lead/--paste saves a copied page")
     sk.add_argument("--top", type=int, default=25)
     sk.add_argument("--links", action="store_true", help="print the lookup links for the first lead")
@@ -1299,6 +1378,9 @@ def main(argv: list[str] | None = None) -> None:
     rp.add_argument("--text")
     rp.add_argument("--file")
     rp.add_argument("--dry-run", action="store_true", help="analyze without logging it on the lead")
+    pfp = sub.add_parser("preflight", help="pre-flight cheat sheet for the first N autopilot deal cards")
+    pfp.add_argument("--top", type=int, default=10)
+    pfp.add_argument("--out", help="write the cheat sheet as markdown here (use data/exports/)")
     stp = sub.add_parser("structure", help="assignment vs double close net check (lead id, or --contract/--buyer)")
     stp.add_argument("id", type=int, nargs="?")
     stp.add_argument("--contract", type=money_arg)
@@ -1448,7 +1530,8 @@ def main(argv: list[str] | None = None) -> None:
      "walkthrough": cmd_walkthrough, "bid": cmd_bid, "fast-track": cmd_fast_track, "closing": cmd_closing,
      "finance": cmd_finance, "partners": cmd_partners, "inbound": cmd_inbound, "site": cmd_site,
      "today": cmd_today, "calibrate": cmd_calibrate, "recalibrate": cmd_recalibrate, "vault": cmd_vault,
-     "skiptrace-fast": cmd_fast_skiptrace, "reply": cmd_reply, "structure": cmd_structure}[args.cmd](args)
+     "skiptrace-fast": cmd_fast_skiptrace, "reply": cmd_reply, "structure": cmd_structure,
+     "preflight": cmd_preflight}[args.cmd](args)
 
 
 if __name__ == "__main__":

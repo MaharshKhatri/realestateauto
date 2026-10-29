@@ -18,7 +18,7 @@ from typing import Any
 from core.config import CACHE_DIR
 from core.geo import haversine_miles
 from core.text import muni_base
-from engine.comps import Comp, CompHygiene, ValueResult, iqr_filter, value_from_metric
+from engine.comps import Comp, CompHygiene, SubjectKind, ValueResult, iqr_filter, kind_mismatch, ppsf_outliers, value_from_metric
 
 log = logging.getLogger(__name__)
 
@@ -149,8 +149,11 @@ class ListingComps:
                 prop.baths = subject["baths"]
         sqft_known = bool(prop.sqft)
         tol = float(cfg.get("comp_sqft_tolerance", 0.25)) * (1 if sqft_known else 1.6)
+        own_type = listing_type(prop)
         allowed = subject_type(prop.dwellings, prop.building_desc,
-                               None if (prop.dwellings or prop.building_desc) else listing_type(prop))
+                               None if (prop.dwellings or prop.building_desc) else own_type)
+        kind = SubjectKind.of(building_desc=prop.building_desc, qual=prop.qual, units=prop.dwellings,
+                              year_built=prop.year_built or (subject or {}).get("year_built"), mls_type=own_type)
         past_days = int(cfg.get("comp_sold_days", 180))
         min_comps = int(cfg.get("min_comps", 3))
         notes: list[str] = []
@@ -173,8 +176,12 @@ class ListingComps:
                 yb = r.get("year_built")
                 if yb and yb < 1750:
                     yb = None
+                if kind_mismatch(kind, r.get("property_type"), yb):
+                    continue                                 # condo / townhouse vs detached, or new construction
                 dist = (haversine_miles(prop.lat, prop.lon, r["lat"], r["lon"])
                         if prop.lat and prop.lon and r.get("lat") and r.get("lon") else None)
+                if dist is not None and dist > 2.5 * float(radius):
+                    continue                                 # the search geocoded somewhere else
                 sold = date.fromisoformat(r["sold_date"]) if r.get("sold_date") else None
                 comps.append(Comp(
                     address=f"{r.get('address')}, {r.get('city')} {r.get('zip')}", municipality=r.get("city"),
@@ -191,6 +198,8 @@ class ListingComps:
                 lo, hi = iqr_filter([c.price_per_sqft for c in comps])
                 med = sorted(c.price_per_sqft for c in comps)[len(comps) // 2]
                 comps = [c for c in comps if lo <= c.price_per_sqft <= hi and c.price_per_sqft >= 0.4 * med]
+                band_lo, band_hi = ppsf_outliers([c.price_per_sqft for c in comps])
+                comps = [c for c in comps if band_lo <= c.price_per_sqft <= band_hi]   # one luxury sale in 4
             if len(comps) >= min_comps:
                 arv, as_is, n_r, n_d, disp = value_from_metric(
                     comps, "price_per_sqft", sqft, cfg.get("renovated_percentile", 0.70),

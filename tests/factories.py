@@ -40,9 +40,10 @@ def make_lead(db, *, sheriff_days: int | None = 20, upset: float | None = 150000
         db.add(Valuation(property=prop, arv_estimate=500000, as_is_value=400000, est_repair_cost=60000,
                          rehab_tier="MEDIUM", target_assignment_fee=30000, mao_conservative=260000,
                          mao_aggressive=285000, anchor_offer=228800, confidence_score=80, verdict=verdict,
-                         debt_estimate=upset, deal_spread=110000, is_current=True, assumptions_json=a,
-                         comps_json=[{"address": "9 Comp St, Newark 07106", "sold_price": 480000,
-                                      "sold_date": "2026-08-01", "sqft": 1400, "distance_mi": 0.2}]))
+                         debt_estimate=upset, deal_spread=110000, is_current=True, assumptions_json=a, comp_count=4,
+                         comps_json=[{"address": f"{9 + i} Comp St, Newark 07106", "sold_price": 480000 + 10000 * i,
+                                      "sold_date": "2026-08-01", "sqft": 1400, "distance_mi": 0.2 + 0.05 * i,
+                                      "bucket": "renovated" if i < 2 else "middle"} for i in range(4)]))
     db.flush()
     db.refresh(prop)
     return lead

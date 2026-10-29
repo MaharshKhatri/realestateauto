@@ -144,7 +144,8 @@ def contract_gate(lead: Lead, doc_type: str, price: float | None, explicit_price
             return Gate(False, ["Underwrite the lead first (manage.py underwrite --lead <id>)."])
         decision = frfpa_decision(lead.property)
         gate.track = decision.track
-        fmv = v.as_is_value
+        a = v.assumptions_json or {}
+        fmv = a.get("frfpa_fmv") or v.as_is_value          # engine/underwriter.py frfpa_fmv(): the conservative FMV
         pct = float(settings().get("compliance", {}).get("frfpa_min_pct_fmv", 0.82))
         gate.floor = round(fmv * pct, -2) if fmv else None
         if v.verdict in NO_OFFER_VERDICTS:

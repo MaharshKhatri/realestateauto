@@ -996,8 +996,18 @@ def autopilot_outcome(lead_id: int, body: AutoOutcomeIn, session: Session = Depe
 # -- Phase 6: fast skip-trace mode, deal structure, first-touch preference ---------------------------------------
 @app.get("/api/skiptrace/queue")
 def skiptrace_queue(limit: int = 25, session: Session = Depends(db)) -> dict[str, Any]:
+    """Funding-partner principals first (Phase 0), then owners worth finding."""
     from engine import clipboard_skiptrace as cs
-    return {"rows": cs.queue(session, limit=max(1, min(limit, 100)))}
+    return {"partners": cs.partner_queue(session, limit=10), "rows": cs.queue(session, limit=max(1, min(limit, 100)))}
+
+
+@app.post("/api/partners/{partner_id}/skiptrace-paste")
+def partner_skiptrace(partner_id: int, body: PasteIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import clipboard_skiptrace as cs
+    try:
+        return cs.trace_partner(session, partner_id, body.text)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @app.post("/api/leads/{lead_id}/skiptrace-paste")

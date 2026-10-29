@@ -330,7 +330,6 @@ def test_tax_list_import_falls_back_when_njgin_is_down(db, tmp_path, monkeypatch
 
 
 def test_two_step_funnel_cards_opener_nudge_then_touch2(db, setup_paths):
-    from engine import agent_outreach as ao
     from engine import human_copy as hc
     operator_setup.save(GOOD)
     lead = deal(db)

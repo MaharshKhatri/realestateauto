@@ -140,7 +140,8 @@ def offer_numbers(lead: Lead) -> tuple[float | None, float | None, float | None]
     from engine.underwriter import frfpa_decision
     v = lead.property.current_valuation
     pct = float(settings().get("compliance", {}).get("frfpa_min_pct_fmv", 0.82))
-    floor = round(v.as_is_value * pct, -2) if v and v.as_is_value and frfpa_decision(lead.property).applies else None
+    fmv = ((v.assumptions_json or {}).get("frfpa_fmv") or v.as_is_value) if v else None
+    floor = round(fmv * pct, -2) if fmv and frfpa_decision(lead.property).applies else None
     anchor, best = offer_prices(lead)
     if v is not None and v.verdict == "SHORT_SALE_ONLY":
         anchor, best = v.anchor_offer, v.mao_conservative
@@ -165,6 +166,12 @@ def listed_foreclosure(session: Session, lead: Lead, today: date | None = None) 
     anchor, best, floor = offer_numbers(lead) if track in ("CASH_OFFER", "FRFPA_FLOOR_OFFER", "SHORT_SALE") \
         else (None, None, None)
     ask = meta.get("list_price")
+    if track in ("CONFIRM_OCCUPANCY", "SHORT_SALE") and ask and v is not None and v.mao_aggressive \
+            and v.mao_aggressive < FAR_BELOW_ASK * ask:
+        # Our ceiling is nowhere near the ask: an occupancy question or a lender short-sale pitch goes nowhere.
+        reasons = [f"our walk-away ({money(v.mao_aggressive)}) is only {v.mao_aggressive / ask:.0%} of the "
+                   f"{money(ask)} ask: no realistic offer (re-check comps; a short-sale lender wants near market)"]
+        track, anchor, best, floor = "NO_OFFER", None, None, None
     if track == "CASH_OFFER" and ask and best and best < FAR_BELOW_ASK * ask:
         track = "NO_OFFER"
         reasons = [f"our best ({money(best)}) is only {best / ask:.0%} of the {money(ask)} ask — re-check comps "

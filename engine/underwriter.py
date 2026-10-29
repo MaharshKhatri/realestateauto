@@ -248,6 +248,12 @@ def cross_check(listing: ValueResult, public: ValueResult) -> ValueResult:
     thin = len(listing.comps) < 6 or (listing.dispersion or 0) > 0.6
     listing.notes.append(f"public-record cross-check: ARV ${public.arv:,.0f} / as-is ${public.as_is:,.0f} "
                          f"({gap:.0%} apart)")
+    if thin and gap > 0.5:
+        # A handful of listing comps that disagree by more than half: averaging garbage still gives garbage.
+        public.notes = listing.notes + public.notes + [
+            f"{len(listing.comps)} listing comps {gap:.0%} away from the recorded sales: valued on the recorded sales"]
+        public.method = "public_record_over_thin_listing"
+        return public
     if thin or gap > 0.25:
         w = 0.5 if thin else 0.65
         listing.arv = round(w * listing.arv + (1 - w) * public.arv, -3)
@@ -360,9 +366,14 @@ class Underwriter:
                 sqft, sqft_known = prop.sqft, True
         public: ValueResult | None = None
         if prop.lat and prop.lon and prop.assessed_total and prop.mun_code:
+            from engine.comps import SubjectKind
+            from engine.listing_comps import listing_type
+            kind = SubjectKind.of(building_desc=prop.building_desc, qual=prop.qual, units=prop.dwellings,
+                                  year_built=prop.year_built, mls_type=listing_type(prop))
             public = self.public.value(
                 lat=prop.lat, lon=prop.lon, assessed_total=prop.assessed_total, mun_code=prop.mun_code,
                 municipality=prop.municipality or "", units=prop.dwellings, building_desc=prop.building_desc,
+                subject=kind,
                 radius=cfg.get("comp_radius_miles", 0.5), fallback_radius=cfg.get("comp_radius_fallback_miles", 1.0),
                 months=int(cfg.get("public_record_comp_months", 24)), appreciation=cfg.get("annual_appreciation", 0.05),
                 min_comps=int(cfg.get("min_comps", 3)), renovated_pct=cfg.get("renovated_percentile", 0.70),
@@ -399,7 +410,7 @@ class Underwriter:
             units=prop.dwellings)
         as_is = min(result.as_is or 0, result.arv) or None
         om, decision, frfpa_fields = decide_offer(prop, arv=result.arv, repairs=rehab.cost, as_is=as_is, debt=debt,
-                                                  cfg=self.cfg, guard=guard)
+                                                  cfg=self.cfg, guard=guard, equalized=self._equalized)
         conf = guarded_confidence(confidence(result, sqft_known, int(self.cfg.get("min_comps", 3))), guard)
         as_is = min(as_is or 0, om.arv) or None
         equity = estimate_equity(as_is, prop.last_sale_price, prop.last_sale_date, known_debt=debt)
@@ -444,21 +455,34 @@ class Underwriter:
         return round(prop.assessed_total * ratio, -2) if ratio else None
 
 
+def frfpa_fmv(prop: Property, as_is: float | None, equalized: float | None = None) -> tuple[float | None, str]:
+    """Fair market value for the FRFPA 82% floor: the HIGHEST credible market number we hold, never our low
+    distressed-percentile estimate alone. A listed house's ask (85% of it) and its equalized assessment both count."""
+    ask = asking_price(prop)
+    options = {"as-is estimate": as_is or 0, "equalized assessment": equalized or 0, "85% of the ask": 0.85 * ask if ask else 0}
+    basis, value = max(options.items(), key=lambda kv: kv[1])
+    return (round(value, -2), basis) if value else (None, "")
+
+
 def decide_offer(prop: Property, *, arv: float, repairs: float, as_is: float | None, debt: float | None,
-                 cfg: dict[str, Any], guard: GuardResult | None = None
+                 cfg: dict[str, Any], guard: GuardResult | None = None, equalized: float | None = None
                  ) -> tuple[OfferMath, FrfpaDecision, dict[str, Any]]:
     """Offer math + FRFPA track for already-valued inputs (shared by underwrite() and reprice())."""
     decision = frfpa_decision(prop)
     frfpa = decision.applies
-    om, extra = price_deal(prop, arv=arv, repairs=repairs, debt=debt, cfg=cfg, frfpa=frfpa, fmv=as_is)
+    fmv, fmv_basis = frfpa_fmv(prop, as_is, equalized) if frfpa else (as_is, "as-is estimate")
+    om, extra = price_deal(prop, arv=arv, repairs=repairs, debt=debt, cfg=cfg, frfpa=frfpa, fmv=fmv)
+    if frfpa and fmv and fmv_basis != "as-is estimate":
+        om.flags.append(f"FRFPA fair market value taken as {fmv_basis} (${fmv:,.0f}), above our as-is estimate: "
+                        "the 82% floor never rests on our lowest number")
     if guard is not None:
         om.flags = guard.flags + om.flags
         if guard.non_residential and not asking_price(prop):
             om.verdict = "PASS"          # commercial / mixed-use parcel: no wholesale offer from house comps
             om.anchor_offer = None
     track_info: dict[str, Any] = {}
-    if frfpa and om.verdict == "FRFPA_BLOCKED" and as_is:
-        ct = covered_track(arv=om.arv, fmv=as_is, repairs=om.repairs, debt=debt,
+    if frfpa and om.verdict == "FRFPA_BLOCKED" and fmv:
+        ct = covered_track(arv=om.arv, fmv=fmv, repairs=om.repairs, debt=debt,
                            aggressive_pct=(extra.get("quant") or {}).get("alpha_effective")
                            or float(cfg.get("mao_pct_aggressive", 0.75)),
                            min_fee=float(cfg.get("min_assignment_fee", 10000)))
@@ -478,7 +502,8 @@ def decide_offer(prop: Property, *, arv: float, repairs: float, as_is: float | N
                            "anchor_offer": ex.anchor_offer, "fee": ex.assignment_fee}
     if prop.lead:
         prop.lead.frfpa_track = decision.track
-    fields = {"frfpa_applies": frfpa, "frfpa_floor": om.frfpa_floor, "frfpa_track": decision.track,
+    fields = {"frfpa_applies": frfpa, "frfpa_floor": om.frfpa_floor, "frfpa_fmv": fmv if frfpa else None,
+              "frfpa_fmv_basis": fmv_basis if frfpa else None, "frfpa_track": decision.track,
               "frfpa_confidence": decision.confidence, "frfpa_basis": decision.basis,
               "verify_before_contract": decision.verify_before_contract, "exempt_scenario": exempt_scenario,
               **track_info, **extra}
@@ -525,7 +550,7 @@ def listing_gap(list_price: float | None, mao_conservative: float | None, mao_ag
     return out
 
 
-FRFPA_FIELDS = ("frfpa_applies", "frfpa_floor", "frfpa_track", "frfpa_confidence", "frfpa_basis",
+FRFPA_FIELDS = ("frfpa_applies", "frfpa_floor", "frfpa_fmv", "frfpa_fmv_basis", "frfpa_track", "frfpa_confidence", "frfpa_basis",
                 "verify_before_contract", "exempt_scenario", "compliant_offer", "track_buyer_price", "track_fee",
                 "equity_at_risk", "quant", "pricing_model")   # everything decide_offer() rewrites on a re-price
 
@@ -549,7 +574,7 @@ def reprice(session: Session, prop: Property) -> Valuation | None:
                         original_arv=g.get("original_arv"),
                         flags=[f for f in (a.get("flags") or []) if f.startswith(("OUTLIER_CAPPED", "NON_RESIDENTIAL"))])
     om, _, fields = decide_offer(prop, arv=arv, repairs=cur.est_repair_cost or 0, as_is=cur.as_is_value, debt=debt,
-                                 cfg=cfg, guard=guard)
+                                 cfg=cfg, guard=guard, equalized=a.get("subject_equalized"))
     for k in FRFPA_FIELDS:
         a.pop(k, None)
     a.update(fields)
