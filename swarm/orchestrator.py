@@ -91,6 +91,11 @@ def _closing_alerts(**opts: Any) -> BaseAgent:
     return ClosingAlertsAgent(**opts)
 
 
+def _calendar_sync(**opts: Any) -> BaseAgent:
+    from engine.gcal_sync import CalendarSyncAgent
+    return CalendarSyncAgent(**opts)
+
+
 def _lis_pendens(**opts: Any) -> BaseAgent:
     from agents.scrapers.lis_pendens_agent import LisPendensAgent
     return LisPendensAgent(**opts)
@@ -131,6 +136,8 @@ REGISTRY: dict[str, AgentSpec] = {spec.name: spec for spec in [
               "analyze"),
     AgentSpec("closing_alerts", _closing_alerts, "Closing milestones: attorney review, deadlines into the call queue.",
               "improve"),
+    AgentSpec("calendar_sync", _calendar_sync, "Google Calendar two-way sync: agent follow-ups, attorney review, "
+              "closing steps, priority sheriff sales, daily goal (skipped until setup-calendar).", "improve"),
     AgentSpec("buyer_matcher", _buyer_matcher, "Top-5 recorded cash buyers for each top underwritten deal.", "analyze", {"top": 50}),
     AgentSpec("self_improvement", PipelineSelfImprovementAgent, PipelineSelfImprovementAgent.description, "improve"),
 ]}
@@ -141,7 +148,7 @@ JOBS: dict[str, list[str]] = {
     "ContactEnrichmentAgent": ["municipal_owners", "listing_agents", "owner_resolver", "signal_stacker"],
     "CompUnderwriterAgent": ["lead_scoring", "underwriter", "outlier_guard", "lead_scoring", "fast_track",
                              "buyer_matcher"],
-    "PipelineSelfImprovementAgent": ["closing_alerts", "self_improvement"],
+    "PipelineSelfImprovementAgent": ["closing_alerts", "calendar_sync", "self_improvement"],
 }
 JOB_ALIASES = {"sheriff": "SheriffSaleMonitorAgent", "data_refresh": "DataRefreshAgent",
                "contacts": "ContactEnrichmentAgent", "underwrite": "CompUnderwriterAgent",
@@ -270,6 +277,8 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    from engine.gcal_sync import install_hooks
+    install_hooks()       # sale dates and closing deadlines the swarm changes reach the calendar right away
     parser = argparse.ArgumentParser(prog="python -m swarm.orchestrator", description=__doc__.split("\n\n")[0])
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="cmd", required=True)

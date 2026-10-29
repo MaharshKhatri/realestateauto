@@ -20,6 +20,9 @@ data/backups/
 # repository is public. Commit one only after the repository is private, deliberately: git add -f data/snapshots/
 data/snapshots/
 config/settings.local.yaml
+# Google Calendar OAuth client + the operator's token (engine/gcal_sync.py)
+config/credentials.json
+config/token.json
 
 # Run logs (swarm_intelligence.md is aggregate-only and IS committed)
 logs/*.log

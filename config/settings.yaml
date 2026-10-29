@@ -64,6 +64,27 @@ autopilot:
   urgent_days_to_sale: 14            # listed foreclosures this close to the auction skip the opener
   partners_needed: 3                 # Phase 0: active funding partners with proof of funds before the deals start
 
+calendar:                            # Google Calendar sync (engine/gcal_sync.py; `manage.py setup-calendar` once)
+  enabled: true                      # syncs only once config/token.json exists
+  calendar_id: primary
+  timezone: America/New_York
+  dashboard_url: "http://127.0.0.1:8000"   # event links open the lead card here (/leads/<id>)
+  followup_hours: 48                 # agent follow-up = this long after the e-mail, moved into 8am-9pm, Mon-Sat
+  followup_minutes: 15               # event length
+  attorney_review_time: "17:00"      # the 3rd NJ business day
+  milestone_time: "09:00"            # other contract-to-close deadlines
+  daily_goal_time: "10:00"
+  daily_goal_rrule: "RRULE:FREQ=DAILY"
+  sheriff_sale_limit: 25             # priority sheriff sales on the calendar (listed foreclosures first)
+  background_minutes: 10             # the cockpit re-syncs this often (retries anything queued while offline)
+  colors:                            # Google colorId: 5 banana, 6 tangerine, 7 peacock, 9 blueberry, 10 basil, 11 tomato
+    followup: "6"
+    callback: "7"
+    attorney_review: "5"
+    milestone: "9"
+    sheriff_sale: "11"
+    daily_goal: "10"
+
 crm:
   # Days until the next touch, by call outcome (business-hours follow-up queue).
   followup_days:
@@ -225,5 +246,6 @@ agents:
     outlier_guard: "25 7 * * *"
     fast_track: "30 7 * * *"
     closing_alerts: "0 8 * * 1-5"
+    calendar_sync: "*/15 * * * *"        # pushes anything queued while offline, pulls moved / deleted events
     buyer_matcher: "35 7 * * *"
     self_improvement: "45 7 * * *"

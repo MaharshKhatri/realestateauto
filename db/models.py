@@ -511,6 +511,32 @@ class ClosingMilestone(Base):
     __table_args__ = (UniqueConstraint("lead_id", "milestone", name="uq_closing_milestone"),)
 
 
+class CalendarEvent(Base):
+    """One event we keep on the operator's Google Calendar (engine/gcal_sync.py): the desired event body plus its
+    sync state. The natural key (followup:<lead>:i<interaction>, review:<lead>:<date>, sale:<lead>, daily_goal, ...)
+    also fixes the Google event id, so a re-run, a second machine or a lost row never creates a duplicate."""
+    __tablename__ = "calendar_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), unique=True)
+    kind: Mapped[str] = mapped_column(String(24), index=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    # pending (needs insert/update) | synced | cancel (needs delete) | cancelled (we deleted it) |
+    # dismissed (the operator deleted it in Google: never re-created)
+    status: Mapped[str] = mapped_column(String(12), default="pending", index=True)
+    google_event_id: Mapped[str | None] = mapped_column(String(128))
+    body_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    body_hash: Mapped[str | None] = mapped_column(String(64))
+    synced_hash: Mapped[str | None] = mapped_column(String(64))
+    operator_edit_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)   # start/end the operator moved it to
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)  # naive America/New_York
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class LedgerEntry(Base):
     """Money in and out of the business (engine/finance.py): assignment fees, marketing, legal, title, tools."""
     __tablename__ = "financial_ledger"

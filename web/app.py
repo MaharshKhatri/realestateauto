@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import exists, func, or_, select
@@ -26,6 +26,7 @@ from db.database import session_scope
 from db.models import (CallOutcome, CashBuyer, Contact, ContactType, DistressSignal, GeneratedDocument, Lead,
                        Occupancy, Property, SignalType, Valuation)
 from engine import compliance, crm
+from engine import gcal_sync
 from engine.contracts import DEALS_DIR, DOC_TYPES, ContractBlocked, contract_gate, default_price, generate
 from engine.frfpa_classifier import COVERED_TRACKS, covered_track
 from engine.scoring import stack_badge
@@ -43,6 +44,9 @@ TABS = {
 }
 
 app = FastAPI(title="NJ Wholesale Cockpit", docs_url="/api/docs", redoc_url=None)
+# Every commit that changes a follow-up, contract, milestone or sale date queues its Google Calendar events
+# (engine/gcal_sync.py); `manage.py server` also starts the periodic re-sync.
+gcal_sync.install_hooks()
 
 
 def public_hosts() -> set[str]:
@@ -150,6 +154,12 @@ def valuation_dict(v: Valuation | None) -> dict[str, Any] | None:
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/leads/{lead_id}", include_in_schema=False)
+def lead_link(lead_id: int) -> RedirectResponse:
+    """The link in every Google Calendar event: opens the lead card in the single-page cockpit."""
+    return RedirectResponse(f"/#/lead/{lead_id}", status_code=307)
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -991,6 +1001,27 @@ def autopilot_outcome(lead_id: int, body: AutoOutcomeIn, session: Session = Depe
         return outcome(session, lead_id, body.outcome, notes=body.notes)
     except AutopilotError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+# -- Phase 7: Google Calendar ---------------------------------------------------------------------------------------
+@app.get("/api/calendar/status")
+def calendar_status(session: Session = Depends(db)) -> dict[str, Any]:
+    return {**gcal_sync.status(session), "connect": gcal_sync.connect_result(), "worker": gcal_sync.worker.last}
+
+
+@app.post("/api/calendar/sync")
+def calendar_sync(session: Session = Depends(db)) -> dict[str, Any]:
+    """Full two-way sync now (also queues everything when the calendar isn't connected yet)."""
+    return gcal_sync.sync(session).to_json()
+
+
+@app.post("/api/calendar/connect")
+def calendar_connect() -> dict[str, Any]:
+    """Opens Google's consent page in this laptop's browser (credentials.json must be in config/)."""
+    try:
+        return gcal_sync.connect_in_background()
+    except gcal_sync.CalendarSetupError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 # -- Phase 6: fast skip-trace mode, deal structure, first-touch preference ---------------------------------------

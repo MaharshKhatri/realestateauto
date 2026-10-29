@@ -50,6 +50,45 @@ password** (Google Account → Security → App passwords), and paste it into th
 most 25 a day) and attaches the 1-page written offer. Without it, the Send button opens your own e-mail app with
 the text filled in.
 
+### 2½. 📅 Connect your Google Calendar (10 minutes, free, once)
+After this, every deadline shows up on your phone without opening the dashboard:
+- **🔥 Follow Up: [street] Agent ([name])** 48 hours after each e-mail to a listing agent (if that lands after 9pm or
+  on a Sunday, it waits for 10:00 the next calling day). It carries the agent's phone, e-mail, the asking price and a
+  link to the lead card.
+- **📞 Call back: [street]** for every other follow-up you schedule by logging a call. The homeowner's number is
+  deliberately left off: open the card, which checks the do-not-call lists and calling hours first.
+- **⚠️ ATTORNEY REVIEW ENDS: [street]** at 5:00 PM on the 3rd NJ business day after a signed contract (holidays
+  such as Election Day skipped), plus **⚠️ FRFPA CANCELLATION ENDS** on covered foreclosures and a **📋** event for
+  each contract-to-close step.
+- **🚨 SHERIFF SALE AUCTION: [street] ([county] County)** for the 25 sales that matter most (listed foreclosures
+  first), reminding you two days and one day before. When a sale is adjourned, the event moves by itself.
+- **🎯 Send 15 Daily Wholesaling Outreach Emails (Open Dashboard)** every day at 10:00.
+
+Get the free Google key (you only do this once):
+1. Open https://console.cloud.google.com/ while signed in to the Gmail whose calendar you use. Create a project
+   (top bar → project picker → New project, any name, e.g. "NJ Wholesale Calendar").
+2. **APIs & Services → Library**, search **Google Calendar API**, press **Enable**.
+3. **Google Auth platform → Branding**: app name ("NJ Wholesale Cockpit") and your e-mail, Save. **Audience**:
+   choose **External**. Then either add your own Gmail under **Test users**, or press **Publish app**. Publishing is
+   better: while the app sits in "Testing", Google expires the sign-in every 7 days and you would have to repeat
+   step 5 weekly. Because only you use it, Google never needs to review it; you will simply see a "Google hasn't
+   verified this app" screen once (Advanced → Go to NJ Wholesale Cockpit).
+4. **Google Auth platform → Clients → Create client**, Application type **Desktop app**, Create, then **Download
+   JSON**. Rename the file to `credentials.json` and put it in the project's `config/` folder. It is git-ignored;
+   never e-mail it or post it.
+5. Connect: click **📅 Connect Google Calendar** in the dashboard's top bar (or run
+   `python manage.py setup-calendar`). Your browser opens Google's sign-in: pick your account and allow the one
+   permission it asks for, to view and edit *events* on your calendars (nothing else: not your e-mail, contacts or
+   calendar settings). The token is saved to `config/token.json` (git-ignored, readable only by you) and the first
+   sync runs.
+
+From then on it is automatic: sending an offer, logging a call or recording a contract updates the calendar within
+seconds while the dashboard is open, and anything made while you're offline goes up on the next sync (every 10
+minutes, or **📅 → Sync now**, or `python manage.py sync-calendar`). Two-way: delete an event in Google Calendar and
+it stays deleted; drag a follow-up or the 10:00 reminder to another time and the dashboard's follow-up moves with it;
+drag an attorney-review or sheriff-sale date by mistake and it is put back, because those dates are legal facts.
+`python manage.py sync-calendar --dry-run` lists what would be created without touching anything.
+
 ### 3. Do-Not-Call: register, download, load (before you call any homeowner)
 1. Register as a telemarketer with the NJ Division of Consumer Affairs (N.J.S.A. 56:8-119 et seq.). It renews yearly.
 2. Create an account at **telemarketing.donotcall.gov**. Your first five area codes are free.

@@ -969,8 +969,15 @@ async function loadCmdbar() {
         <button class="btn" id="btn-setup">⚙️ My Setup &amp; Auto-Email</button>
         <button class="btn" id="btn-swarm">🤖 Run Autopilot Data Refresh</button>
         <button class="btn" id="btn-opra">🏛️ Request Free Town Tax-Lien Spreadsheets (OPRA)</button>
+        <button class="btn" id="btn-cal">📅 Google Calendar</button>
         <span id="swarm-live" class="muted"></span>
       </div>`;
+    $("#btn-cal").onclick = openCalendar;
+    api("/api/calendar/status").then(({ data: c }) => {
+      $("#btn-cal").textContent = c.configured
+        ? (c.needs_reauth ? "📅 Calendar: sign in again" : `📅 Calendar on${c.queued ? ` · ${c.queued} queued` : ""}`)
+        : "📅 Connect Google Calendar";
+    }).catch(() => {});
     $("#btn-setup").onclick = openSetup;
     $("#btn-swarm").onclick = openSwarm;
     $("#btn-opra").onclick = openOpra;
@@ -978,6 +985,56 @@ async function loadCmdbar() {
   } catch (e) {
     bar.innerHTML = `<span class="bad">Command bar: ${esc(e.message)}</span>`;
   }
+}
+
+// -- Phase 7: Google Calendar ------------------------------------------------------------------------------
+async function openCalendar() {
+  const { data: c } = await api("/api/calendar/status");
+  const when = (u) => (u.all_day ? new Date(u.start).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
+    : fmtDate(u.start));
+  const up = (c.upcoming || []).map((u) => `<li>${esc(when(u))} · ${esc(u.summary)}
+      ${u.status === "pending" ? '<span class="pill warn">queued</span>' : ""}</li>`).join("");
+  const state = c.configured
+    ? (c.needs_reauth ? '<span class="pill bad">sign in again</span>' : '<span class="pill good">connected</span>')
+    : '<span class="pill warn">not connected</span>';
+  modal(`<div class="setup">
+      <div class="row spread"><h2>📅 Google Calendar</h2>${state}</div>
+      <p class="muted">Follow-ups 48 hours after each agent e-mail, attorney-review deadlines (5 PM, 3rd business day),
+        contract-to-close steps, priority sheriff sales and your 10:00 outreach reminder go to your own Google Calendar,
+        each with a link back to the lead card. Homeowner names and phone numbers never leave this laptop.</p>
+      ${c.calendar ? `<p>Calendar: <b>${esc(c.calendar)}</b></p>` : ""}
+      <p>${c.queued} queued · last sync ${esc(c.last_sync ? fmtDate(c.last_sync) : "never")}
+        ${c.last_error ? `<br><span class="bad">${esc(c.last_error)}</span>` : ""}</p>
+      ${up ? `<h3>Next on the calendar</h3><ul>${up}</ul>` : ""}
+      ${c.setup_steps && !c.credentials_file ? `<pre class="cal-steps">${esc(c.setup_steps)}</pre>` : ""}
+      <div class="row">
+        ${c.credentials_file && (!c.configured || c.needs_reauth) ? '<button class="btn primary" id="cal-connect">Connect Google Calendar</button>' : ""}
+        <button class="btn" id="cal-sync">${c.configured ? "Sync now" : "Prepare events (sync when connected)"}</button>
+        <button class="btn" id="cal-close">Close</button>
+      </div>
+      <p id="cal-msg" class="muted"></p></div>`);
+  $("#cal-close").onclick = closeModal;
+  $("#cal-sync").onclick = async () => {
+    $("#cal-msg").textContent = "Syncing…";
+    const { data: r } = await post("/api/calendar/sync", {});
+    const p = r.pushed || {}, rc = r.reconciled || {};
+    $("#cal-msg").textContent = r.error
+      ? `${rc.created || 0} new events queued. ${r.error}`
+      : `Sent ${p.created || 0} new, ${p.updated || 0} updated, ${p.deleted || 0} removed; ${r.queued} still queued.`;
+    loadCmdbar();
+  };
+  if ($("#cal-connect")) $("#cal-connect").onclick = async () => {
+    const { data: r } = await post("/api/calendar/connect", {});
+    $("#cal-msg").textContent = r.message + " Approve calendar access there, then come back here.";
+    const t = setInterval(async () => {
+      const { data: s } = await api("/api/calendar/status");
+      if (s.connect && !s.connect.running && "ok" in s.connect) {
+        clearInterval(t);
+        $("#cal-msg").textContent = s.connect.ok ? `Connected to ${s.connect.calendar || "your calendar"}.` : s.connect.error;
+        loadCmdbar();
+      }
+    }, 2000);
+  };
 }
 
 // -- My Setup & Auto-Email ------------------------------------------------------------------------------

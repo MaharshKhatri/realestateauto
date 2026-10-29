@@ -19,10 +19,10 @@ from datetime import datetime
 from typing import Any, Callable
 
 QUICK = ["signal_stacker", "lead_scoring", "outlier_guard", "lead_scoring", "fast_track", "buyer_matcher",
-         "closing_alerts"]
+         "closing_alerts", "calendar_sync"]
 FULL = ["sheriff_sales", "stale_listings", "lis_pendens", "owner_enrichment", "municipal_owners", "listing_agents",
         "owner_resolver", "signal_stacker", "lead_scoring", "underwriter", "outlier_guard", "lead_scoring",
-        "fast_track", "buyer_matcher", "closing_alerts", "self_improvement"]
+        "fast_track", "buyer_matcher", "closing_alerts", "calendar_sync", "self_improvement"]
 MODES = {"quick": QUICK, "full": FULL}
 QUICK_OPTIONS = {"outlier_guard": {"offline": True}}
 

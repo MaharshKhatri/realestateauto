@@ -191,3 +191,4 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .quant div { background: var(--panel2); padding: 6px 8px; border-radius: 8px; font-size: 13px; }
 .quant b { display: block; font-size: 15px; }
 .structure td { font-size: 13px; padding: 3px 6px; }
+pre.cal-steps { white-space: pre-wrap; background: var(--panel2); padding: 10px 12px; border-radius: 8px; font-size: 13px; }

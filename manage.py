@@ -407,7 +407,10 @@ def cmd_server(args: argparse.Namespace) -> None:
     if restored:
         console.print(f"[green]Database unlocked from the snapshot of {restored['created_at']}[/green]")
     init_db()
-    console.print(f"[green]Cockpit:[/green] http://127.0.0.1:{args.port}  (local only — Ctrl+C to stop)")
+    from engine import gcal_sync
+    gcal_sync.start_background()      # no-op until `setup-calendar` has run
+    console.print(f"[green]Cockpit:[/green] http://127.0.0.1:{args.port}  (local only — Ctrl+C to stop)"
+                  + ("  · 📅 Google Calendar sync on" if gcal_sync.configured() else ""))
     uvicorn.run("web.app:app", host="127.0.0.1", port=args.port, log_level="warning")
 
 
@@ -461,6 +464,65 @@ def cmd_db_sync(args: argparse.Namespace) -> None:
     except snapshot.SnapshotError as exc:
         console.print(f"[red]{exc}[/red]")
         raise SystemExit(1) from None
+
+
+def cmd_setup_calendar(args: argparse.Namespace) -> None:
+    """One-time Google Calendar connection: config/credentials.json -> browser consent -> config/token.json."""
+    from engine import gcal_sync
+    init_db()
+    try:
+        info = gcal_sync.setup(open_browser=not args.no_browser, port=args.port, timeout=args.timeout)
+    except gcal_sync.CalendarError as exc:
+        console.print(f"[yellow]{exc}[/yellow]")
+        raise SystemExit(1) from None
+    console.print(f"[green]Connected[/green] to {info.get('calendar') or 'your calendar'} "
+                  f"({info.get('time_zone') or '?'}). Token saved to {gcal_sync.TOKEN.name} (git-ignored, chmod 600).")
+    with session_scope() as s:
+        gcal_sync._set_state(s, calendar=info.get("calendar"), needs_reauth=False, last_error=None)
+        r = gcal_sync.sync(s)
+    _print_calendar_sync(r)
+
+
+def _print_calendar_sync(r) -> None:
+    p, rc, pl = r.pushed, r.reconciled, r.pulled
+    console.print(f"calendar: {rc.get('created', 0)} new / {rc.get('changed', 0)} changed / "
+                  f"{rc.get('cancelled', 0)} no longer needed · sent {p.get('created', 0)} new, {p.get('updated', 0)} "
+                  f"updated, {p.get('deleted', 0)} removed · from Google: {pl.get('moved', 0)} moved, "
+                  f"{pl.get('dismissed', 0)} deleted by you, {pl.get('restored', 0)} legal dates put back · "
+                  f"{r.queued} queued")
+    if r.error:
+        console.print(f"[yellow]{r.error}[/yellow]")
+
+
+def cmd_sync_calendar(args: argparse.Namespace) -> None:
+    """Full two-way Google Calendar sync (--dry-run: show the events without writing anything)."""
+    from engine import gcal_sync
+    init_db()
+    with session_scope() as s:
+        if args.status:
+            st = gcal_sync.status(s)
+            console.print(f"connected: {st['configured']} · calendar: {st['calendar'] or '—'} · counts: {st['counts']} · "
+                          f"last sync: {st['last_sync'] or 'never'}" + (f" · [yellow]{st['last_error']}[/yellow]"
+                                                                      if st["last_error"] else ""))
+            for u in st["upcoming"]:
+                console.print(f"  {u['start']}  {u['summary']}  ({u['status']})")
+            if st["setup_steps"]:
+                console.print(st["setup_steps"])
+            s.rollback()
+            return
+        if args.dry_run:
+            want = gcal_sync.desired_events(s)
+            for d in sorted(want.values(), key=lambda d: d.starts_at):
+                console.print(f"  {d.starts_at:%a %b %d %H:%M}  {d.body['summary']}")
+            stats = gcal_sync.reconcile(s)
+            console.print(f"{len(want)} events wanted: {stats['created']} new, {stats['changed']} changed, "
+                          f"{stats['cancelled']} to remove (dry run: nothing written)")
+            s.rollback()
+            return
+        r = gcal_sync.sync(s)
+    _print_calendar_sync(r)
+    if not gcal_sync.configured():
+        console.print(gcal_sync.SETUP_STEPS)
 
 
 def cmd_install_shortcut(args: argparse.Namespace) -> None:
@@ -1459,6 +1521,13 @@ def main(argv: list[str] | None = None) -> None:
     ish.add_argument("--desktop", help="folder for the shortcut (default ~/Desktop)")
     sv = sub.add_parser("server")
     sv.add_argument("--port", type=int, default=8000)
+    scal = sub.add_parser("setup-calendar", help="connect Google Calendar once (config/credentials.json -> browser)")
+    scal.add_argument("--no-browser", action="store_true", help="print the sign-in link instead of opening a browser")
+    scal.add_argument("--port", type=int, default=0, help="local port for Google's redirect (0 = any free port)")
+    scal.add_argument("--timeout", type=int, default=300, help="seconds to wait for the browser sign-in")
+    ycal = sub.add_parser("sync-calendar", help="two-way Google Calendar sync (follow-ups, deadlines, sales, goal)")
+    ycal.add_argument("--dry-run", action="store_true", help="list the events without writing anything")
+    ycal.add_argument("--status", action="store_true", help="connection, queue and the next events")
     ds = sub.add_parser("db-sync", help="encrypted database snapshot for another machine (pack here, unpack there)")
     dsm = ds.add_mutually_exclusive_group()
     dsm.add_argument("--pack", action="store_true", help="VACUUM INTO -> xz -> AES-256-GCM -> data/snapshots/")
@@ -1592,9 +1661,12 @@ def main(argv: list[str] | None = None) -> None:
     si.add_argument("--buyer-endpoint", help="separate endpoint for the buyer form (default: --endpoint)")
     sub.add_parser("today", help="the 2-hour daily checklist (listed foreclosures, ready calls, skip-trace, buyers)")
     args = parser.parse_args(argv)
+    from engine import gcal_sync
+    gcal_sync.install_hooks()     # calls, offers and contracts logged from the CLI reach the calendar too
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
-     "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "db-sync": cmd_db_sync, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
+     "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "db-sync": cmd_db_sync, "setup-calendar": cmd_setup_calendar,
+     "sync-calendar": cmd_sync_calendar, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
      "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,
      "mail-merge": cmd_mail_merge, "inspect": cmd_inspect, "stack": cmd_stack, "buyer-hotzones": cmd_buyer_hotzones,

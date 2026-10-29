@@ -47,8 +47,9 @@ driving for dollars, door-knocking or an in-person visit by the operator.
 | **4. Sanity Guard, Listed-Foreclosure Fast Track, Closing Coordinator, Inbound Funnel & Daily Execution** | Comp hygiene + ARV outlier guard (package deeds, price/$-sqft/ratio bands, ask/assessment/$-sqft caps, non-residential PASS) and the `outlier_guard` agent over every valuation; listed-foreclosure sniper queue with honest tracks + urgent agent packets, portfolio-owner scripts/letters; NJ contract-to-close milestones, sourced title/attorney directory, title order e-mail, ledger + 28% tax reserve; `site/` seller + buyer funnel with consent capture and inbound ingest; `manage.py today` + cockpit Today home + `PLAYBOOK.md` | **Done (Phase 4)** |
 | **5. Command Center, Guided Autopilot, Human Copy, Clerk Filings & OPRA, Mercer/Monmouth** | `engine/human_copy.py` (plain 3-5 sentence e-mails, disclosures under `--- Offer Summary ---`, linter) across agent / fast-track / buyer / inbound / inspector messages; command center (KPI pills, My Setup → settings.local.yaml + .env, one-click swarm refresh with progress, step-by-step deal cards with send/outcome logging, kanban); desktop launchers; lis pendens agent (Union UCPA, Essex PRESS, Monmouth OPRS live + drop-in imports, Newark snapshot name lookup); OPRA requests + tax-list importer + Records page; Mercer/Monmouth harvest; GitHub Pages deploy behind `build-site --check` | **Done (Phase 5)** |
 | **6. Quant Pricing, Funding Partners, Two-Step Funnel, Reply Negotiator, Item 14 & Double Close, Fast Skip-Trace** | `engine/quant_pricing.py` (end-buyer solve: ≥15% ROI and ≥$45K after rehab + contingency, closing, 6-month taxes/carry/capital, commission + NJ RTF/graduated fee; alpha ∈ [0.68, 0.80] calibrated from 1,162 recorded investor purchases → `config/market_calibration.yaml`; buyer_max / mao_target / mao_walkaway / opening_offer on every valuation; `manage.py calibrate` / `recalibrate`); `engine/jv_partner_vault.py` (jv_partners seeded from the top 30 named repeat buyers, Phase 0 cards, buy-box matching, proof-of-funds upload → "verified local capital partner" line); two-step funnel (Touch 1 opener, 48-h nudge, Touch 2 offer on reply; urgent listed foreclosures skip it); `engine/reply_negotiator.py` (paste the agent's reply → intents, counter, risk buffers, GREEN/YELLOW/RED/INFO, 3-sentence reply, AGENT_REPLIED + follow-up); `engine/deal_structure.py` (Section 37 / "Item 14" attorney-review rider with CPEA disclosure + tank-sweep inspection, Correa acknowledgment in the assignment, disclosed single-purpose-LLC option, assignment vs double-close net check); `engine/clipboard_skiptrace.py` (queue → manual links → one-click paste → DNC scrub → best mobile → READY_TO_CALL); cockpit: first-touch toggle, paste-reply panel, 🤝 Partners & POF, ⚡ Skip Trace, quant breakdown, structure card | **Done (Phase 6)** |
-| **7. Lead Sources & Learning at Scale** | NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), Mercer sheriff list import once its format is verified, outcome-driven weight re-fits once calls are logged | Next |
-| **8. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
+| **7. Google Calendar Auto-Connector & Real-Time Event Sync** | `engine/gcal_sync.py` (OAuth Desktop client → `setup-calendar` once → `config/token.json`; `calendar_events` outbox with natural keys = deterministic Google event ids); 🔥 agent follow-ups exactly 48 h after each e-mail (moved into calling hours), 📞 call-backs, ⚠️ attorney review 5 PM on the 3rd NJ business day (+ FRFPA cancellation end), 📋 closing milestones, 🚨 priority sheriff sales that move with adjournments, 🎯 10:00 daily goal; SQLAlchemy commit hooks → background push in the cockpit / CLI / swarm, offline queue, two-way pull (deletes respected, moved follow-ups move the CRM, legal dates restored); `sync-calendar`, `calendar_sync` swarm agent, 📅 cockpit button, `/leads/<id>` links | **Done (Phase 7)** |
+| **8. Lead Sources & Learning at Scale** | NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), Mercer sheriff list import once its format is verified, outcome-driven weight re-fits once calls are logged | Next |
+| **9. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
 
 ## Directory structure
 
@@ -59,7 +60,8 @@ manage.py                     ← operator CLI (rich): briefing (A ready-to-call
                                 skiptrace, dnc (+ --suppress-address), match, pii-scan, agent-blast, mail-merge,
                                 inspect, stack, buyer-hotzones, walkthrough, bid, today, fast-track, closing, finance,
                                 partners, inbound, site, build-site, install-shortcut, calibrate, recalibrate, vault,
-                                skiptrace-fast, reply, structure, preflight, db-sync, swarm passthrough
+                                skiptrace-fast, reply, structure, preflight, db-sync, setup-calendar, sync-calendar,
+                                swarm passthrough
 Launch_Dashboard.command / launch_dashboard.sh / Launch_Dashboard.bat ← double-click launchers (generated by
                                 scripts/install_desktop_shortcut.py; path-independent): start the server if needed,
                                 wait for /api/health, open the browser
@@ -74,6 +76,8 @@ config/nj_closing_partners.yaml ← NJ title agencies / closing attorneys checke
 config/nj_deal_costs.yaml     ← NJ RTF brackets + graduated fee (P.L.2025 c.69, seller pays; Treasury schedules cited),
                                 end-buyer economics (ROI/profit floors, closing, holding, capital), alpha band, fee targets,
                                 double-close and negotiation buffers
+config/credentials.json / token.json ← the operator's Google OAuth Desktop client and saved sign-in (git-ignored;
+                                token chmod 600); tests point both at paths that never exist
 config/market_calibration.yaml ← `manage.py calibrate`: per-town / county / statewide lower-quartile of investor purchase
                                 price ÷ equalized value + investor share of sales (aggregates only, no parcels or names)
 core/                         ← config loader, polite HTTP client (per-host rate limit, retries, disk cache,
@@ -84,7 +88,7 @@ db/models.py                  ← ORM: properties, distress_signals, valuations,
                                 fields, ready_to_call), contacts, interactions, dnc_entries, mail_suppressions,
                                 buyer_matches, buyer_bids, closing_milestones, financial_ledger, generated_documents,
                                 cash_buyers (+ web registration fields), jv_partners, deed_transfers, listings, agent_runs,
-                                scoring_weights, swarm_state
+                                scoring_weights, swarm_state, calendar_events
 db/repository.py              ← idempotent upserts keyed on natural keys; parcel_id = COUNTY-MUN-BLOCK-LOT[-QUAL]
 db/snapshot.py                ← `manage.py db-sync`: VACUUM INTO → xz → AES-256-GCM (PBKDF2-HMAC-SHA256, 600k) →
                                 data/snapshots/ (< 45 MB parts + manifest); unpack verifies tag, SHA-256, quick_check;
@@ -147,6 +151,10 @@ engine/
   partner_principals.py       ← partner mailing-address families, likely principals (evidence + confidence), rank,
                                 lookup links (people search by name/address, OpenCorporates, NJ business search)
   preflight.py                ← GO / VERIFY / HOLD per deck card, comp talking points, cheat sheet
+  gcal_sync.py                ← Google Calendar: OAuth setup (credentials.json → token.json), desired events per lead
+                                (follow-up / call-back / attorney review / FRFPA / milestones / sheriff sale / daily
+                                goal), calendar_events outbox, pull → reconcile → push, commit hooks + background
+                                worker, CalendarSyncAgent
   clipboard_skiptrace.py      ← Fast Skip-Trace Mode: queue (exempt estates → vacant sheriff → lis pendens → absentee),
                                 parse pasted people-search pages (never fetched), rank, DNC scrub, save, READY flip
   operator_setup.py           ← My Setup: validate + write settings.local.yaml and .env (password never returned)
@@ -498,6 +506,35 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   `data/backups/` first. `manage.py server` and the launchers unlock a missing / empty database (DB_SYNC_KEY from
   .env, or one prompt) and refuse to start on an empty database while a snapshot is waiting.
 
+### Phase 7 operating rules — Google Calendar (learned 2026-10-29) — enforced in code
+- **Access** (`engine/gcal_sync.py`): one OAuth scope, `calendar.events` (events only: no e-mail, contacts or calendar
+  settings). The operator's own "Desktop app" client in `config/credentials.json`; `setup-calendar` (or 📅 Connect in
+  the cockpit) runs the browser consent once and writes `config/token.json` chmod 600. Both files are git-ignored.
+  An app left in "Testing" loses its refresh token after 7 days: the sync then reports "sign in again" and keeps
+  everything queued; publishing the app (unverified is fine for one user) avoids it.
+- **Events**: agent follow-up = exactly `calendar.followup_hours` (48) after the e-mail's logged time, moved to 10:00
+  the next calling day when that lands outside 8am–9pm Eastern or on a Sunday (the CRM queue keeps its own 10:00 slot);
+  call-backs at the CRM follow-up time; attorney review at 5:00 PM on the 3rd NJ business day after the contract date
+  (`nj_business_days_after`, holidays skipped), FRFPA cancellation end at 5:00 PM when later; pending closing
+  milestones at 9:00 on their due date; sheriff sales as all-day events for at most `sheriff_sale_limit` (25) leads
+  (listed foreclosures with an offer path, then ready-to-call, then priority); one recurring 10:00 daily-goal event.
+  Leads under contract get milestone events instead of follow-ups. Nothing is created in the past.
+- **Sync**: `calendar_events` rows are keyed (`followup:<lead>:i<interaction>`, `review:<lead>:<date>`, `sale:<lead>`,
+  `daily_goal`, …) and the Google event id is derived from the key, so re-runs, lost rows and a second machine update
+  instead of duplicating. Commit hooks (after_flush → after_commit) queue the touched leads and a background thread
+  syncs them; sync sessions carry `session.info["gcal_worker"]` so they never re-trigger. Offline / 5xx / rate
+  limits leave rows queued (attempts + last_error); the cockpit re-syncs every `background_minutes`, the swarm runs
+  `calendar_sync` every 15 minutes and at the end of every pipeline.
+- **Two-way**: pull first. An event the operator deleted becomes `dismissed` and is never re-created; a moved
+  follow-up / call-back moves `lead.next_followup_at`; a moved daily goal keeps the operator's time; a moved attorney
+  review, FRFPA date, milestone or sheriff sale is put back (legal facts). Our own cancellations (a newer touch, a
+  disapproval, a closed lead) delete future events only; past events stay as history.
+- **Privacy**: events may carry the street, county, ask, upset, our offer / walk-away, the listing agent's business
+  contact and the dashboard link. Never a homeowner's or defendant's name or phone (call-backs say "the number is on
+  the lead card", where the DNC + calling-hours checks run); no agent phone when it is on the internal or Daniel's
+  Law list; an address under a Daniel's Law / stop suppression (property or owner mailing address) appears only as
+  "lead #<id>", without the CivilView link.
+
 ## Coding standards
 
 - **No placeholders, mock data or TODO stubs in shipped code.** Every scraper is tested live from
@@ -588,5 +625,7 @@ python manage.py vault --unmask --gis      # partner families + likely principal
 python manage.py preflight --top 10        # GO / VERIFY / HOLD cheat sheet for the first deck cards (--out data/exports/x.md)
 python manage.py db-sync --pack            # encrypted DB snapshot → data/snapshots/ (key: DB_SYNC_KEY in .env; --new-key rotates)
 python manage.py db-sync --unpack [KEY]    # laptop: restore wholesaling.db (--force replaces data, backed up first); --status
+python manage.py setup-calendar            # once: config/credentials.json → browser consent → config/token.json → first sync
+python manage.py sync-calendar             # two-way Google Calendar sync (--dry-run lists the events, --status shows the queue)
 pytest                                      # tests
 ```

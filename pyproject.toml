@@ -25,6 +25,9 @@ dependencies = [
   "rich>=13.7",
   "openpyxl>=3.1",                 # tax collectors reply to OPRA requests with Excel lists
   "cryptography>=42",              # db-sync: AES-256-GCM database snapshot for the laptop
+  "google-api-python-client>=2.100",   # Google Calendar sync (engine/gcal_sync.py)
+  "google-auth-oauthlib>=1.2",         # one-time browser consent (manage.py setup-calendar)
+  "google-auth-httplib2>=0.2",
 ]
 
 [project.optional-dependencies]
