@@ -149,6 +149,18 @@ def offer_numbers(lead: Lead) -> tuple[float | None, float | None, float | None]
         if ask:
             best = min(best, ask) if best else best
             anchor = min(anchor, round(ask * 0.90, -2)) if anchor else anchor
+    sheriff = _sheriff(lead.property)
+    payoff = sheriff.amount_owed if sheriff else None
+    walk = v.mao_aggressive if v is not None else None
+    if payoff and anchor and walk and anchor < payoff <= walk and v.verdict != "SHORT_SALE_ONLY":
+        # Below the payoff the seller can't close without the lender's short-sale approval, which won't come before a
+        # sale date: open at the payoff (next $1,000), never above our walk-away or 90% of a live ask.
+        opening = min(walk, -(-payoff // 1000) * 1000)
+        ask = (_listing(lead.property).raw_metadata_json or {}).get("list_price") if _listing(lead.property) else None
+        if ask:
+            opening = min(opening, round(ask * 0.90, -2))
+        anchor = max(anchor, opening)
+        best = max(best or 0, anchor)
     if floor:
         anchor = max(anchor or 0, floor) or None
         best = max(best or 0, anchor or 0) or None

@@ -489,6 +489,13 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   non-residential) never reaches the deck. Listed foreclosures whose payoff exceeds our walk-away (SHORT_SALE track) come
   after the MLS fixers, labeled "lender short sale (low odds)"; a SHORT_SALE or CONFIRM_OCCUPANCY listing whose
   walk-away is under 60% of the ask is NO_OFFER.
+- **Open at the payoff** (learned 2026-10-29, `engine/fast_track.py::offer_numbers`): a listed foreclosure whose payoff
+  (sheriff upset) is above our opening but within our walk-away opens at the payoff (next $1,000), never above the
+  walk-away or 90% of the ask; e-mail, text and the attached LOI share the number. Below the payoff the seller needs
+  the lender's short-sale approval, which doesn't come before a sale date. The payoff still excludes the seller's
+  commission and closing costs: ask the agent what the seller must net.
+- **Partner copy** (`engine/jv_partner_vault.py`) says "distressed NJ deals", never "off-market": most deals the desk
+  finds are listed (stale MLS fixers, listed foreclosures).
 
 ### Cloud-to-laptop database snapshot (learned 2026-10-29) — enforced in code
 - `db/snapshot.py` carries the database between the cloud session and the operator's laptop as one encrypted file:

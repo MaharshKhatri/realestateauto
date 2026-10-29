@@ -77,6 +77,9 @@ def test_phase0_outreach_copy_is_true_plain_and_compliant(db, operator):
     assert "STOP" in card.sms and len(card.phone_script) == 3 and card.mailto is None
     for phrase in ("drive by", "door-knock", "stop by the house", "cash buyer"):
         assert phrase not in body.lower()
+    # Most deals the desk finds are on the MLS: never call them "off-market" (subject, e-mail, text or script).
+    for text in (card.subject, body, card.sms, *card.phone_script):
+        assert "off-market" not in text.lower()
     cards = vault.phase0_cards(db, limit=5)
     assert cards and cards[0]["partner_id"] == p.id and vault.phase0_open(db)
 

@@ -228,7 +228,7 @@ def outreach(session: Session, p: JVPartner) -> PartnerCard:
            f"{', '.join(c for c in (p.target_counties or [])[:2]) or 'New Jersey'}.")
     me = (intro + ". " if intro else "")
     paragraphs = [
-        f"{saw} {me}Since I only source and underwrite off-market and distressed deals from my desk, I'm looking "
+        f"{saw} {me}Since I find and underwrite distressed NJ deals from my desk, I'm looking "
         "for two active local rehabbers where I bring you the deals that fit your exact buy box and we lock them "
         "up under your LLC and proof of funds as a joint venture. What towns and price points are you buying "
         "right now?"]
@@ -237,15 +237,16 @@ def outreach(session: Session, p: JVPartner) -> PartnerCard:
                "as principals; no referral fees).",
                "I'm a real estate investor, not a licensed agent, and every deal gets a 3-business-day attorney "
                "review.", *hc.footer_lines(op, "Reply STOP and I won't e-mail again.")]
-    subject = hc.pick([f"deals in {recent['town']}" if recent else "off-market deals", "quick question for a rehabber",
+    # Not "off-market": most deals the desk finds are listed (stale MLS fixers, listed foreclosures).
+    subject = hc.pick([f"deals in {recent['town']}" if recent else "distressed deals", "quick question for a rehabber",
                        f"{recent['town']} buy box" if recent else "your buy box"], p.id)
     email = hc.compose(subject, f"Hi {first},", paragraphs, summary, summary_title="--- Details ---", op=op)
     who = " ".join(x for x in (op["first"] or op["name"], "with " + op["company"] if op["company"] else "") if x)
     sms = (f"Hi {first}, it's {who}. Saw {entity} bought {recent['address']} in {recent['town']}. " if recent else
-           f"Hi {first}, it's {who}. ") + ("I find off-market NJ fixers from my desk and I'm looking for a couple "
+           f"Hi {first}, it's {who}. ") + ("I find distressed NJ fixers from my desk and I'm looking for a couple "
                                            "of local rehabbers to JV with. What's your buy box? Reply STOP to opt out.")
     script = [f"Hi {first}, this is {who}. {saw}",
-              (me + "I only source and underwrite off-market and distressed deals, so I'm looking for two local "
+              (me + "I find and underwrite distressed NJ deals, so I'm looking for two local "
                     "rehabbers to lock them up with under your LLC and proof of funds, as a joint venture.").strip(),
               "What towns and price points are you buying right now, and could you send me a proof of funds letter "
               "so I can write offers in your name?"]
