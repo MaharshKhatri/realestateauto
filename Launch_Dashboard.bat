@@ -7,6 +7,16 @@ set "URL=http://127.0.0.1:8000"
 set "PY=python"
 if exist ".venv\Scripts\python.exe" set "PY=.venv\Scripts\python.exe"
 if exist "venv\Scripts\python.exe" set "PY=venv\Scripts\python.exe"
+if exist wholesaling.db goto dbready
+if not exist data\snapshots\manifest.json goto dbready
+echo First start on this computer: unlocking the database snapshot...
+"%PY%" manage.py db-sync --unpack --if-missing
+if errorlevel 1 (
+  echo The database wasn't unlocked. Run: %PY% manage.py db-sync --unpack
+  pause
+  exit /b 1
+)
+:dbready
 "%PY%" -c "import sys,urllib.request as u; sys.exit(0 if b'nj-wholesale-cockpit' in u.urlopen('http://127.0.0.1:8000/api/health',timeout=2).read() else 1)" >nul 2>&1 && goto ready
 if not exist logs mkdir logs
 echo Starting the dashboard (log: logs\server.log)...

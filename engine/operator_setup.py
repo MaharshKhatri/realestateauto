@@ -21,7 +21,8 @@ from typing import Any
 
 import yaml
 
-from core.config import ENV_FILE, LOCAL_SETTINGS, ROOT, Section, settings
+from core.config import ENV_FILE, LOCAL_SETTINGS, ROOT, Section, settings, write_env
+
 FIELDS = ("name", "company_name", "phone", "email", "mailing_address")
 PLACEHOLDERS = {"name": {"", "operator"}, "company_name": {"", "your company llc"}}
 EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
@@ -66,25 +67,6 @@ def status() -> dict[str, Any]:
             "live": not missing, "auto_email": not missing and bool(smtp_user) and has_password,
             "local_file": str(LOCAL_SETTINGS.relative_to(ROOT)) if LOCAL_SETTINGS.is_relative_to(ROOT)
             else str(LOCAL_SETTINGS)}
-
-
-def _write_env(updates: dict[str, str], path: Path) -> None:
-    lines = path.read_text().splitlines() if path.exists() else []
-    seen: set[str] = set()
-    out = []
-    for line in lines:
-        key = line.split("=", 1)[0].strip() if "=" in line and not line.lstrip().startswith("#") else None
-        if key in updates:
-            out.append(f"{key}={updates[key]}")
-            seen.add(key)
-        else:
-            out.append(line)
-    out += [f"{k}={v}" for k, v in updates.items() if k not in seen]
-    path.write_text("\n".join(out) + "\n")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
 
 
 def save_preference(section: str, key: str, value: Any, *, local_path: Path | None = None) -> Any:
@@ -132,7 +114,7 @@ def save(data: dict[str, Any], *, local_path: Path | None = None, env_path: Path
     if password:
         env["SMTP_APP_PASSWORD"] = password
     if env:
-        _write_env(env, env_path)
+        write_env(env, env_path)
         os.environ.update(env)
     # Take effect now, in this process: update the cached settings in place.
     cached = settings()

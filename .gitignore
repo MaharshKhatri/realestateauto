@@ -15,6 +15,10 @@ venv/
 data/cache/
 data/exports/
 data/backups/
+*.restoring
+# Encrypted DB snapshots (`manage.py db-sync --pack`, AES-256-GCM) travel as a private file download while this
+# repository is public. Commit one only after the repository is private, deliberately: git add -f data/snapshots/
+data/snapshots/
 config/settings.local.yaml
 
 # Run logs (swarm_intelligence.md is aggregate-only and IS committed)

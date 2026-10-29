@@ -24,6 +24,7 @@ dependencies = [
   "typer>=0.12",
   "rich>=13.7",
   "openpyxl>=3.1",                 # tax collectors reply to OPRA requests with Excel lists
+  "cryptography>=42",              # db-sync: AES-256-GCM database snapshot for the laptop
 ]
 
 [project.optional-dependencies]

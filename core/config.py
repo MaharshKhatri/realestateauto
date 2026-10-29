@@ -63,6 +63,26 @@ def load_dotenv(path: Path = ENV_FILE) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def write_env(updates: dict[str, str], path: Path = ENV_FILE) -> None:
+    """Set KEY=value lines in .env (others kept as they are); the file is chmod 600 (it holds secrets)."""
+    lines = path.read_text().splitlines() if path.exists() else []
+    seen: set[str] = set()
+    out = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip() if "=" in line and not line.lstrip().startswith("#") else None
+        if key in updates:
+            out.append(f"{key}={updates[key]}")
+            seen.add(key)
+        else:
+            out.append(line)
+    out += [f"{k}={v}" for k, v in updates.items() if k not in seen]
+    path.write_text("\n".join(out) + "\n")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
 def load_settings(config_dir: Path = CONFIG_DIR) -> Section:
     load_dotenv()
     data: dict = {}

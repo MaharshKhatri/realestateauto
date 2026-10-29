@@ -10,6 +10,14 @@ for c in "$REPO/.venv/bin/python" "$REPO/venv/bin/python" python3 python; do
 done
 [ -n "$PY" ] || { echo "Python 3 is not installed. Install it from python.org, then run: pip install -e ."; exit 1; }
 healthy() { "$PY" -c "import sys,urllib.request as u; sys.exit(0 if b'nj-wholesale-cockpit' in u.urlopen('http://127.0.0.1:8000/api/health',timeout=2).read() else 1)" >/dev/null 2>&1; }
+if [ ! -s wholesaling.db ] && ls data/snapshots/wholesaling.db.xz.enc* >/dev/null 2>&1; then
+  echo "First start on this computer: unlocking the database snapshot..."
+  if ! "$PY" manage.py db-sync --unpack --if-missing; then
+    echo "The database wasn't unlocked. Run: $PY manage.py db-sync --unpack"
+    [ -t 0 ] && read -r -p "Press Enter to close" _
+    exit 1
+  fi
+fi
 if ! healthy; then
   mkdir -p logs
   echo "Starting the dashboard (log: $REPO/logs/server.log)..."

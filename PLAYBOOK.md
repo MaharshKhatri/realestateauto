@@ -28,6 +28,15 @@ ever doesn't start, `logs/server.log` says why.
 First data load: click **🤖 Run Autopilot Data Refresh → Full refresh** (10–30 minutes the first time). After that,
 a Full refresh each morning (or leave `python -m swarm.orchestrator daemon` running) keeps it current.
 
+**Already ran the swarm in a cloud session? Bring that database over instead of re-scraping.** In the cloud session
+`python manage.py db-sync --pack` writes an encrypted copy (`wholesaling.db.xz.enc` + `manifest.json`) to
+`data/snapshots/`. Download both files and put them in `data/snapshots/` on the laptop (they are git-ignored: this
+repository is public). The Desktop icon then notices there is no database yet and asks once for the passphrase
+(`DB_SYNC_KEY`); or run `python manage.py db-sync --unpack 'PASSPHRASE'` yourself. The passphrase is then saved in
+your `.env`, so it never asks again. For a newer snapshot later, replace the two files and run
+`python manage.py db-sync --unpack --force` (your current copy goes to `data/backups/` first). Treat the passphrase
+like a bank password: anyone with it and the file can read every name in the database.
+
 ### 2. ⚙️ My Setup & Auto-Email (2 minutes)
 Click **⚙️ My Setup & Auto-Email** in the top bar and fill in: your full name, company name, Google Voice number,
 e-mail, and mailing address (a PO box is fine). Everything you send signs with these, and the law needs all five

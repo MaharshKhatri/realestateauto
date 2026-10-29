@@ -11,8 +11,10 @@ and copies the one for this computer to ~/Desktop as "Launch NJ Wholesale Dashbo
 written in (plus a .desktop entry on Linux desktops), so it works from anywhere.
 
 Each launcher: cd into the repository → pick the project's virtualenv Python if there is one (.venv / venv) →
-check GET /api/health → if the cockpit isn't answering, start `python manage.py server` in the background with
-output in logs/server.log → wait until /api/health answers (usually 1-2 seconds) → open the browser.
+if wholesaling.db is missing or empty (a fresh clone on the laptop) and the encrypted snapshot is in data/snapshots/,
+unlock it first in the foreground (`manage.py db-sync --unpack --if-missing`: DB_SYNC_KEY from .env, or one passphrase
+prompt) → check GET /api/health → if the cockpit isn't answering, start `python manage.py server` in the background
+with output in logs/server.log → wait until /api/health answers (usually 1-2 seconds) → open the browser.
 Set NJW_NO_BROWSER=1 to skip opening a browser (headless machines, tests).
 """
 from __future__ import annotations
@@ -43,6 +45,14 @@ for c in "$REPO/.venv/bin/python" "$REPO/venv/bin/python" python3 python; do
 done
 [ -n "$PY" ] || {{ echo "Python 3 is not installed. Install it from python.org, then run: pip install -e ."; exit 1; }}
 healthy() {{ "$PY" -c "{health}" >/dev/null 2>&1; }}
+if [ -f data/snapshots/manifest.json ] && ! healthy; then
+  # no-op when wholesaling.db has data; on a fresh clone it unlocks the snapshot (DB_SYNC_KEY in .env, or one prompt)
+  if ! "$PY" manage.py db-sync --unpack --if-missing; then
+    echo "The database wasn't unlocked. Run: $PY manage.py db-sync --unpack"
+    [ -t 0 ] && read -r -p "Press Enter to close" _
+    exit 1
+  fi
+fi
 if ! healthy; then
   mkdir -p logs
   echo "Starting the dashboard (log: $REPO/logs/server.log)..."
@@ -76,6 +86,16 @@ set "URL=http://127.0.0.1:{port}"
 set "PY=python"
 if exist ".venv\Scripts\python.exe" set "PY=.venv\Scripts\python.exe"
 if exist "venv\Scripts\python.exe" set "PY=venv\Scripts\python.exe"
+if not exist data\snapshots\manifest.json goto dbready
+rem no-op when wholesaling.db has data; on a fresh clone it unlocks the snapshot (DB_SYNC_KEY in .env, or one prompt)
+"%PY%" -c "{health}" >nul 2>&1 && goto ready
+"%PY%" manage.py db-sync --unpack --if-missing
+if errorlevel 1 (
+  echo The database wasn't unlocked. Run: %PY% manage.py db-sync --unpack
+  pause
+  exit /b 1
+)
+:dbready
 "%PY%" -c "{health}" >nul 2>&1 && goto ready
 if not exist logs mkdir logs
 echo Starting the dashboard (log: logs\server.log)...

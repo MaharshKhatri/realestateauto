@@ -47,7 +47,7 @@ import argparse
 from pathlib import Path
 import sys
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from rich import box
 from rich.console import Console
@@ -55,6 +55,7 @@ from rich.panel import Panel
 from rich.table import Table
 from sqlalchemy import func, select
 
+from core.config import ROOT
 from core.text import format_phone
 from db.database import init_db, session_scope
 from db.models import AgentRun, CashBuyer, Contact, DistressSignal, Lead, Property, SignalType, Valuation, JVPartner
@@ -396,9 +397,70 @@ def _lead(s, lead_id: int) -> Lead:
 
 def cmd_server(args: argparse.Namespace) -> None:
     import uvicorn
+
+    from db import snapshot
+    try:   # a fresh laptop clone: unlock the encrypted snapshot instead of starting on an empty database
+        restored = snapshot.ensure_database()
+    except snapshot.SnapshotError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise SystemExit(1) from None
+    if restored:
+        console.print(f"[green]Database unlocked from the snapshot of {restored['created_at']}[/green]")
     init_db()
     console.print(f"[green]Cockpit:[/green] http://127.0.0.1:{args.port}  (local only — Ctrl+C to stop)")
     uvicorn.run("web.app:app", host="127.0.0.1", port=args.port, log_level="warning")
+
+
+def cmd_db_sync(args: argparse.Namespace) -> None:
+    """Encrypted snapshot of wholesaling.db for moving it between machines through git (db/snapshot.py)."""
+    from db import snapshot
+
+    def show_counts(tables: dict[str, int]) -> str:
+        return ", ".join(f"{n:,} {t}" for t, n in tables.items())
+    try:
+        if args.pack:
+            r = snapshot.pack(new_key=args.new_key)
+            console.print(f"[green]packed[/green] {r.db_bytes / 1e6:,.1f} MB database -> {r.packed_bytes / 1e6:,.1f} MB "
+                          f"encrypted in {r.seconds:,.0f}s: " + ", ".join(str(p.relative_to(ROOT)) for p in r.files))
+            if r.new_key:
+                console.print(f"New passphrase saved to .env as {snapshot.KEY_VAR}. Show it with "
+                              "`python manage.py db-sync --show-key`; you need it once on the other machine.")
+        elif args.unpack is not None or args.if_missing:
+            if args.if_missing and not snapshot.needs_restore():
+                console.print("database present: nothing to unlock")
+                return
+            given = args.unpack or snapshot.stored_passphrase()
+            for attempt in range(1 if given else 3):        # a typed passphrase gets three tries
+                passphrase = given or snapshot.ask_passphrase()
+                if not passphrase:
+                    raise snapshot.SnapshotError("no passphrase: pass it, set DB_SYNC_KEY in .env, or run this in a terminal")
+                try:
+                    r = snapshot.unpack(passphrase, force=args.force or args.if_missing)
+                    break
+                except snapshot.SnapshotError as exc:
+                    if given or "wrong passphrase" not in str(exc) or attempt == 2:
+                        raise
+                    console.print("[yellow]That passphrase didn't open it. Try again.[/yellow]")
+            console.print(f"[green]unlocked[/green] {r['db']} ({r['bytes'] / 1e6:,.1f} MB, snapshot of {r['created_at']}, "
+                          f"{r['seconds']}s): {show_counts(r['tables'])}")
+            if r["backup"]:
+                console.print(f"previous database kept at {r['backup']}")
+        elif args.show_key:
+            key = snapshot.stored_passphrase()
+            console.print(key or "no DB_SYNC_KEY in .env yet (it is created by --pack)")
+        else:
+            m = snapshot.read_manifest()
+            db = snapshot.default_db_path()
+            console.print(f"snapshot: {m['created_at']} · {m['packed_bytes'] / 1e6:,.1f} MB in {len(m['files'])} file(s) · "
+                          f"{show_counts(m['tables'])}" if m else "snapshot: none in data/snapshots/")
+            if db and db.exists():
+                console.print(f"local database: {db.stat().st_size / 1e6:,.1f} MB, modified "
+                              f"{datetime.fromtimestamp(db.stat().st_mtime):%Y-%m-%d %H:%M}")
+            else:
+                console.print("local database: missing (run --unpack)")
+    except snapshot.SnapshotError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise SystemExit(1) from None
 
 
 def cmd_install_shortcut(args: argparse.Namespace) -> None:
@@ -1397,6 +1459,15 @@ def main(argv: list[str] | None = None) -> None:
     ish.add_argument("--desktop", help="folder for the shortcut (default ~/Desktop)")
     sv = sub.add_parser("server")
     sv.add_argument("--port", type=int, default=8000)
+    ds = sub.add_parser("db-sync", help="encrypted database snapshot for another machine (pack here, unpack there)")
+    dsm = ds.add_mutually_exclusive_group()
+    dsm.add_argument("--pack", action="store_true", help="VACUUM INTO -> xz -> AES-256-GCM -> data/snapshots/")
+    dsm.add_argument("--unpack", nargs="?", const="", metavar="PASSPHRASE",
+                     help="restore wholesaling.db (passphrase from the argument, DB_SYNC_KEY in .env, or a prompt)")
+    dsm.add_argument("--show-key", action="store_true", help="print DB_SYNC_KEY from .env")
+    ds.add_argument("--if-missing", action="store_true", help="with --unpack: only when there is no (or an empty) database")
+    ds.add_argument("--force", action="store_true", help="with --unpack: replace a database that has data (backed up first)")
+    ds.add_argument("--new-key", action="store_true", help="with --pack: generate a new passphrase")
     qu = sub.add_parser("queue")
     qu.add_argument("--top", type=int, default=25)
     sc = sub.add_parser("script")
@@ -1523,7 +1594,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
-     "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
+     "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "db-sync": cmd_db_sync, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
      "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,
      "mail-merge": cmd_mail_merge, "inspect": cmd_inspect, "stack": cmd_stack, "buyer-hotzones": cmd_buyer_hotzones,
