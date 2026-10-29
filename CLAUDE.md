@@ -518,6 +518,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   The choice lives in settings.local.yaml (`calendar.account`, `calendar.calendar_id`), never in a committed file.
   Switching account or calendar deletes this app's events (private property `njw=1`, nothing else) from the old
   calendar with the old token, resets the outbox and re-creates everything on the new one.
+- **7-day sign-in** (OAuth app left in "Testing"): every connect stores `connected_at`; a 🔑 "Re-connect Google Calendar
+  sync" event lands 6 days later at 10:15 with the exact `setup-calendar` command (`calendar.reconnect_reminder_days`,
+  0 = off once the app is published), because the operator only reads the calendar and an expired sign-in is silent.
   An app left in "Testing" loses its refresh token after 7 days: the sync then reports "sign in again" and keeps
   everything queued; publishing the app (unverified is fine for one user) avoids it.
 - **Events**: agent follow-up = exactly `calendar.followup_hours` (48) after the e-mail's logged time, moved to 10:00

@@ -481,17 +481,36 @@ def test_switching_accounts_moves_every_event_to_the_new_calendar(db, setup_file
     ao.record_sent(db, lead, offer_packet(lead, agent), "email", now=datetime(2026, 11, 3, 14, 15, tzinfo=ET))
     gs.connect(db, account="personal@example.com", flow_factory=fake_flow("personal@example.com"))
     gs.sync(db, now=datetime(2026, 11, 3, 14, 16))
-    assert len(old.live()) == 2 and new.store == {}
+    assert len(old.live()) == 3 and new.store == {}              # follow-up, daily goal, 🔑 re-connect reminder
     old.put({"id": "theirs", "summary": "dentist", "status": "confirmed"})     # never ours: must survive
     info = gs.connect(db, account="school@example.edu", flow_factory=fake_flow("school@example.edu"))
-    assert info["switched"] and info["removed_old"] == 2 and info["previous"] == "personal@example.com"
+    assert info["switched"] and info["removed_old"] == 3 and info["previous"] == "personal@example.com"
     assert [e["id"] for e in old.live()] == ["theirs"]
     r = gs.sync(db, now=datetime(2026, 11, 3, 14, 20))
-    assert r.error is None and r.pushed["created"] == 2 and len(new.live()) == 2
-    assert {e["summary"].split(":")[0] for e in new.live()} == {"🔥 Follow Up", "🎯 Send 15 Daily Wholesaling Outreach Emails (Open Dashboard)"}
+    assert r.error is None and r.pushed["created"] == 3 and len(new.live()) == 3
+    assert {e["summary"].split(":")[0] for e in new.live()} == {
+        "🔥 Follow Up", "🎯 Send 15 Daily Wholesaling Outreach Emails (Open Dashboard)",
+        "🔑 Re-connect Google Calendar sync (sign-in ends tomorrow)"}
     assert gs.status(db)["account"] == "school@example.edu"
     again = gs.connect(db, account="school@example.edu", flow_factory=fake_flow("school@example.edu"))
     assert not again["switched"]                                   # re-signing in to the same calendar moves nothing
+
+
+def test_reconnect_reminder_the_day_before_the_testing_sign_in_ends(db, setup_files):
+    from core.config import settings
+    svc = FakeService()
+    gs.set_api_factory(lambda creds=None, cal="primary": gs.CalendarAPI(svc, cal))
+    gs.CREDENTIALS.write_text(json.dumps({"installed": {"client_id": "x", "client_secret": "y"}}))
+    gs.connect(db, account="school@example.edu", flow_factory=fake_flow("school@example.edu"))
+    connected = datetime.fromisoformat(gs.status(db)["connected_at"])
+    gs.sync(db, now=connected)
+    e = next(e for e in svc.live() if e["summary"].startswith("🔑"))
+    day6 = (connected + timedelta(days=6)).date()
+    assert e["start"]["dateTime"] == f"{day6.isoformat()}T10:15:00" and e["colorId"] == "3"
+    assert "setup-calendar --account school@example.edu" in e["description"]
+    settings()["calendar"]["reconnect_reminder_days"] = 0          # app published: no more reminders
+    gs.sync(db, now=connected + timedelta(minutes=5))
+    assert ev(svc, f"reconnect:{connected:%Y%m%d%H%M}")["status"] == "cancelled"
 
 
 def test_shared_calendar_fallback_writes_to_that_calendar(db, setup_files):

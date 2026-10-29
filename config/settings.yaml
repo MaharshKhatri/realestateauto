@@ -75,6 +75,8 @@ calendar:                            # Google Calendar sync (engine/gcal_sync.py
   milestone_time: "09:00"            # other contract-to-close deadlines
   daily_goal_time: "10:00"
   daily_goal_rrule: "RRULE:FREQ=DAILY"
+  reconnect_reminder_days: 6         # an OAuth app left in "Testing" loses its sign-in after 7 days: 🔑 reminder the
+                                     # day before (0 = off, e.g. once the app is published)
   sheriff_sale_limit: 25             # priority sheriff sales on the calendar (listed foreclosures first)
   background_minutes: 10             # the cockpit re-syncs this often (retries anything queued while offline)
   colors:                            # Google colorId: 5 banana, 6 tangerine, 7 peacock, 9 blueberry, 10 basil, 11 tomato
@@ -84,6 +86,7 @@ calendar:                            # Google Calendar sync (engine/gcal_sync.py
     milestone: "9"
     sheriff_sale: "11"
     daily_goal: "10"
+    reconnect: "3"                   # grape
 
 crm:
   # Days until the next touch, by call outcome (business-hours follow-up queue).

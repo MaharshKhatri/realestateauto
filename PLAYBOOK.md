@@ -91,6 +91,8 @@ Get the free Google key (you only do this once):
      events**. Then run `python manage.py setup-calendar --account you@gmail.com --calendar you@school.edu`. Also set
      that calendar's **Event notifications** (same settings page): reminders on an event belong to whoever made it,
      so your school account notifies you with its own defaults.
+   - **Couldn't press "Publish app"?** Then Google ends the sign-in every 7 days. The calendar warns you: a 🔑
+     "Re-connect Google Calendar sync" event appears the day before, with the one command to run.
 
 From then on it is automatic: sending an offer, logging a call or recording a contract updates the calendar within
 seconds while the dashboard is open, and anything made while you're offline goes up on the next sync (every 10

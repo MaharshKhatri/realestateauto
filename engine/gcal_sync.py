@@ -454,6 +454,31 @@ def priority_sale_leads(session: Session, today: date, limit: int | None = None)
     return out
 
 
+def reconnect_event(session: Session, now: datetime) -> Desired | None:
+    """While the OAuth app is in "Testing", Google ends its sign-in 7 days after consent and the sync stops without a
+    sound. One event the day before says so, with the command (calendar.reconnect_reminder_days; 0 = off)."""
+    days = int(cfg().get("reconnect_reminder_days", 6) or 0)
+    st = (session.get(SwarmState, STATE_KEY).value_json or {}) if session.get(SwarmState, STATE_KEY) else {}
+    if not days or not st.get("connected_at"):
+        return None
+    connected = datetime.fromisoformat(st["connected_at"])
+    start = datetime.combine((connected + timedelta(days=days)).date(), time(10, 15))
+    if start < now:
+        return None
+    account = st.get("account") or "you@example.com"
+    extra = "" if target_calendar() == "primary" else f" --calendar {target_calendar()}"
+    s, e = _timed(start, 15)
+    lines = ["Google ends this app's calendar sign-in 7 days after you connect it while the app is in 'Testing'. "
+             "After that, new follow-ups and deadlines stop reaching this calendar until you sign in again.",
+             "Takes one minute in Terminal:",
+             f"cd ~/realestateauto && .venv/bin/python manage.py setup-calendar --account {account}{extra}",
+             "(Or open the dashboard: 📅 → Connect Google Calendar.) If you published the app in Google Cloud, set "
+             "calendar.reconnect_reminder_days: 0 and this reminder stops."]
+    return Desired(f"reconnect:{connected:%Y%m%d%H%M}", "reconnect", None,
+                   _body("reconnect", "🔑 Re-connect Google Calendar sync (sign-in ends tomorrow)", lines, s, e,
+                         reminders=[0, 120], link=f"{dashboard_url()}/"), start)
+
+
 def daily_goal_event(session: Session, today: date) -> Desired:
     from engine.autopilot import daily_goal
     goal = daily_goal()
@@ -493,7 +518,7 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
                                                             Lead.contract_date.is_not(None),
                                                             Lead.id.in_(on_calendar)))))
         sale_ids = {lead.id for lead in priority_sale_leads(session, today)}
-        put([daily_goal_event(session, today)])
+        put([daily_goal_event(session, today), reconnect_event(session, now)])
     else:
         leads = [lead for lead in (session.get(Lead, i) for i in sorted(lead_ids)) if lead is not None]
         # A lead's sale event is refreshed here only when it is already on the calendar; which sales make the
@@ -894,6 +919,7 @@ def status(session: Session, now: datetime | None = None) -> dict[str, Any]:
             "enabled": bool(cfg().get("enabled", True)), "counts": counts,
             "queued": counts.get("pending", 0) + counts.get("cancel", 0), "calendar": st.get("calendar"),
             "account": st.get("account") or cfg().get("account"), "calendar_id": target_calendar(),
+            "connected_at": st.get("connected_at"),
             "last_sync": st.get("last_sync"), "last_error": st.get("last_error"),
             "needs_reauth": bool(st.get("needs_reauth")),
             "upcoming": [{"summary": (r.body_json or {}).get("summary"), "start": r.starts_at.isoformat()
@@ -998,6 +1024,7 @@ def connect(session: Session, *, account: str | None = None, calendar_id: str | 
             row.google_event_id, row.synced_hash, row.attempts, row.last_error = None, None, 0, None
             row.status = "cancelled" if row.status in ("cancel", "cancelled") else "pending"
     _set_state(session, account=who or want, calendar_id=target, calendar=info.get("calendar"), last_pull=None,
+               connected_at=now_local().isoformat(timespec="minutes"),
                needs_reauth=False, last_error=None)
     session.flush()
     return {**info, "account": who or want, "calendar_id": target, "switched": switched, "removed_old": removed,
