@@ -1002,13 +1002,17 @@ async function openCalendar() {
       <p class="muted">Follow-ups 48 hours after each agent e-mail, attorney-review deadlines (5 PM, 3rd business day),
         contract-to-close steps, priority sheriff sales and your 10:00 outreach reminder go to your own Google Calendar,
         each with a link back to the lead card. Homeowner names and phone numbers never leave this laptop.</p>
-      ${c.calendar ? `<p>Calendar: <b>${esc(c.calendar)}</b></p>` : ""}
+      ${c.account ? `<p>Signed in as <b>${esc(c.account)}</b> · reminders go to
+        <b>${esc(c.calendar_id === "primary" ? c.account : c.calendar_id)}</b></p>` : ""}
+      ${c.credentials_file ? `<label>Google account whose calendar gets the reminders
+        <input id="cal-account" type="email" value="${esc(c.account || "")}" placeholder="you@example.com"></label>` : ""}
       <p>${c.queued} queued · last sync ${esc(c.last_sync ? fmtDate(c.last_sync) : "never")}
         ${c.last_error ? `<br><span class="bad">${esc(c.last_error)}</span>` : ""}</p>
       ${up ? `<h3>Next on the calendar</h3><ul>${up}</ul>` : ""}
       ${c.setup_steps && !c.credentials_file ? `<pre class="cal-steps">${esc(c.setup_steps)}</pre>` : ""}
       <div class="row">
-        ${c.credentials_file && (!c.configured || c.needs_reauth) ? '<button class="btn primary" id="cal-connect">Connect Google Calendar</button>' : ""}
+        ${c.credentials_file ? `<button class="btn primary" id="cal-connect">${c.configured && !c.needs_reauth
+          ? "Switch account (moves the events)" : "Connect Google Calendar"}</button>` : ""}
         <button class="btn" id="cal-sync">${c.configured ? "Sync now" : "Prepare events (sync when connected)"}</button>
         <button class="btn" id="cal-close">Close</button>
       </div>
@@ -1024,7 +1028,8 @@ async function openCalendar() {
     loadCmdbar();
   };
   if ($("#cal-connect")) $("#cal-connect").onclick = async () => {
-    const { data: r } = await post("/api/calendar/connect", {});
+    const acct = ($("#cal-account") && $("#cal-account").value.trim()) || null;
+    const { data: r } = await post("/api/calendar/connect", { account: acct });
     $("#cal-msg").textContent = r.message + " Approve calendar access there, then come back here.";
     const t = setInterval(async () => {
       const { data: s } = await api("/api/calendar/status");

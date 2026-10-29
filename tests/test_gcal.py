@@ -1,6 +1,7 @@
 """Google Calendar sync against a fake Google service (same request objects and HttpErrors as googleapiclient):
 the four event families, exact timing, idempotency across lost rows, offline queuing, the two-way rules, privacy,
 the session hooks, the OAuth setup and the cockpit routes."""
+import base64
 import json
 import os
 from datetime import date, datetime, timedelta, timezone
@@ -123,7 +124,7 @@ def google(monkeypatch, tmp_path):
     token.write_text("{}")
     monkeypatch.setattr(gs, "TOKEN", token)
     monkeypatch.setattr(gs, "CREDENTIALS", tmp_path / "credentials.json")
-    gs.set_api_factory(lambda: gs.CalendarAPI(svc))
+    gs.set_api_factory(lambda creds=None, cal="primary": gs.CalendarAPI(svc, cal))
     yield svc
     gs.set_api_factory(None)
 
@@ -291,7 +292,7 @@ def test_lost_rows_or_a_second_machine_never_duplicate_events(db, google):
 
 
 def test_expired_sign_in_is_reported_and_nothing_is_lost(db, google, monkeypatch):
-    def refused():
+    def refused(*_):
         raise gs.CalendarAuthError("Google sign-in expired or was revoked: run python manage.py setup-calendar")
     gs.set_api_factory(refused)
     r = gs.sync(db, now=datetime(2026, 11, 2, 7, 0))
@@ -390,39 +391,131 @@ def test_calendar_agent_skips_cleanly_when_not_connected(db):
 
 
 # -- one-time setup ----------------------------------------------------------------------------------
+def id_token(email):
+    enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")   # noqa: E731
+    return f"{enc({'alg': 'RS256'})}.{enc({'email': email, 'email_verified': True})}.sig"
+
+
 class FakeCreds:
+    def __init__(self, email="me@example.com"):
+        self.id_token = id_token(email) if email else None
+        self.email = email
+
     def to_json(self):
-        return json.dumps({"token": "t", "refresh_token": "r", "client_id": "c", "client_secret": "s"})
+        return json.dumps({"token": f"t-{self.email}", "refresh_token": "r", "client_id": "c", "client_secret": "s"})
 
 
-class FakeFlow:
-    def __init__(self, path, scopes):
-        self.path, self.scopes = path, scopes
+def fake_flow(email="me@example.com", seen=None):
+    class FakeFlow:
+        def __init__(self, path, scopes):
+            if seen is not None:
+                seen["scopes"] = scopes
 
-    def run_local_server(self, **kw):
-        assert kw["open_browser"] is True and kw["timeout_seconds"] == 300
-        return FakeCreds()
+        def run_local_server(self, **kw):
+            assert kw["open_browser"] is True and kw["timeout_seconds"] == 300
+            if seen is not None:
+                seen["login_hint"] = kw.get("login_hint")
+            return FakeCreds(email)
+    return FakeFlow
 
 
-def test_setup_needs_a_desktop_client_and_saves_a_private_token(monkeypatch, tmp_path):
-    svc = FakeService()
+@pytest.fixture
+def setup_files(monkeypatch, tmp_path):
+    """credentials.json + token.json + settings.local.yaml all in tmp; the cached settings are restored afterwards."""
+    from core.config import reload_settings
+    from engine import operator_setup
     monkeypatch.setattr(gs, "CREDENTIALS", tmp_path / "credentials.json")
     monkeypatch.setattr(gs, "TOKEN", tmp_path / "token.json")
-    gs.set_api_factory(lambda: gs.CalendarAPI(svc))
-    try:
-        with pytest.raises(gs.CalendarSetupError, match="Desktop app"):
-            gs.setup(flow_factory=FakeFlow)                       # no file yet: the step-by-step instructions
-        gs.CREDENTIALS.write_text(json.dumps({"web": {"client_id": "x"}}))
-        with pytest.raises(gs.CalendarSetupError, match="'Desktop app'"):
-            gs.setup(flow_factory=FakeFlow)
-        gs.CREDENTIALS.write_text(json.dumps({"installed": {"client_id": "x", "client_secret": "y"}}))
-        info = gs.setup(flow_factory=FakeFlow)
-        assert info == {"calendar": "me@example.com", "time_zone": "America/New_York"}
-        assert json.loads(gs.TOKEN.read_text())["refresh_token"] == "r"
-        assert (os.stat(gs.TOKEN).st_mode & 0o777) == 0o600
-        assert gs.SCOPES == ["https://www.googleapis.com/auth/calendar.events"]
-    finally:
-        gs.set_api_factory(None)
+    monkeypatch.setattr(operator_setup, "LOCAL_SETTINGS", tmp_path / "settings.local.yaml")
+    yield tmp_path
+    gs.set_api_factory(None)
+    reload_settings()
+
+
+def test_setup_needs_a_desktop_client_and_saves_a_private_token(db, setup_files):
+    svc = FakeService()
+    gs.set_api_factory(lambda creds=None, cal="primary": gs.CalendarAPI(svc, cal))
+    with pytest.raises(gs.CalendarSetupError, match="Desktop app"):
+        gs.connect(db, flow_factory=fake_flow())                  # no file yet: the step-by-step instructions
+    gs.CREDENTIALS.write_text(json.dumps({"web": {"client_id": "x"}}))
+    with pytest.raises(gs.CalendarSetupError, match="'Desktop app'"):
+        gs.connect(db, flow_factory=fake_flow())
+    gs.CREDENTIALS.write_text(json.dumps({"installed": {"client_id": "x", "client_secret": "y"}}))
+    seen = {}
+    info = gs.connect(db, flow_factory=fake_flow(seen=seen))
+    assert info["account"] == "me@example.com" and info["calendar_id"] == "primary" and not info["switched"]
+    assert json.loads(gs.TOKEN.read_text())["refresh_token"] == "r"
+    assert (os.stat(gs.TOKEN).st_mode & 0o777) == 0o600
+    assert seen["scopes"] == gs.SCOPES + gs.IDENTITY_SCOPES and seen["login_hint"] is None
+    assert gs.SCOPES == ["https://www.googleapis.com/auth/calendar.events"]          # events only
+    assert "account: me@example.com" in (setup_files / "settings.local.yaml").read_text()
+
+
+def test_setup_refuses_the_wrong_account_and_preselects_the_right_one(db, setup_files):
+    svc = FakeService()
+    gs.set_api_factory(lambda creds=None, cal="primary": gs.CalendarAPI(svc, cal))
+    gs.CREDENTIALS.write_text(json.dumps({"installed": {"client_id": "x", "client_secret": "y"}}))
+    seen = {}
+    with pytest.raises(gs.CalendarSetupError, match="You signed in as personal@example.com"):
+        gs.connect(db, account="Student@School.example.edu", flow_factory=fake_flow("personal@example.com", seen))
+    assert seen["login_hint"] == "student@school.example.edu"
+    assert not gs.TOKEN.exists()                                   # nothing saved, nothing changed
+    info = gs.connect(db, account="student@school.example.edu", flow_factory=fake_flow("student@school.example.edu"))
+    assert info["account"] == "student@school.example.edu" and gs.TOKEN.exists()
+
+
+def test_switching_accounts_moves_every_event_to_the_new_calendar(db, setup_files, monkeypatch):
+    old, new = FakeService(), FakeService()
+    # like the real loader: whoever token.json belongs to right now (the old account until the switch saves the new)
+    monkeypatch.setattr(gs, "load_credentials", lambda: FakeCreds(json.loads(gs.TOKEN.read_text())["token"][2:]))
+    gs.set_api_factory(lambda creds=None, cal="primary": gs.CalendarAPI(
+        new if (creds or gs.load_credentials()).email == "school@example.edu" else old, cal))
+    gs.CREDENTIALS.write_text(json.dumps({"installed": {"client_id": "x", "client_secret": "y"}}))
+    lead, agent = agent_lead(db)
+    ao.record_sent(db, lead, offer_packet(lead, agent), "email", now=datetime(2026, 11, 3, 14, 15, tzinfo=ET))
+    gs.connect(db, account="personal@example.com", flow_factory=fake_flow("personal@example.com"))
+    gs.sync(db, now=datetime(2026, 11, 3, 14, 16))
+    assert len(old.live()) == 2 and new.store == {}
+    old.put({"id": "theirs", "summary": "dentist", "status": "confirmed"})     # never ours: must survive
+    info = gs.connect(db, account="school@example.edu", flow_factory=fake_flow("school@example.edu"))
+    assert info["switched"] and info["removed_old"] == 2 and info["previous"] == "personal@example.com"
+    assert [e["id"] for e in old.live()] == ["theirs"]
+    r = gs.sync(db, now=datetime(2026, 11, 3, 14, 20))
+    assert r.error is None and r.pushed["created"] == 2 and len(new.live()) == 2
+    assert {e["summary"].split(":")[0] for e in new.live()} == {"🔥 Follow Up", "🎯 Send 15 Daily Wholesaling Outreach Emails (Open Dashboard)"}
+    assert gs.status(db)["account"] == "school@example.edu"
+    again = gs.connect(db, account="school@example.edu", flow_factory=fake_flow("school@example.edu"))
+    assert not again["switched"]                                   # re-signing in to the same calendar moves nothing
+
+
+def test_shared_calendar_fallback_writes_to_that_calendar(db, setup_files):
+    calls = []
+
+    class Picky(FakeService):
+        def events(self):
+            ev = super().events()
+            orig = ev.list
+
+            def lst(calendarId, **kw):
+                calls.append(calendarId)
+                if calendarId not in ("primary", "school@example.edu"):
+                    def run():
+                        raise _http(404, "notFound")
+                    return _Req(self, run)
+                return orig(calendarId, **kw)
+            ev.list = lst
+            return ev
+    svc = Picky()
+    gs.set_api_factory(lambda creds=None, cal="primary": gs.CalendarAPI(svc, cal))
+    gs.CREDENTIALS.write_text(json.dumps({"installed": {"client_id": "x", "client_secret": "y"}}))
+    with pytest.raises(gs.CalendarSetupError, match="Make changes to events"):
+        gs.connect(db, account="personal@example.com", calendar_id="nobody@example.edu",
+                   flow_factory=fake_flow("personal@example.com"))
+    info = gs.connect(db, account="personal@example.com", calendar_id="school@example.edu",
+                      flow_factory=fake_flow("personal@example.com"))
+    assert info["calendar_id"] == "school@example.edu" and gs.target_calendar() == "school@example.edu"
+    assert gs.api().calendar_id == "school@example.edu"
+    assert "calendar_id: school@example.edu" in (setup_files / "settings.local.yaml").read_text()
 
 
 # -- cockpit -----------------------------------------------------------------------------------------

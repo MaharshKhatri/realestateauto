@@ -76,11 +76,21 @@ Get the free Google key (you only do this once):
 4. **Google Auth platform → Clients → Create client**, Application type **Desktop app**, Create, then **Download
    JSON**. Rename the file to `credentials.json` and put it in the project's `config/` folder. It is git-ignored;
    never e-mail it or post it.
-5. Connect: click **📅 Connect Google Calendar** in the dashboard's top bar (or run
-   `python manage.py setup-calendar`). Your browser opens Google's sign-in: pick your account and allow the one
-   permission it asks for, to view and edit *events* on your calendars (nothing else: not your e-mail, contacts or
-   calendar settings). The token is saved to `config/token.json` (git-ignored, readable only by you) and the first
-   sync runs.
+5. Connect with the Google account whose calendar you actually look at (it can be a different account from the
+   one that owns the Cloud project, e.g. a school account; add it under **Audience → Test users** first):
+   `python manage.py setup-calendar --account you@school.edu` (or type it in **📅 → Connect Google Calendar**).
+   Your browser opens Google's sign-in on that account: allow viewing and editing *events* on your calendars (it
+   also confirms which account you are, nothing else: not your e-mail, contacts or calendar settings). Signing in
+   with a different account is refused, so the reminders can't land on the wrong calendar. The token is saved to
+   `config/token.json` (git-ignored, readable only by you) and the first sync runs. Already connected to another
+   account? Run the same command with the new one: the app removes its events from the old calendar and puts them
+   on the new one.
+   - **School or work account blocked** ("Access blocked", "admin policy", "not approved by your organization")?
+     Share that calendar instead: open Google Calendar as the school account → ⚙️ Settings → your calendar under
+     "Settings for my calendars" → **Share with specific people** → add your personal Gmail with **Make changes to
+     events**. Then run `python manage.py setup-calendar --account you@gmail.com --calendar you@school.edu`. Also set
+     that calendar's **Event notifications** (same settings page): reminders on an event belong to whoever made it,
+     so your school account notifies you with its own defaults.
 
 From then on it is automatic: sending an offer, logging a call or recording a contract updates the calendar within
 seconds while the dashboard is open, and anything made while you're offline goes up on the next sync (every 10

@@ -1015,11 +1015,15 @@ def calendar_sync(session: Session = Depends(db)) -> dict[str, Any]:
     return gcal_sync.sync(session).to_json()
 
 
+class CalendarConnectIn(BaseModel):
+    account: str | None = None
+
+
 @app.post("/api/calendar/connect")
-def calendar_connect() -> dict[str, Any]:
+def calendar_connect(body: CalendarConnectIn | None = None) -> dict[str, Any]:
     """Opens Google's consent page in this laptop's browser (credentials.json must be in config/)."""
     try:
-        return gcal_sync.connect_in_background()
+        return gcal_sync.connect_in_background(account=(body.account or None) if body else None)
     except gcal_sync.CalendarSetupError as exc:
         raise HTTPException(400, str(exc)) from exc
 

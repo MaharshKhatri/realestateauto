@@ -471,14 +471,20 @@ def cmd_setup_calendar(args: argparse.Namespace) -> None:
     from engine import gcal_sync
     init_db()
     try:
-        info = gcal_sync.setup(open_browser=not args.no_browser, port=args.port, timeout=args.timeout)
+        info = gcal_sync.setup(open_browser=not args.no_browser, port=args.port, timeout=args.timeout,
+                               account=args.account, calendar_id=args.calendar)
     except gcal_sync.CalendarError as exc:
         console.print(f"[yellow]{exc}[/yellow]")
         raise SystemExit(1) from None
-    console.print(f"[green]Connected[/green] to {info.get('calendar') or 'your calendar'} "
+    where = "its own calendar" if info["calendar_id"] == "primary" else f"the calendar {info['calendar_id']}"
+    console.print(f"[green]Connected[/green] as {info.get('account') or '?'}: reminders go to {where} "
                   f"({info.get('time_zone') or '?'}). Token saved to {gcal_sync.TOKEN.name} (git-ignored, chmod 600).")
+    if info.get("switched"):
+        console.print(f"Moved from {info.get('previous') or 'the previous calendar'}: removed "
+                      f"{info['removed_old']} old events there; they are re-created here now.")
+    if info.get("cleanup_error"):
+        console.print(f"[yellow]{info['cleanup_error']}[/yellow]")
     with session_scope() as s:
-        gcal_sync._set_state(s, calendar=info.get("calendar"), needs_reauth=False, last_error=None)
         r = gcal_sync.sync(s)
     _print_calendar_sync(r)
 
@@ -1525,6 +1531,10 @@ def main(argv: list[str] | None = None) -> None:
     scal.add_argument("--no-browser", action="store_true", help="print the sign-in link instead of opening a browser")
     scal.add_argument("--port", type=int, default=0, help="local port for Google's redirect (0 = any free port)")
     scal.add_argument("--timeout", type=int, default=300, help="seconds to wait for the browser sign-in")
+    scal.add_argument("--account", help="the Google account whose calendar gets the reminders (pre-selected in the "
+                                        "sign-in window; signing in as anyone else is refused)")
+    scal.add_argument("--calendar", help="put the events on this calendar instead of the account's own: the e-mail "
+                                         "address of a calendar shared with that account ('Make changes to events')")
     ycal = sub.add_parser("sync-calendar", help="two-way Google Calendar sync (follow-ups, deadlines, sales, goal)")
     ycal.add_argument("--dry-run", action="store_true", help="list the events without writing anything")
     ycal.add_argument("--status", action="store_true", help="connection, queue and the next events")

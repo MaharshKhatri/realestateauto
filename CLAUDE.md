@@ -507,9 +507,17 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   .env, or one prompt) and refuse to start on an empty database while a snapshot is waiting.
 
 ### Phase 7 operating rules — Google Calendar (learned 2026-10-29) — enforced in code
-- **Access** (`engine/gcal_sync.py`): one OAuth scope, `calendar.events` (events only: no e-mail, contacts or calendar
-  settings). The operator's own "Desktop app" client in `config/credentials.json`; `setup-calendar` (or 📅 Connect in
-  the cockpit) runs the browser consent once and writes `config/token.json` chmod 600. Both files are git-ignored.
+- **Access** (`engine/gcal_sync.py`): one data scope, `calendar.events` (events only: no e-mail, contacts or calendar
+  settings), plus `openid` + `userinfo.email` at sign-in only to learn which account signed in. The operator's own
+  "Desktop app" client in `config/credentials.json`; `setup-calendar` (or 📅 Connect in the cockpit) runs the browser
+  consent once and writes `config/token.json` chmod 600. Both files are git-ignored.
+- **Which calendar** (learned 2026-10-29): `setup-calendar --account <email>` pre-selects that account (`login_hint`)
+  and refuses a sign-in as anyone else (nothing saved); `--calendar <email>` writes to another calendar the signed-in
+  account may edit ("Make changes to events"), the fallback when a school / work Google Workspace blocks unverified
+  apps (that calendar's default notifications then apply: reminders on an event belong to the account that made it).
+  The choice lives in settings.local.yaml (`calendar.account`, `calendar.calendar_id`), never in a committed file.
+  Switching account or calendar deletes this app's events (private property `njw=1`, nothing else) from the old
+  calendar with the old token, resets the outbox and re-creates everything on the new one.
   An app left in "Testing" loses its refresh token after 7 days: the sync then reports "sign in again" and keeps
   everything queued; publishing the app (unverified is fine for one user) avoids it.
 - **Events**: agent follow-up = exactly `calendar.followup_hours` (48) after the e-mail's logged time, moved to 10:00

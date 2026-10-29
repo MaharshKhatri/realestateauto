@@ -33,6 +33,8 @@ an internal / Daniel's Law stop list, and for an address under a Daniel's Law or
 from __future__ import annotations
 
 import atexit
+import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -60,6 +62,9 @@ from db.models import (CalendarEvent, ClosingMilestone, Contact, ContactType, Di
 log = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]      # events on your calendars, nothing else
+# Asked for at sign-in only to learn WHICH account signed in (its e-mail address), so the reminders can't land on
+# the wrong calendar; they open nothing else.
+IDENTITY_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
 CREDENTIALS = Path(os.environ.get("WHOLESALING_GCAL_CREDENTIALS") or ROOT / "config" / "credentials.json")
 TOKEN = Path(os.environ.get("WHOLESALING_GCAL_TOKEN") or ROOT / "config" / "token.json")
 STATE_KEY = "gcal"
@@ -79,7 +84,8 @@ SETUP_STEPS = """Google Calendar isn't connected yet. One-time setup (about 5 mi
      Test users (or press "Publish app" so the sign-in doesn't expire every 7 days).
   4. Google Auth platform -> Clients -> Create client -> Application type "Desktop app" -> Create ->
      Download JSON, and save it as config/credentials.json in this project.
-  5. Run: python manage.py setup-calendar   (a browser opens once: pick your account and allow calendar events)"""
+  5. Run: python manage.py setup-calendar --account you@example.com   (the Google account whose calendar you
+     check; add it under Test users too). A browser opens once on that account: allow calendar events."""
 
 
 class CalendarError(RuntimeError):
@@ -621,10 +627,10 @@ class CalendarAPI:
         return {"calendar": page.get("summary"), "time_zone": page.get("timeZone")}
 
 
-_api_factory: Callable[[], CalendarAPI] | None = None
+_api_factory: Callable[[Any, str], CalendarAPI] | None = None
 
 
-def set_api_factory(factory: Callable[[], CalendarAPI] | None) -> None:
+def set_api_factory(factory: Callable[[Any, str], CalendarAPI] | None) -> None:
     """Tests (and nothing else) plug a fake Google here."""
     global _api_factory
     _api_factory = factory
@@ -647,7 +653,7 @@ def load_credentials() -> Any:
     from google.oauth2.credentials import Credentials
     if not TOKEN.is_file():
         raise CalendarAuthError("Google Calendar isn't connected: run python manage.py setup-calendar")
-    creds = Credentials.from_authorized_user_file(str(TOKEN), SCOPES)
+    creds = Credentials.from_authorized_user_file(str(TOKEN))      # the scopes it was granted with
     if not creds.valid:
         if not (creds.expired and creds.refresh_token):
             raise CalendarAuthError("the saved Google sign-in can't be renewed: run python manage.py setup-calendar")
@@ -662,15 +668,36 @@ def load_credentials() -> Any:
     return creds
 
 
-def api() -> CalendarAPI:
+def target_calendar() -> str:
+    """The calendar the events go to: `primary` = the signed-in account's own calendar, or the e-mail address of a
+    calendar that account may edit (calendar.calendar_id in settings.local.yaml, set by setup-calendar)."""
+    return str(cfg().get("calendar_id") or "primary").strip() or "primary"
+
+
+def api(creds: Any = None, calendar_id: str | None = None) -> CalendarAPI:
+    calendar_id = calendar_id or target_calendar()
     if _api_factory is not None:
-        return _api_factory()
+        return _api_factory(creds, calendar_id)
     import httplib2
     from google_auth_httplib2 import AuthorizedHttp
     from googleapiclient.discovery import build
-    http = AuthorizedHttp(load_credentials(), http=httplib2.Http(timeout=20))
+    http = AuthorizedHttp(creds or load_credentials(), http=httplib2.Http(timeout=20))
     service = build("calendar", "v3", http=http, cache_discovery=False, static_discovery=True)
-    return CalendarAPI(service, str(cfg().get("calendar_id") or "primary"))
+    return CalendarAPI(service, calendar_id)
+
+
+def signed_in_email(creds: Any) -> str | None:
+    """The account that just signed in, from the ID token Google returns with the `openid email` scopes."""
+    token = getattr(creds, "id_token", None)
+    if not isinstance(token, str) or token.count(".") != 2:
+        return None
+    part = token.split(".")[1]
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+    except (ValueError, binascii.Error):
+        return None
+    email = str(claims.get("email") or "").strip().lower()
+    return email or None
 
 
 # -- state -------------------------------------------------------------------------------------------
@@ -857,6 +884,7 @@ def status(session: Session, now: datetime | None = None) -> dict[str, Any]:
     return {"configured": configured(), "credentials_file": CREDENTIALS.is_file(), "token_file": TOKEN.is_file(),
             "enabled": bool(cfg().get("enabled", True)), "counts": counts,
             "queued": counts.get("pending", 0) + counts.get("cancel", 0), "calendar": st.get("calendar"),
+            "account": st.get("account") or cfg().get("account"), "calendar_id": target_calendar(),
             "last_sync": st.get("last_sync"), "last_error": st.get("last_error"),
             "needs_reauth": bool(st.get("needs_reauth")),
             "upcoming": [{"summary": (r.body_json or {}).get("summary"), "start": r.starts_at.isoformat()
@@ -866,8 +894,7 @@ def status(session: Session, now: datetime | None = None) -> dict[str, Any]:
 
 
 # -- one-time setup ----------------------------------------------------------------------------------
-def setup(*, open_browser: bool = True, port: int = 0, timeout: int = 300, flow_factory: Any = None) -> dict[str, Any]:
-    """credentials.json -> browser consent (once) -> token.json -> confirm we can see the calendar."""
+def _consent(want: str | None, *, open_browser: bool, port: int, timeout: int, flow_factory: Any) -> Any:
     if not CREDENTIALS.is_file():
         raise CalendarSetupError(SETUP_STEPS)
     try:
@@ -882,26 +909,106 @@ def setup(*, open_browser: bool = True, port: int = 0, timeout: int = 300, flow_
     if flow_factory is None:
         from google_auth_oauthlib.flow import InstalledAppFlow
         flow_factory = InstalledAppFlow.from_client_secrets_file
-    flow = flow_factory(str(CREDENTIALS), SCOPES)
+    # Google answers the e-mail scope in its own spelling; that is not a change in what was granted.
+    os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+    flow = flow_factory(str(CREDENTIALS), SCOPES + IDENTITY_SCOPES)
+    extra = {"login_hint": want} if want else {}          # the Google window opens on that account
     try:
         creds = flow.run_local_server(
             port=port, open_browser=open_browser, timeout_seconds=timeout,
             authorization_prompt_message="Opening Google sign-in in your browser. If nothing opens, visit:\n{url}",
-            success_message="The NJ Wholesale Cockpit is connected to your Google Calendar. You can close this tab.")
-    except Exception as exc:  # noqa: BLE001  (timeout, closed tab, denied consent)
+            success_message="The NJ Wholesale Cockpit is connected to your Google Calendar. You can close this tab.",
+            **extra)
+    except Exception as exc:  # noqa: BLE001  (timeout, closed tab, denied consent, blocked by an organization)
         raise CalendarSetupError(f"Google sign-in didn't finish ({exc.__class__.__name__}: {exc}). Run "
                                  "python manage.py setup-calendar again") from exc
     if creds is None:
         raise CalendarSetupError("Google sign-in didn't finish: run python manage.py setup-calendar again")
+    return creds
+
+
+def _remove_from(cal: CalendarAPI) -> int:
+    """Delete every event this app put on a calendar we are leaving (other events are never touched)."""
+    removed = 0
+    for item in cal.changed(None):
+        if item.get("status") == "cancelled" or item.get("recurringEventId"):
+            continue
+        try:
+            cal.delete(item["id"])
+            removed += 1
+        except NotFound:
+            pass
+    return removed
+
+
+def connect(session: Session, *, account: str | None = None, calendar_id: str | None = None,
+            open_browser: bool = True, port: int = 0, timeout: int = 300, flow_factory: Any = None
+            ) -> dict[str, Any]:
+    """Browser consent (once) -> check WHO signed in and that the target calendar is writable -> move our events off
+    the calendar used before, if any -> save token.json + the account choice (settings.local.yaml, git-ignored)."""
+    from engine.operator_setup import save_preference
+    session.info[WORKER_FLAG] = True
+    want = (account or cfg().get("account") or "").strip().lower() or None
+    target = (calendar_id or target_calendar()).strip() or "primary"
+    creds = _consent(want, open_browser=open_browser, port=port, timeout=timeout, flow_factory=flow_factory)
+    new = api(creds, target)
+    try:
+        info = new.probe()
+    except (NotFound, CalendarAuthError) as exc:
+        if target == "primary":
+            raise
+        raise CalendarSetupError(f"The account you signed in with can't add events to the calendar {target}. In "
+                                 f"that calendar's settings, share it with the account you sign in with and choose "
+                                 f"'Make changes to events', then run setup-calendar again ({exc})") from exc
+    who = signed_in_email(creds)
+    if who is None and target == "primary" and "@" in str(info.get("calendar") or ""):
+        who = str(info["calendar"]).lower()            # a primary calendar is named after its account
+    if want and who and who != want:
+        raise CalendarSetupError(f"You signed in as {who}, but the reminders are set to go to {want}. Run "
+                                 f"setup-calendar again and pick {want} in the Google window ('Use another account' "
+                                 "if it isn't listed). Nothing was changed.")
+    st = _state(session).value_json or {}
+    before = (str(st.get("account") or st.get("calendar") or "").lower() or None,
+              str(st.get("calendar_id") or "primary"))
+    after = (who, target)
+    had_events = session.scalar(select(CalendarEvent.id).where(CalendarEvent.google_event_id.is_not(None))
+                                .limit(1)) is not None
+    switched = had_events and before != after
+    removed, cleanup_error = 0, None
+    if switched and TOKEN.is_file():
+        try:
+            removed = _remove_from(api(load_credentials(), before[1]))
+        except CalendarError as exc:
+            cleanup_error = (f"couldn't remove the old events from {before[0] or 'the previous calendar'} ({exc}); "
+                             "delete them there by hand if you want them gone")
     save_token(creds)
-    return api().probe()
+    save_preference("calendar", "account", who or want)
+    save_preference("calendar", "calendar_id", target)
+    if switched:
+        for row in session.scalars(select(CalendarEvent)):
+            row.google_event_id, row.synced_hash, row.attempts, row.last_error = None, None, 0, None
+            row.status = "cancelled" if row.status in ("cancel", "cancelled") else "pending"
+    _set_state(session, account=who or want, calendar_id=target, calendar=info.get("calendar"), last_pull=None,
+               needs_reauth=False, last_error=None)
+    session.flush()
+    return {**info, "account": who or want, "calendar_id": target, "switched": switched, "removed_old": removed,
+            "previous": before[0] if switched else None, "cleanup_error": cleanup_error}
+
+
+def setup(*, open_browser: bool = True, port: int = 0, timeout: int = 300, flow_factory: Any = None,
+          account: str | None = None, calendar_id: str | None = None) -> dict[str, Any]:
+    """`connect` in its own database session (the CLI and the cockpit button)."""
+    from db.database import session_scope
+    with session_scope() as s:
+        return connect(s, account=account, calendar_id=calendar_id, open_browser=open_browser, port=port,
+                       timeout=timeout, flow_factory=flow_factory)
 
 
 _connect_thread: threading.Thread | None = None
 _connect_result: dict[str, Any] = {}
 
 
-def connect_in_background(timeout: int = 300) -> dict[str, Any]:
+def connect_in_background(timeout: int = 300, account: str | None = None) -> dict[str, Any]:
     """The cockpit's Connect button: the consent page opens in the laptop's browser while the request returns."""
     global _connect_thread
     if not CREDENTIALS.is_file():
@@ -912,10 +1019,9 @@ def connect_in_background(timeout: int = 300) -> dict[str, Any]:
     def run() -> None:
         _connect_result.clear()
         try:
-            info = setup(timeout=timeout)
+            info = setup(timeout=timeout, account=account)
             from db.database import session_scope
             with session_scope() as s:
-                _set_state(s, calendar=info.get("calendar"), needs_reauth=False, last_error=None)
                 r = sync(s)
             _connect_result.update({"ok": True, **info, "sync": r.to_json()})
         except Exception as exc:  # noqa: BLE001
