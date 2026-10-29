@@ -126,6 +126,10 @@ def google(monkeypatch, tmp_path):
     monkeypatch.setattr(gs, "CREDENTIALS", tmp_path / "credentials.json")
     gs.set_api_factory(lambda creds=None, cal="primary": gs.CalendarAPI(svc, cal))
     yield svc
+    # Disconnect BEFORE the db fixture commits on teardown, so that commit can't start a background sync that runs on
+    # into the next test's database.
+    token.unlink(missing_ok=True)
+    gs.worker.drain()
     gs.set_api_factory(None)
 
 
@@ -428,6 +432,8 @@ def setup_files(monkeypatch, tmp_path):
     monkeypatch.setattr(gs, "TOKEN", tmp_path / "token.json")
     monkeypatch.setattr(operator_setup, "LOCAL_SETTINGS", tmp_path / "settings.local.yaml")
     yield tmp_path
+    gs.TOKEN.unlink(missing_ok=True)                             # disconnected before the db fixture commits
+    gs.worker.drain()
     gs.set_api_factory(None)
     reload_settings()
 

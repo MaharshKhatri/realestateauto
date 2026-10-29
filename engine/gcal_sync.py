@@ -851,6 +851,15 @@ def sync(session: Session, lead_ids: set[int] | None = None, *, cal: CalendarAPI
                 out.error = str(exc)
         out.reconciled = reconcile(session, lead_ids, now)
         if cal is not None and not isinstance(out.error, str):
+            # Release SQLite's write lock before talking to Google: a slow or offline Google must never stall the
+            # cockpit's own writes (push only flushes its results at the end). The leads this sync just covered are
+            # dropped from the session's queue first, so the commit doesn't start a second sync for them.
+            if lead_ids is None:
+                session.info.pop("gcal_leads", None)
+                session.info.pop("gcal_props", None)
+            elif session.info.get("gcal_leads"):
+                session.info["gcal_leads"].difference_update(lead_ids)
+            session.commit()
             try:
                 out.pushed = push(session, cal)
                 _set_state(session, last_sync=utcnow().isoformat(timespec="seconds"), last_error=None,

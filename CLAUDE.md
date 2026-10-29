@@ -530,7 +530,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
 - **Sync**: `calendar_events` rows are keyed (`followup:<lead>:i<interaction>`, `review:<lead>:<date>`, `sale:<lead>`,
   `daily_goal`, …) and the Google event id is derived from the key, so re-runs, lost rows and a second machine update
   instead of duplicating. Commit hooks (after_flush → after_commit) queue the touched leads and a background thread
-  syncs them; sync sessions carry `session.info["gcal_worker"]` so they never re-trigger. Offline / 5xx / rate
+  syncs them; sync sessions carry `session.info["gcal_worker"]` so they never re-trigger. A sync commits after pull +
+  reconcile and before any push, so no SQLite write lock is held while Google is called (a slow / offline Google
+  never stalls the cockpit's own writes). Offline / 5xx / rate
   limits leave rows queued (attempts + last_error); the cockpit re-syncs every `background_minutes`, the swarm runs
   `calendar_sync` every 15 minutes and at the end of every pipeline.
 - **Two-way**: pull first. An event the operator deleted becomes `dismissed` and is never re-created; a moved
