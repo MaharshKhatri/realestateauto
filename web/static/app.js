@@ -55,11 +55,14 @@ async function route() {
   const params = new URLSearchParams(query || "");
   try {
     const section = path === "/" || path === "" ? "autopilot"
-      : (path.match(/^\/(today|ready|agents|inspect|dispo|lead|fast|closing|records)/) || [])[1] || "dash";
+      : (path.match(/^\/(today|ready|agents|inspect|dispo|lead|fast|closing|records|partners|skiptrace)/) || [])[1] || "dash";
     document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === section));
     const m = path.match(/^\/lead\/(\d+)/);
     if (m) return await renderLead(+m[1], params.get("contact"));
     if (path === "/" || path === "") return await renderAutopilot();
+    if (path === "/partners") return await renderPartners();
+    const skt = path.match(/^\/skiptrace(?:\/(\d+))?/);
+    if (skt) return await renderSkiptrace(skt[1] ? +skt[1] : null);
     if (path === "/today") return await renderToday();
     if (path === "/records") return await renderRecords();
     if (path === "/ready") return await renderReady();
@@ -194,10 +197,12 @@ async function renderLead(id, contactId) {
     </div>
     <div class="grid g-lead">
       <div>${leftColumn(d)}</div>
-      <div>${contactsCard(d, sel)}${scriptCard(C)}</div>
+      <div>${contactsCard(d, sel)}${replyCard(d)}${scriptCard(C)}</div>
       <div>${loggerCard(d)}${docsCard(d)}${historyCard(d)}</div>
     </div>`;
   wireLead(d);
+  wireReplyPanel(d.lead.id, (d.contacts.find((c) => c.type === "LISTING_AGENT") || {}).email || null, () => route());
+  wireStructure(d);
 }
 
 function leftColumn(d) {
@@ -206,16 +211,22 @@ function leftColumn(d) {
     ${s.plaintiff ? `<br><span class="muted">${esc(s.plaintiff)}</span>` : ""}${s.defendant ? `<br><span class="muted">v. ${esc(s.defendant)}</span>` : ""}
     ${s.adjournments ? `<br><span class="muted">${s.adjournments} adjournment(s)</span>` : ""}${s.dom ? `<br><span class="muted">${s.dom} DOM at ${money(s.list_price)}</span>` : ""}
     ${s.url ? ` <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">source ↗</a>` : ""}</li>`).join("");
+  const quant = d.deal_cfg.pricing_model === "quant";
   const calc = V ? `
     <div class="card" id="calc">
-      <h2>Deal calculator</h2>
+      <div class="row spread"><h2>Deal calculator</h2>
+        <select id="c-model" title="pricing model"><option value="quant" ${quant ? "selected" : ""}>buyer-implied (quant)</option>
+          <option value="fixed_pct" ${quant ? "" : "selected"}>classic 70% / 75%</option></select></div>
       ${slider("arv", "ARV", V.arv_before_tax_drag || V.arv, Math.round((V.arv || 1e5) * 0.5), Math.round((V.arv || 1e5) * 1.5), 1000)}
       ${slider("repairs", "Repairs", V.repairs || 0, 0, Math.max(150000, Math.round((V.repairs || 0) * 2.5)), 500)}
-      ${slider("mao_pct_conservative", "MAO % of ARV", d.deal_cfg.mao_pct_conservative, 0.55, 0.85, 0.01, true)}
-      ${slider("anchor_discount_pct", "Anchor below MAO", d.deal_cfg.anchor_discount_pct, 0, 0.25, 0.01, true)}
+      ${slider("min_roi", "Buyer's ROI floor", d.deal_cfg.min_roi, 0.08, 0.35, 0.01, true)}
+      ${slider("min_profit", "Buyer's profit floor", d.deal_cfg.min_profit, 10000, 120000, 1000)}
+      ${slider("mao_pct_conservative", "MAO % of ARV (classic)", d.deal_cfg.mao_pct_conservative, 0.55, 0.85, 0.01, true)}
+      ${slider("anchor_discount_pct", "Opening offer below target", d.deal_cfg.anchor_discount_pct, 0, 0.25, 0.01, true)}
       ${slider("debt", "Debt / upset", V.debt || 0, 0, Math.max(100000, Math.round((V.debt || 0) * 2)), 500)}
       <label><input type="checkbox" id="c-frfpa" ${F.applies ? "checked" : ""}> Price as FRFPA-covered (≥ 82% of as-is ${money(V.as_is)})</label>
       <div class="calc-out" id="calc-out"></div>
+      <div id="quant-out"></div>
       <p class="muted" style="font-size:12px">Comps: ${V.comp_count} (${esc(V.comp_source || "")}) · confidence ${Math.round(V.confidence || 0)} · valued ${esc(V.valued_on || "")}<br>${(V.comp_notes || []).map(esc).join("<br>")}</p>
     </div>` : `<div class="card"><h2>Deal calculator</h2><p class="muted">Not underwritten yet — run <span class="mono">python manage.py underwrite --lead ${L.id}</span>.</p></div>`;
   return `
@@ -240,7 +251,8 @@ function leftColumn(d) {
       <button class="btn" id="occ-save">Save &amp; re-price</button></div>
     </div>
     ${calc}
-    <div class="card"><h2>Matched cash buyers</h2>${d.buyers.length ? `<table><tbody>${d.buyers.map((b) => `
+    ${structureCard(d)}
+    <div class="card"><h2>Matched cash buyers</h2>${partnerLine(d.partner)}${d.buyers.length ? `<table><tbody>${d.buyers.map((b) => `
       <tr><td>${b.rank}</td><td><b>${esc(b.name)}</b><br><span class="muted">${esc(b.reasons.join(" · "))}</span></td>
       <td class="num">${b.score}<br><a href="#" data-pitch="${b.id}">pitch</a></td></tr>`).join("")}</tbody></table>
       <div id="pitch"></div>` : '<p class="muted">No matches (only deals with an offer verdict are matched — run python -m engine.buyer_matcher).</p>'}</div>
@@ -317,7 +329,7 @@ function loggerCard(d) {
     <div id="lg-result"></div></div>`;
 }
 
-const DOC_NAMES = { loi: "LOI", psa: "Purchase agreement (draft)", deal_sheet: "Deal sheet", assignment: "Assignment", jv: "JV agreement" };
+const DOC_NAMES = { loi: "LOI", rider: "Item 14 rider (attorney review)", psa: "Purchase agreement (draft)", deal_sheet: "Deal sheet", assignment: "Assignment", jv: "JV agreement" };
 
 function docsCard(d) {
   const names = DOC_NAMES;
@@ -371,27 +383,32 @@ function wireLead(d) {
   const sliders = app.querySelectorAll("#calc input[type=range]");
   let timer = null;
   const recalc = async () => {
+    const model = ($("#c-model") || {}).value || d.deal_cfg.pricing_model;
     const body = { frfpa: $("#c-frfpa").checked, fmv: d.valuation.as_is, annual_taxes: d.property.taxes,
-      mao_pct_aggressive: d.deal_cfg.mao_pct_aggressive };
+      mao_pct_aggressive: d.deal_cfg.mao_pct_aggressive, pricing_model: model, mun_code: d.property.mun_code,
+      county: d.property.county, ask: ((d.valuation.listing || {}).list_price) || null };
     sliders.forEach((s) => (body[s.dataset.key] = +s.value));
     if (!body.debt) body.debt = null;
     const { data: r } = await post("/api/calc", body);
+    const q = r.quant;
     $("#calc-out").innerHTML = `
-      <div><span class="muted">Anchor offer</span><b>${money(r.compliant_offer || r.anchor_offer)}</b></div>
-      <div><span class="muted">Walk-away (MAO)</span><b>${money(r.mao_conservative)}</b></div>
+      <div><span class="muted">Opening offer</span><b>${money(r.compliant_offer || r.anchor_offer)}</b></div>
+      <div><span class="muted">${q ? "Target (keeps the fee)" : "Walk-away (MAO)"}</span><b>${money(r.mao_conservative)}</b></div>
+      <div><span class="muted">${q ? "Walk-away" : "75% ceiling"}</span><b>${money(r.mao_aggressive)}</b></div>
       <div><span class="muted">Assignment fee</span><b>${money(r.track_fee || r.assignment_fee)}</b></div>
-      <div><span class="muted">Buyer price / profit</span><b>${money(r.buyer_purchase_price)} / ${money(r.buyer_profit)}</b></div>
-      <div><span class="muted">Spread over debt</span><b>${money(r.deal_spread)}</b></div>
-      <div><span class="muted">Verdict</span><b>${label(r.verdict)}</b></div>
+      <div><span class="muted">Buyer max / profit</span><b>${money(r.buyer_purchase_price)} / ${money(r.buyer_profit)}</b></div>
+      <div><span class="muted">Buyer ROI · verdict</span><b>${pct(r.buyer_roi)} · ${label(r.verdict)}</b></div>
+      ${r.deal_spread != null ? `<div><span class="muted">Spread over debt</span><b>${money(r.deal_spread)}</b></div>` : ""}
       ${r.frfpa_floor ? `<div style="grid-column:1/3"><span class="muted">FRFPA floor (82% FMV)</span><b>${money(r.frfpa_floor)}</b></div>` : ""}
       ${(r.flags || []).concat(r.track_notes || []).map((f) => `<div style="grid-column:1/3" class="flag">${esc(f)}</div>`).join("")}`;
+    $("#quant-out").innerHTML = q ? quantHtml(q) : "";
   };
   sliders.forEach((s) => s.addEventListener("input", () => {
     $("#sv-" + s.dataset.key).textContent = s.dataset.pct === "1" ? pct(+s.value) : money(+s.value);
     clearTimeout(timer);
     timer = setTimeout(recalc, 150);
   }));
-  if (sliders.length) { $("#c-frfpa").addEventListener("change", recalc); recalc(); }
+  if (sliders.length) { $("#c-frfpa").addEventListener("change", recalc); $("#c-model").addEventListener("change", recalc); recalc(); }
   // occupancy
   $("#occ-save").addEventListener("click", async () => {
     const source = $("#occ-source").value.trim();
@@ -1087,7 +1104,11 @@ async function renderAutopilot() {
 }
 function progressHtml(d) {
   const w = Math.min(100, Math.round((100 * d.done) / Math.max(1, d.goal)));
-  return `<div class="row spread"><h1>🎯 Step-by-Step Mode</h1><b id="ap-goal">Today's Goal: ${d.done} / ${d.goal} Deals Contacted</b></div>
+  return `<div class="row spread"><h1>🎯 Step-by-Step Mode</h1>
+      <span class="row"><label class="muted touch">First touch
+        <select id="ap-touch"><option value="opener" ${d.first_touch === "opener" ? "selected" : ""}>2-line opener, offer when they reply</option>
+        <option value="offer" ${d.first_touch === "offer" ? "selected" : ""}>priced note first</option></select></label>
+      <b id="ap-goal">Today's Goal: ${d.done} / ${d.goal} Deals Contacted</b></span></div>
     <div class="progress" role="progressbar" aria-label="Today's goal" aria-valuemin="0" aria-valuemax="${d.goal}"
       aria-valuenow="${d.done}"><div style="width:${w}%"></div></div>`;
 }
@@ -1096,21 +1117,24 @@ function drawCard() {
   const box = $("#ap");
   const banner = d.setup_complete ? "" : `<div class="banner">Finish <button class="btn" id="ap-setup">⚙️ My Setup</button> first:
     every e-mail signs with your name, phone and mailing address (CAN-SPAM), and letters print as PROOF until it's done.</div>`;
+  const wireTouch = () => { if ($("#ap-touch")) $("#ap-touch").onchange = async (e) => {
+    await post("/api/autopilot/first-touch", { mode: e.target.value }); toast(`First touch: ${e.target.value}.`); renderAutopilot(); }; };
   if (!d.cards.length) {
-    box.innerHTML = progressHtml(d) + banner + `<p class="muted">Nothing left in today's deck. Run the data refresh for new
+    box.innerHTML = progressHtml(d) + banner + phase0Html(d.partners) + `<p class="muted">Nothing left in today's deck. Run the data refresh for new
       sheriff sales and listings, or work the queues below.</p>`;
     if ($("#ap-setup")) $("#ap-setup").onclick = openSetup;
+    wireTouch(); wirePhase0();
     return;
   }
   const c = d.cards[AP.i];
   const a = c.agent || {};
   const smtp = d.auto_email && c.can_smtp;
   const cls = { listed_foreclosure: "bad", followup: "warn", mls_fixer: "good" }[c.kind] || "";
-  box.innerHTML = `${progressHtml(d)}${banner}
+  box.innerHTML = `${progressHtml(d)}${banner}${phase0Html(d.partners)}
     <div class="row spread ap-nav"><b>Action ${AP.i + 1} of ${d.cards.length}</b>
       <span class="row"><button class="btn" id="ap-prev" ${AP.i === 0 ? "disabled" : ""}>◀ Previous</button>
       <button class="btn" id="ap-next" ${AP.i >= d.cards.length - 1 ? "disabled" : ""}>Next ▶</button></span></div>
-    <div class="row ap-title"><span class="pill ${cls}">${esc(c.label)}</span>
+    <div class="row ap-title"><span class="pill ${cls}">${esc(c.label)}</span><span class="pill acc">Touch ${c.touch}${c.packet_kind === "opener" ? ": no price" : ""}</span>
       <h2><a href="${esc(c.lead_url)}">${esc(c.address)}</a></h2>${c.days_to_sale != null ? daysBadge(c.days_to_sale) : ""}
       <a class="muted" href="${esc(c.inspect_url)}">photos, maps &amp; flood →</a></div>
     <div class="grid ap-grid">
@@ -1129,6 +1153,7 @@ function drawCard() {
           <button class="btn bad" data-out="sold">🏷️ Sold / Dead - Skip</button>
         </div>
         <div id="ap-result"></div>
+        ${replyPanelHtml(c.lead_id)}
       </div>
       <div>
         <h3>E-mail to ${esc(a.name || "the listing agent")} ${a.email ? `<span class="mono">&lt;${esc(a.email)}&gt;</span>` : "(no e-mail on file)"}</h3>
@@ -1138,7 +1163,7 @@ function drawCard() {
         ${c.style.length ? `<p class="flag">Style check: ${esc(c.style.join("; "))}</p>` : ""}
         ${c.warnings.length ? `<ul>${c.warnings.map((w) => `<li class="flag">${esc(w)}</li>`).join("")}</ul>` : ""}
         <button class="bigbtn" id="ap-send" ${a.email ? "" : "disabled"}>✉️ Send Email &amp; Log (Auto-Advance to Next Deal)</button>
-        <p class="muted">${smtp ? `Sends from your Gmail (${d.sent_24h}/${d.daily_email_limit} in the last 24 hours) with the 1-page offer attached.`
+        <p class="muted">${smtp ? `Sends from your Gmail (${d.sent_24h}/${d.daily_email_limit} in the last 24 hours)${c.touch === 2 ? " with the 1-page offer attached" : ", plain text, no attachment"}.`
           : "Opens your e-mail app with this message and logs it as sent. Add a Gmail app password in My Setup to send from here."}</p>
         <div class="smsbox"><h3>Short text message</h3><p>${esc(c.sms)}</p>
           <button class="btn" id="ap-sms" ${a.phone ? "" : "disabled"}>📋 Copy Short Text Message to Agent</button>
@@ -1146,6 +1171,8 @@ function drawCard() {
       </div>
     </div>`;
   if ($("#ap-setup")) $("#ap-setup").onclick = openSetup;
+  wireTouch(); wirePhase0();
+  wireReplyPanel(c.lead_id, a.email || null, (r) => { if (r && ["RED", "INFO"].includes(r.verdict)) apAdvance(null); else renderAutopilot(); });
   $("#ap-prev").onclick = () => { AP.i -= 1; drawCard(); };
   $("#ap-next").onclick = () => { AP.i += 1; drawCard(); };
   $("#ap-send").onclick = () => apSend(c, smtp);
@@ -1325,6 +1352,270 @@ async function renderRecords() {
     toast("Attached: the filing is now a lis pendens lead");
     location.hash = `#/lead/${data.lead_id}`;
   }));
+}
+
+
+// -- Phase 6: shared reply negotiator panel -------------------------------------------------------------------
+function replyPanelHtml(leadId) {
+  return `<div class="replybox" id="reply-${leadId}">
+    <h3>💬 Agent replied or countered? Paste their message here</h3>
+    <textarea id="rp-text-${leadId}" placeholder="Paste the agent's e-mail or text. Numbers, counters, 'still available', proof-of-funds asks, oil tank, tenants, CO and bidding wars are all read."></textarea>
+    <div class="row"><button class="btn good" id="rp-go-${leadId}">Analyze &amp; draft the reply</button>
+      <label class="muted"><input type="checkbox" id="rp-save-${leadId}" checked> log it on the lead</label></div>
+    <div class="reply-out" id="rp-out-${leadId}"></div></div>`;
+}
+function replyCard(d) {
+  return `<div class="card"><h2>Live negotiator</h2>
+    ${d.funnel && d.funnel.last_counter_amount ? `<p class="muted">Last counter on file: <b>${money(d.funnel.last_counter_amount)}</b></p>` : ""}
+    ${replyPanelHtml(d.lead.id)}</div>`;
+}
+function replyOutHtml(r, agentEmail) {
+  const n = r.numbers || {};
+  const num = (k, lab, fmt = money) => (n[k] != null ? `<div><span class="muted">${lab}</span><b>${fmt(n[k])}</b></div>` : "");
+  const mailto = agentEmail ? `mailto:${encodeURIComponent(agentEmail)}?subject=${encodeURIComponent(r.reply_subject)}&body=${encodeURIComponent(r.reply_text)}` : null;
+  return `<div class="row"><span class="light ${esc(r.verdict)}">${esc(r.verdict)}</span><b>${esc(r.headline)}</b></div>
+    <p class="muted">${esc((r.parsed.intents || []).join(" · "))}${r.parsed.deadline ? ` · deadline ${esc(r.parsed.deadline)}` : ""}</p>
+    <div class="nums">${num("counter", "Their number")}${num("our_counter", "Our counter")}${num("fee_at_counter", "Fee at their number")}
+      ${num("fee_at_our_counter", "Fee at our counter")}${num("buyer_max", "Buyer max")}${num("adjusted_walkaway", "Walk-away (after risk)")}
+      ${num("mao_target", "Target")}${num("buyer_roi_at_max", "Buyer ROI at max", pct)}${num("buyer_profit_if_paid_counter", "Buyer profit at their number")}
+      ${num("risk_buffer", "Risk buffer")}</div>
+    ${(n.risk_reasons || []).map((x) => `<p class="flag">${esc(x)}</p>`).join("")}
+    ${r.warnings.map((x) => `<p class="flag">${esc(x)}</p>`).join("")}
+    <ol>${r.actions.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+    ${r.partner && r.partner.call_now && r.partner.call_now.length ? `<p><b>Call now:</b> ${r.partner.call_now.map((b) => `${esc(b.name)}${b.phone ? ` <a class="phone" href="tel:${esc(b.phone)}">${esc(b.phone)}</a>` : ""}`).join(" · ")}</p>` : ""}
+    ${r.reply_text ? `<label>Reply (3 sentences; edit, then copy or open in e-mail)<input type="text" id="rp-subj" value="${esc(r.reply_subject)}"><textarea id="rp-body" rows="12">${esc(r.reply_text)}</textarea></label>
+      ${r.style.length ? `<p class="flag">Style check: ${esc(r.style.join("; "))}</p>` : ""}
+      <div class="row"><button class="btn" id="rp-copy">📋 Copy reply</button>${mailto ? `<a class="btn good" href="${esc(mailto)}">✉️ Open in e-mail</a>` : ""}
+        <button class="btn" id="rp-sms">📋 Copy text message</button></div>
+      <p class="muted">${esc(r.sms_text)}</p>` : ""}
+    ${r.followup_at ? `<p class="muted">Follow-up scheduled: ${fmtDate(r.followup_at)}</p>` : ""}`;
+}
+function wireReplyPanel(leadId, agentEmail, after) {
+  const go = $(`#rp-go-${leadId}`);
+  if (!go) return;
+  go.onclick = async () => {
+    const text = $(`#rp-text-${leadId}`).value.trim();
+    if (text.length < 2) return toast("Paste their message first.", true);
+    go.disabled = true;
+    try {
+      const { status, data } = await post(`/api/leads/${leadId}/analyze-reply`, { text, save: $(`#rp-save-${leadId}`).checked });
+      if (status >= 400) throw new Error(data.detail || "could not analyze");
+      $(`#rp-out-${leadId}`).innerHTML = replyOutHtml(data, agentEmail);
+      if ($("#rp-copy")) $("#rp-copy").onclick = () => copyText($("#rp-body").value);
+      if ($("#rp-sms")) $("#rp-sms").onclick = () => copyText(data.sms_text);
+      toast(`${data.verdict}: ${data.headline}`);
+      if (data.interaction_id) loadCmdbar();
+      if (after && data.interaction_id && ["RED", "INFO"].includes(data.verdict)) setTimeout(() => after(data), 4000);
+    } catch (e) { toast(e.message, true); }
+    go.disabled = false;
+  };
+}
+
+// -- Phase 6: quant pricing breakdown, deal structure, partner line -----------------------------------------
+function quantHtml(q) {
+  const b = q.buyer || {}, a = q.alpha || {}, rs = q.resale || {};
+  return `<div class="quant">
+    <div><span class="muted">Buyer max (${esc((q.binding || "").replace("_", " "))} binds)</span><b>${money(q.buyer_max)}</b></div>
+    <div><span class="muted">All-in multiple of ARV</span><b>${pct(q.alpha_effective)} <span class="muted">(local cap ${pct(a.alpha)})</span></b></div>
+    <div><span class="muted">Target → fee</span><b>${money(q.mao_target)} → ${money(q.fee_target)}</b></div>
+    <div><span class="muted">Walk-away → min fee</span><b>${money(q.mao_walkaway)} → ${money(q.min_fee)}</b></div>
+    <div><span class="muted">Rehab + ${pct(b.rehab ? b.rehab_contingency / b.rehab : 0)} contingency</span><b>${money((b.rehab || 0) + (b.rehab_contingency || 0))}</b></div>
+    <div><span class="muted">${b.holding_months || 6}-month taxes · carry · capital</span><b>${money(b.taxes_held)} · ${money(b.carry)} · ${money(b.capital_cost)}</b></div>
+    <div><span class="muted">Resale costs (commission, RTF${rs.graduated_fee ? ", graduated fee" : ""})</span><b>${money(rs.total)}</b></div>
+    <div><span class="muted">Buyer profit / ROI at max</span><b>${money(b.profit)} / ${pct(b.roi)}</b></div>
+  </div><p class="muted" style="font-size:12px">${esc(a.level || "")} evidence: ${a.n || 0} recorded investor purchases${a.name ? ` in ${esc(a.name)}` : ""}${a.q25 ? `, lower-quartile price ${pct(a.q25)} of equalized value` : ""}. ${(q.notes || []).slice(-1).map(esc).join("")}</p>`;
+}
+function structureCard(d) {
+  const s = d.structure;
+  if (!s) return "";
+  return `<div class="card" id="structure"><div class="row spread"><h2>Assignment vs double close</h2>
+      <label class="muted"><input type="checkbox" id="st-refuses"> seller refuses the Item 14 rider</label></div>
+    <div id="st-out">${structureHtml(s)}</div>
+    <details><summary class="muted">Single-purpose LLC option (disclosed)</summary><div id="st-entity"></div></details></div>`;
+}
+function structureHtml(s) {
+  const a = s.assignment, dc = s.double_close;
+  return `<table class="structure"><tr><th></th><th>Assignment</th><th>Double close</th></tr>
+    <tr><td>Spread</td><td>${money(a.fee)}</td><td>${money(dc.spread)}</td></tr>
+    <tr><td>Costs</td><td>${money(a.costs)} recording</td><td>${money(dc.transactional_funding)} funding · ${money(dc.rtf_leg_b)} RTF · ${money(dc.closing_costs_leg_a + dc.closing_costs_leg_b)} closings</td></tr>
+    <tr><td><b>Net to you</b></td><td><b>${money(a.net)}</b></td><td><b>${money(dc.net)}</b></td></tr>
+    <tr><td>Out of pocket</td><td>deposit only</td><td>${money(dc.out_of_pocket)} (${esc(dc.condition.split(";")[0])})</td></tr></table>
+    <p><span class="pill ${s.recommended === "assignment" ? "good" : "acc"}">recommended: ${esc(s.recommended.replace("_", " "))}</span> <span class="muted">${esc(s.reasons[0] || "")}</span></p>`;
+}
+function wireStructure(d) {
+  const box = $("#st-refuses");
+  if (!box) return;
+  const load = async () => {
+    const { data } = await api(`/api/leads/${d.lead.id}/structure?seller_refuses=${box.checked}`);
+    $("#st-out").innerHTML = structureHtml(data);
+    const e = data.entity_option;
+    $("#st-entity").innerHTML = `<p>${e.how.map(esc).join(" ")}</p><ul>${e.pros.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+      <ul>${e.conditions.map((x) => `<li class="flag">${esc(x)}</li>`).join("")}</ul><p class="muted">${esc(e.when)} ${esc(e.costs.note)}</p>`;
+  };
+  box.onchange = load;
+  load();
+}
+function partnerLine(p) {
+  if (!p) return "";
+  if (p.partner) return `<p><span class="pill good">POF partner: ${esc(p.partner.name)}</span> <span class="muted">${esc(p.pof_sentence || "")}</span></p>`;
+  return `<p class="flag">${esc(p.note || "")} <a href="#/partners">Open the vault →</a> (${p.active_partners}/${p.partners_needed} verified)</p>`;
+}
+
+// -- Phase 6: Phase 0 funding partners (deck block) + the vault page -------------------------------------------
+function phase0Html(ps) {
+  if (!ps || !ps.open) return "";
+  const c = (ps.cards || [])[0];
+  return `<div class="card phase0"><div class="row spread"><h2>🤝 Phase 0: Lock In Your ${ps.needed} Funding Partners</h2>
+      <span class="pill vio">${ps.active} / ${ps.needed} verified with proof of funds</span></div>
+    <p class="muted">Before chasing houses, line up the rehabbers who sign and fund them. Their LLC and proof of funds lock up the contracts; you bring the deals.</p>
+    ${c ? `<div class="grid ap-grid"><div><h3>${esc(c.name)} <span class="muted">${esc(c.entity)}</span></h3>
+        <ul>${c.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+        <h3>Phone script</h3><ol class="ap-script">${c.phone_script.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+        ${c.phone ? `<p>📞 <a class="phone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a></p>` : '<p class="muted">No phone on file: the deed export has the mailing address only. Look them up (Skip Trace) or write.</p>'}
+        <div class="row"><button class="btn" data-ptouch="email" data-pid="${c.partner_id}">✉️ Mark e-mailed</button>
+          <button class="btn" data-ptouch="sms" data-pid="${c.partner_id}">💬 Copy text &amp; mark</button>
+          <button class="btn" data-ptouch="phone" data-pid="${c.partner_id}">📞 Mark called</button>
+          <a class="btn good" href="#/partners">Open the vault (${(ps.cards || []).length} to reach)</a></div></div>
+      <div><label>Subject<input type="text" id="p0-subject" value="${esc(c.subject)}"></label>
+        <label>E-mail<textarea id="p0-body" rows="12">${esc(c.body)}</textarea></label>
+        <div class="row"><button class="btn" id="p0-copy">📋 Copy e-mail</button>${c.email ? `<a class="btn good" href="${esc(c.mailto)}">✉️ Open in e-mail</a>` : ""}</div>
+        <p class="muted" id="p0-sms">${esc(c.sms)}</p></div></div>` : `<p class="muted">Every seeded partner has been contacted this week. <a href="#/partners">Open the vault</a> to log answers or upload proof of funds.</p>`}
+  </div>`;
+}
+function wirePhase0() {
+  if ($("#p0-copy")) $("#p0-copy").onclick = () => copyText($("#p0-body").value);
+  document.querySelectorAll("[data-ptouch]").forEach((b) => (b.onclick = async () => {
+    if (b.dataset.ptouch === "sms") await copyText(($("#p0-sms") || {}).textContent || "");
+    const { data } = await post(`/api/partners/${b.dataset.pid}/touch`, { channel: b.dataset.ptouch, notes: `Phase 0 ${b.dataset.ptouch}` });
+    toast(`Logged (${data.status.toLowerCase().replace("_", " ")}). Next partner up.`);
+    if (location.hash === "#/" || location.hash === "") renderAutopilot(); else renderPartners();
+  }));
+}
+const REHAB = ["LIGHT", "MEDIUM", "HEAVY"], PSTATUS = ["TARGET", "CONTACTED", "ACTIVE_PARTNER", "DECLINED"];
+async function renderPartners() {
+  const { data: v } = await api("/api/partners");
+  const row = (p) => `<tr data-prow="${p.id}">
+      <td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.entity_name || "")}</span>${p.recent ? `<br><span class="muted">${esc(p.recent.address)}, ${esc(p.recent.town)} · ${kmoney(p.recent.price)} · ${p.recent.count_24m} buys/24m</span>` : ""}</td>
+      <td><select data-f="status">${PSTATUS.map((s) => `<option ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><br>
+        ${p.pof_verified ? `<span class="pill good">POF ✓${p.pof_share_ok ? " shareable" : ""}</span>` : '<span class="pill warn">no POF</span>'}</td>
+      <td><input data-f="contact_name" value="${esc(p.contact_name || "")}" placeholder="first last"><br><input data-f="phone" value="${esc(p.phone || "")}" placeholder="phone"><br><input data-f="email" value="${esc(p.email || "")}" placeholder="e-mail"></td>
+      <td><input data-f="target_counties" value="${esc((p.target_counties || []).join(", "))}" placeholder="counties"><br><input data-f="target_towns" value="${esc((p.target_towns || []).slice(0, 6).join(", "))}" placeholder="towns"></td>
+      <td><input data-f="min_price" type="number" value="${p.min_price || ""}" placeholder="min $"><br><input data-f="max_price" type="number" value="${p.max_price || ""}" placeholder="max $"><br>
+        <select data-f="max_rehab">${REHAB.map((r) => `<option ${p.max_rehab === r ? "selected" : ""}>${r}</option>`).join("")}</select></td>
+      <td><label><input type="checkbox" data-f="provides_emd" ${p.provides_emd ? "checked" : ""}> posts EMD</label><br>
+        <label><input type="checkbox" data-f="will_walk_properties" ${p.will_walk_properties ? "checked" : ""}> walks houses</label><br>
+        split <input data-f="default_split_pct" type="number" value="${p.default_split_pct ?? 50}" style="width:54px">%</td>
+      <td><input type="file" data-pof="${p.id}" accept=".pdf,.png,.jpg,.jpeg"><label class="muted"><input type="checkbox" data-share="${p.id}" ${p.pof_share_ok ? "checked" : ""}> may attach to offers</label>
+        ${p.pof_document ? `<br><span class="muted">${esc(p.pof_document)}</span>` : ""}</td>
+      <td><button class="btn" data-psave="${p.id}">Save</button><br><span class="muted">${p.last_contact_at ? "touched " + fmtDate(p.last_contact_at) : "never contacted"}</span></td></tr>`;
+  app.innerHTML = `<div class="card"><div class="row spread"><h1>🤝 JV Partner &amp; POF Vault</h1>
+      <span class="row"><span class="pill vio">${v.active} / ${v.needed} verified</span>
+        <button class="btn" id="pt-seed">Seed the top 30 from the deed records</button><button class="btn good" id="pt-add">+ Add a partner</button></span></div>
+    <p class="muted">Named repeat buyers from county deed records and the web form, ranked by purchases, flips and your priority counties. A partner is "verified" once their proof of funds is on file; offers then say "acquiring with our verified local capital partner". Documents stay in data/partners/ (never committed).</p>
+    ${phase0Html({ open: v.phase0_open, needed: v.needed, active: v.active, cards: v.cards })}
+    ${v.cards.length > 1 ? `<details><summary>${v.cards.length - 1} more to reach this week</summary>${v.cards.slice(1).map((c) => `<div class="whybox"><b>${esc(c.name)}</b> <span class="muted">${esc(c.entity)}</span><pre class="pre">${esc(c.body)}</pre>
+      <button class="btn" data-ptouch="email" data-pid="${c.partner_id}">✉️ Mark e-mailed</button></div>`).join("")}</details>` : ""}
+    <div class="tablewrap"><table class="pt-table"><thead><tr><th>Partner</th><th>Status · POF</th><th>Contact</th><th>Buy box</th><th>Price · rehab</th><th>Terms</th><th>Proof of funds</th><th></th></tr></thead>
+      <tbody>${v.partners.map(row).join("") || '<tr><td colspan="8" class="muted">Empty: seed it from the deed records.</td></tr>'}</tbody></table></div></div>`;
+  wirePhase0();
+  $("#pt-seed").onclick = async () => { const { data } = await post("/api/partners/seed", {}); toast(`Seeded ${data.seeded} partners.`); renderPartners(); };
+  $("#pt-add").onclick = () => {
+    modal(`<h2>Add a partner</h2><label>Name<input id="np-name"></label><label>Entity (LLC)<input id="np-entity"></label><label>Phone<input id="np-phone"></label>
+      <label>E-mail<input id="np-email"></label><label>Counties (comma separated)<input id="np-counties" value="Middlesex, Union, Essex"></label>
+      <div class="row"><button class="btn good" id="np-save">Save</button><button class="btn" id="np-cancel">Cancel</button></div>`);
+    $("#np-cancel").onclick = closeModal;
+    $("#np-save").onclick = async () => {
+      const { status, data } = await post("/api/partners", { contact_name: $("#np-name").value || null, entity_name: $("#np-entity").value || null,
+        phone: $("#np-phone").value || null, email: $("#np-email").value || null,
+        target_counties: $("#np-counties").value.split(",").map((x) => x.trim()).filter(Boolean) });
+      if (status >= 400) return toast(data.detail || "not saved", true);
+      closeModal(); toast("Partner added."); renderPartners();
+    };
+  };
+  document.querySelectorAll("[data-psave]").forEach((b) => (b.onclick = async () => {
+    const tr = document.querySelector(`[data-prow="${b.dataset.psave}"]`);
+    const body = {};
+    tr.querySelectorAll("[data-f]").forEach((el) => {
+      const k = el.dataset.f;
+      if (el.type === "checkbox") body[k] = el.checked;
+      else if (k === "target_counties" || k === "target_towns") body[k] = el.value.split(",").map((x) => x.trim()).filter(Boolean);
+      else if (el.type === "number") body[k] = el.value === "" ? null : +el.value;
+      else body[k] = el.value || null;
+    });
+    const { status, data } = await api(`/api/partners/${b.dataset.psave}`, { method: "PATCH", body: JSON.stringify(body) });
+    if (status >= 400) return toast(data.detail || "not saved", true);
+    const file = tr.querySelector(`[data-pof="${b.dataset.psave}"]`).files[0];
+    if (file) {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("share_ok", tr.querySelector(`[data-share="${b.dataset.psave}"]`).checked ? "true" : "false");
+      const res = await fetch(`/api/partners/${b.dataset.psave}/pof`, { method: "POST", body: fd });
+      const j = await res.json();
+      if (!res.ok) return toast(j.detail || "proof of funds not saved", true);
+      toast(`Proof of funds on file: ${j.active} / ${j.needed} partners verified.`);
+    } else if (status < 400) {
+      const share = tr.querySelector(`[data-share="${b.dataset.psave}"]`).checked;
+      await api(`/api/partners/${b.dataset.psave}`, { method: "PATCH", body: JSON.stringify({ pof_share_ok: share }) });
+      toast("Saved.");
+    }
+    renderPartners();
+    loadCmdbar();
+  }));
+}
+
+// -- Phase 6: ⚡ Fast Skip-Trace Mode -------------------------------------------------------------------------------
+const SKT = { rows: [], id: null };
+async function renderSkiptrace(leadId) {
+  const { data } = await api("/api/skiptrace/queue?limit=40");
+  SKT.rows = data.rows;
+  SKT.id = leadId || (SKT.rows[0] || {}).lead_id || null;
+  app.innerHTML = `<div class="card"><div class="row spread"><h1>⚡ Fast Skip-Trace Mode</h1><span class="muted">${SKT.rows.length} owners worth finding · exempt estates → vacant sheriff sales → lis pendens → absentee owners</span></div>
+    <p class="muted">Click a lookup link (it opens the people-search site in a new tab), select the whole result page, copy it, then click “Paste raw page”. Numbers are DNC-checked, the best mobile is ranked first, contacts are saved and the lead flips to Ready-to-Call. The sites are never fetched by the app (their terms), only read from your clipboard.</p>
+    <div class="st-grid"><div class="st-list" id="st-list"></div><div id="st-detail"></div></div></div>`;
+  drawSkiptrace();
+}
+function drawSkiptrace() {
+  $("#st-list").innerHTML = SKT.rows.length ? SKT.rows.map((r) => `<a class="kcard ${r.lead_id === SKT.id ? "on" : ""}" href="#/skiptrace/${r.lead_id}">
+      <b>${esc(r.address)}</b><span>${esc(r.reasons.join(" · "))}${r.days_to_sale != null ? ` · sale in ${r.days_to_sale}d` : ""} · ${label(r.numbers.verdict)} · fee ${kmoney(r.numbers.fee)}</span></a>`).join("")
+    : '<p class="muted">Nothing to trace: every underwritten unlisted lead already has a phone (or needs underwriting first).</p>';
+  const r = SKT.rows.find((x) => x.lead_id === SKT.id);
+  if (!r) { $("#st-detail").innerHTML = ""; return; }
+  const link = (k, lab) => r.links[k] ? `<a class="btn" href="${esc(r.links[k])}" target="_blank" rel="noopener noreferrer">${lab} ↗</a>` : "";
+  $("#st-detail").innerHTML = `<h2>${esc(r.address)} <span class="muted">${esc(r.town)} · ${esc(r.county)}</span></h2>
+    <p>${esc(r.why)}</p>
+    <dl class="kv"><dt>Look up</dt><dd><b>${esc(r.target.name)}</b> <span class="pill">${label(r.target.role)}</span> ${esc(r.target.city)}${r.target.state ? ", " + esc(r.target.state) : ""}</dd>
+      <dt>Mailing</dt><dd>${esc(r.mailing || "—")}</dd>
+      <dt>Numbers</dt><dd>ARV ${kmoney(r.numbers.arv)} · buyer max ${kmoney(r.numbers.buyer_max)} · target ${kmoney(r.numbers.mao_target)} · walk-away ${kmoney(r.numbers.mao_walkaway)}</dd>
+      <dt>Track</dt><dd>${label(r.frfpa_track || "")} · ${label(r.stage)}</dd></dl>
+    <div class="links">${link("truepeoplesearch", "1. TruePeopleSearch")}${link("fastpeoplesearch", "2. FastPeopleSearch")}${link("cyberbackgroundchecks", "3. CyberBackgroundChecks")}${link("address_search", "Address search")}</div>
+    <div class="row" style="margin-top:10px"><button class="bigbtn" id="st-paste">📋 1-Click Paste Raw Page</button>
+      <a class="btn" href="#/lead/${r.lead_id}">Open lead</a></div>
+    <details><summary class="muted">or paste it here</summary><textarea id="st-text" rows="8"></textarea><button class="btn" id="st-save">Save paste</button></details>
+    <div id="st-out"></div>`;
+  const run = async (text) => {
+    if (!text || text.trim().length < 5) return toast("Nothing to parse: copy the result page first.", true);
+    const { status, data } = await post(`/api/leads/${r.lead_id}/skiptrace-paste`, { text });
+    if (status >= 400) return toast(data.detail || "not saved", true);
+    const s = data.saved, p = data.parsed;
+    $("#st-out").innerHTML = `<div class="whybox"><div class="row">${s.ready_to_call ? '<span class="pill good">READY TO CALL</span>' : '<span class="pill warn">not ready yet</span>'}
+        ${s.best_phone ? `<b>Best number: <a class="phone" href="tel:${esc(s.best_phone)}">${esc(s.best_phone)}</a></b> <span class="pill ${s.best_callable_now ? "good" : "warn"}">${esc(s.best_status)}</span>` : "<b>No callable number</b>"}</div>
+      <p class="muted">${esc(p.name || "")}${p.age ? `, age ${p.age}` : ""}${p.deceased ? " · DECEASED" : ""} · ${p.phones.length} phone(s), ${p.emails.length} e-mail(s), ${p.relatives.length} relative(s) · ${s.contacts_created} new contact(s)</p>
+      <table><tbody>${data.hits.map((h) => `<tr><td>${esc(h.display)}</td><td>${esc(h.kind)}</td><td>${esc(h.last_reported || "")}${h.primary ? " · primary" : ""}</td><td><span class="pill ${h.status === "dnc" ? "bad" : h.callable_now ? "good" : "warn"}">${esc(h.status)}</span> <span class="muted">${esc(h.reason)}</span></td></tr>`).join("")}</tbody></table>
+      ${s.notes.map((n) => `<p class="flag">${esc(n)}</p>`).join("")}
+      <div class="row"><a class="btn good" href="#/lead/${r.lead_id}">Open lead &amp; call</a>${data.next ? `<a class="btn" href="#/skiptrace/${data.next.lead_id}">Next: ${esc(data.next.address)} ▶</a>` : ""}</div></div>`;
+    toast(s.ready_to_call ? "Saved. Ready to call." : "Saved.");
+    loadCmdbar();
+  };
+  $("#st-paste").onclick = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      await run(text);
+    } catch (e) {
+      toast("Clipboard access was blocked: paste into the box below instead.", true);
+      $("#st-detail details").open = true;
+    }
+  };
+  $("#st-save").onclick = () => run($("#st-text").value);
 }
 
 loadCmdbar();

@@ -46,8 +46,9 @@ driving for dollars, door-knocking or an in-person visit by the operator.
 | **3. Virtual B2B Deal Machine, Signal Stacking, Virtual Inspection & Remote Disposition** | PII scrub of tracked files (`pii-scan`), all stale listings underwritten (listing-only condos via MLS type), list-to-MAO gap + striking distance, READY_TO_CALL queue, listing-agent LOI blast (email/SMS/LOI, SMTP 25/day, 48h follow-up), signal stacker (listed distress, portfolio owners, tax-sale local match) with [Nx STACKED] badges, virtual inspector dossier, direct-mail merge (Click2Mail CSV, Daniel's Law suppression), buyer hotzones, remote walkthroughs + buyer_bids → assignment/JV auto-fill, briefing A/B/C, four cockpit tabs | **Done (Phase 3)** |
 | **4. Sanity Guard, Listed-Foreclosure Fast Track, Closing Coordinator, Inbound Funnel & Daily Execution** | Comp hygiene + ARV outlier guard (package deeds, price/$-sqft/ratio bands, ask/assessment/$-sqft caps, non-residential PASS) and the `outlier_guard` agent over every valuation; listed-foreclosure sniper queue with honest tracks + urgent agent packets, portfolio-owner scripts/letters; NJ contract-to-close milestones, sourced title/attorney directory, title order e-mail, ledger + 28% tax reserve; `site/` seller + buyer funnel with consent capture and inbound ingest; `manage.py today` + cockpit Today home + `PLAYBOOK.md` | **Done (Phase 4)** |
 | **5. Command Center, Guided Autopilot, Human Copy, Clerk Filings & OPRA, Mercer/Monmouth** | `engine/human_copy.py` (plain 3-5 sentence e-mails, disclosures under `--- Offer Summary ---`, linter) across agent / fast-track / buyer / inbound / inspector messages; command center (KPI pills, My Setup → settings.local.yaml + .env, one-click swarm refresh with progress, step-by-step deal cards with send/outcome logging, kanban); desktop launchers; lis pendens agent (Union UCPA, Essex PRESS, Monmouth OPRS live + drop-in imports, Newark snapshot name lookup); OPRA requests + tax-list importer + Records page; Mercer/Monmouth harvest; GitHub Pages deploy behind `build-site --check` | **Done (Phase 5)** |
-| **6. Lead Sources & Learning at Scale** | NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), Mercer sheriff list import once its format is verified, outcome-driven weight re-fits once calls are logged | Next |
-| **7. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
+| **6. Quant Pricing, Funding Partners, Two-Step Funnel, Reply Negotiator, Item 14 & Double Close, Fast Skip-Trace** | `engine/quant_pricing.py` (end-buyer solve: ≥15% ROI and ≥$45K after rehab + contingency, closing, 6-month taxes/carry/capital, commission + NJ RTF/graduated fee; alpha ∈ [0.68, 0.80] calibrated from 1,162 recorded investor purchases → `config/market_calibration.yaml`; buyer_max / mao_target / mao_walkaway / opening_offer on every valuation; `manage.py calibrate` / `recalibrate`); `engine/jv_partner_vault.py` (jv_partners seeded from the top 30 named repeat buyers, Phase 0 cards, buy-box matching, proof-of-funds upload → "verified local capital partner" line); two-step funnel (Touch 1 opener, 48-h nudge, Touch 2 offer on reply; urgent listed foreclosures skip it); `engine/reply_negotiator.py` (paste the agent's reply → intents, counter, risk buffers, GREEN/YELLOW/RED/INFO, 3-sentence reply, AGENT_REPLIED + follow-up); `engine/deal_structure.py` (Section 37 / "Item 14" attorney-review rider with CPEA disclosure + tank-sweep inspection, Correa acknowledgment in the assignment, disclosed single-purpose-LLC option, assignment vs double-close net check); `engine/clipboard_skiptrace.py` (queue → manual links → one-click paste → DNC scrub → best mobile → READY_TO_CALL); cockpit: first-touch toggle, paste-reply panel, 🤝 Partners & POF, ⚡ Skip Trace, quant breakdown, structure card | **Done (Phase 6)** |
+| **7. Lead Sources & Learning at Scale** | NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), Mercer sheriff list import once its format is verified, outcome-driven weight re-fits once calls are logged | Next |
+| **8. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
 
 ## Directory structure
 
@@ -57,7 +58,8 @@ manage.py                     ← operator CLI (rich): briefing (A ready-to-call
                                 lead, underwrite, buyers, stats, server, queue, script, call, occupancy, contract, docs,
                                 skiptrace, dnc (+ --suppress-address), match, pii-scan, agent-blast, mail-merge,
                                 inspect, stack, buyer-hotzones, walkthrough, bid, today, fast-track, closing, finance,
-                                partners, inbound, site, build-site, install-shortcut, swarm passthrough
+                                partners, inbound, site, build-site, install-shortcut, calibrate, recalibrate, vault,
+                                skiptrace-fast, reply, structure, swarm passthrough
 Launch_Dashboard.command / launch_dashboard.sh / Launch_Dashboard.bat ← double-click launchers (generated by
                                 scripts/install_desktop_shortcut.py; path-independent): start the server if needed,
                                 wait for /api/health, open the browser
@@ -69,6 +71,11 @@ config/opra_towns.yaml        ← OPRA channel per town (clerk e-mail / portal /
                                 statutory rules and GRC precedents the requests rely on
 config/nj_closing_partners.yaml ← NJ title agencies / closing attorneys checked on their own pages (source URL each),
                                 county → region, verification resources, quarterly-tax dates and rates (with sources)
+config/nj_deal_costs.yaml     ← NJ RTF brackets + graduated fee (P.L.2025 c.69, seller pays; Treasury schedules cited),
+                                end-buyer economics (ROI/profit floors, closing, holding, capital), alpha band, fee targets,
+                                double-close and negotiation buffers
+config/market_calibration.yaml ← `manage.py calibrate`: per-town / county / statewide lower-quartile of investor purchase
+                                price ÷ equalized value + investor share of sales (aggregates only, no parcels or names)
 core/                         ← config loader, polite HTTP client (per-host rate limit, retries, disk cache,
                                 host stats), text/address utils (postal_title), NJ business days, geo, ZIP (ZCTA)
                                 resolver; pii_scan.py (DB names in git-tracked files → `manage.py pii-scan`)
@@ -76,7 +83,7 @@ db/database.py                ← engine/session factory, create + additive migr
 db/models.py                  ← ORM: properties, distress_signals, valuations, leads (+ occupancy, FRFPA track, CRM
                                 fields, ready_to_call), contacts, interactions, dnc_entries, mail_suppressions,
                                 buyer_matches, buyer_bids, closing_milestones, financial_ledger, generated_documents,
-                                cash_buyers (+ web registration fields), deed_transfers, listings, agent_runs,
+                                cash_buyers (+ web registration fields), jv_partners, deed_transfers, listings, agent_runs,
                                 scoring_weights, swarm_state
 db/repository.py              ← idempotent upserts keyed on natural keys; parcel_id = COUNTY-MUN-BLOCK-LOT[-QUAL]
 agents/base.py                ← BaseAgent: agent_runs bookkeeping, checkpoints, fault isolation
@@ -123,6 +130,19 @@ engine/
                                 (forbidden phrases, em-dashes, markdown, bullets, >110 words above the sign-off)
   autopilot.py                ← step-by-step deal deck (listed foreclosures → due follow-ups → MLS fixers), what/why/
                                 action, send (SMTP / mailto / SMS) with edits, outcome buttons, daily goal, KPI pills
+  quant_pricing.py            ← buyer-implied pricing: RTF / graduated fee, resale costs, buyer P&L, closed-form buyer_max
+                                solve, local alpha from the calibration file, quant_offer (buyer_max, walk-away, target,
+                                opening), counter_economics, harvest/aggregate/calibrate, recalibrate_all + metrics
+  jv_partner_vault.py         ← jv_partners: seed from named repeat buyers (velocity), Phase 0 outreach (plain e-mail /
+                                SMS / script), buy-box best_partner, POF upload (data/partners/, chmod 600), pof_language
+  reply_negotiator.py         ← agent reply → amounts/intents (counter, available, under contract, POF, bidding war,
+                                oil tank, tenants, CO, opt-out) → traffic light vs buyer_max/walk-away (risk buffers) →
+                                3-sentence reply + SMS → AGENT_REPLIED, counter, stage, follow-up
+  deal_structure.py           ← Item 14 / Section 37 attorney-review rider (assignment, CPEA disclosure, inspection +
+                                tank sweep, access, investor disclosure), Correa acknowledgment, disclosed LLC option,
+                                compare_structures (assignment vs same-day double close, RTF on leg B, C-9600)
+  clipboard_skiptrace.py      ← Fast Skip-Trace Mode: queue (exempt estates → vacant sheriff → lis pendens → absentee),
+                                parse pasted people-search pages (never fetched), rank, DNC scrub, save, READY flip
   operator_setup.py           ← My Setup: validate + write settings.local.yaml and .env (password never returned)
   opra_generator.py           ← OPRA tax-list requests (commercial-purpose certified), sent / due / received tracking
   tax_list_import.py          ← town tax-delinquent spreadsheet (CSV/XLSX) → TAX_DELINQUENT signals by block/lot
@@ -147,7 +167,8 @@ engine/
   buyer_matcher.py            ← top-5 recorded cash buyers per top deal (geography, price, units, rehab, recency)
 web/app.py + web/static/      ← local cockpit (FastAPI, 127.0.0.1 only, Host/Origin guard): 🎯 Autopilot (home: command
                                 bar with KPI pills / My Setup / swarm refresh / OPRA, step-by-step player, kanban),
-                                🏛️ Records (OPRA, uploads, clerk filings), Today, dashboard,
+                                🏛️ Records (OPRA, uploads, clerk filings), 🤝 Partners & POF (vault), ⚡ Skip Trace,
+                                Today, dashboard,
                                 battle station, Fast Track, Ready to Call, Agent LOI Blast, Inspector & Mail,
                                 Walkthroughs & Bids, Closing & Money; serves site/ at /site/* (web.public_hosts may
                                 reach only /site/* and POST /api/inbound/*)
@@ -200,6 +221,8 @@ wholesaling.db                ← SQLite database (git-ignored: contains names/a
   name lookups in the City's 2020 snapshot count only when the deed book/page is unchanged in today's MOD-IV.
 - Mercer sheriff sales are not on CivilView and mercercounty.org returns Akamai 403 to automated requests
   (robots.txt included): manual, never worked around.
+- People-search pages in Fast Skip-Trace Mode (`engine/clipboard_skiptrace.py`, learned 2026-10-29): the operator opens the
+  manual link, copies the page and pastes it; the code parses the clipboard text only and never requests those sites.
 - OPRA (`engine/opra_generator.py`): the operator sends each request; every request certifies the commercial
   purpose (true for house buying, required by 47:1A-5(f)); one agency per request; follow the town's own channel
   (portal-only towns get the text to paste); never OPRAmachine (it publishes replies with owner names).
@@ -383,6 +406,51 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   SITE_* repository variables, every disclosure present, no e-mail / phone but the operator's and the HUD / LSNJ
   help lines, no stray files) after pii-scan.
 
+### Phase 6 operating rules — enforced in code
+- **Pricing model** (`deal.pricing_model: quant`, `engine/quant_pricing.py`, `config/nj_deal_costs.yaml`): the end buyer's max
+  price is the lower of (a) the closed-form solve where a rehabber still clears ≥ 15% net ROI and ≥ $45,000 after rehab + 10%
+  contingency, 1.5% buyer closing, six months of taxes / insurance / utilities, 11% + 2 points capital (interest on half the rehab),
+  a 5% commission + 0.5% seller closing and the seller's NJ Realty Transfer Fee (+ graduated fee over $1M) on the resale, and
+  (b) alpha × ARV − rehab, where alpha ∈ [0.68, 0.80] = 0.70 + 0.5 × (local q25 − statewide q25) ± a density nudge, q25 being the
+  lower quartile of recorded investor purchase price ÷ equalized value per town (≥ 8 purchases), county (≥ 20) or state
+  (`config/market_calibration.yaml`, refreshed by `manage.py calibrate`). `mao_walkaway` = buyer_max − $10K (stored as
+  `mao_aggressive`), `mao_target` = price at 16% ROI − the $15K / $20K / $25K fee by ARV band (stored as `mao_conservative`),
+  `opening_offer` = target × 0.88, never above 90% of a live ask (stored as `anchor_offer`); the breakdown lives in
+  `assumptions_json["quant"]`. The FRFPA 82% floor, guard flags and verdict rules are unchanged; `covered_track` uses the
+  effective alpha. `fixed_pct` restores the classic 70% / 75% math. Measured on 2026-10-29 across all 2,042 valuations: striking
+  distance 253 → 234 at the 75% gate and 180 → 171 at 78% (losses are alpha-bound thin markets and sub-$250K deals where the
+  $45K floor binds; gains in Edison / New Brunswick / Union towns), end-buyer ROI at buyer max median 16.4%, min 15.0%.
+- **Funding partners first** (`engine/jv_partner_vault.py`): until `autopilot.partners_needed` (3) partners are ACTIVE with a
+  proof of funds on file, the deck opens with Phase 0 cards. Partner copy says what is true (the public deed fact, the
+  operator's own intro line from `operator.intro`), proposes a JV with both as principals and no referral fee, and carries the
+  investor / attorney-review lines, postal address and STOP. Offers say "acquiring with our verified local capital partner
+  (proof of funds attached | available on request)" only when `best_partner(need_pof=True)` finds one whose buy box covers the
+  deal; the document is attached only with `pof_share_ok`. POF files live in `data/partners/<id>/` (git-ignored, chmod 600).
+- **Two-step funnel** (`autopilot.first_touch: opener`): an agent we have never written to gets Touch 1, the two-line
+  availability question (no price, no link, no attachment; only the operator's name, phone, one company + postal line and the
+  one-clause "no more" opt-out). Silence → one-line nudge at 48 hours. A reply (logged as AGENT_REPLIED) brings the lead back as
+  "They replied: send the offer" with the priced note and the full Offer Summary (Touch 2). Listed foreclosures inside
+  `urgent_days_to_sale` (14) skip the opener. `first_touch: offer` sends the priced note first.
+- **Reply negotiator** (`engine/reply_negotiator.py`): the counter is checked against the buffered walk-away (oil tank $12K,
+  tenants $9K, CO $2.5K from `negotiation:`); GREEN accept at ≤ walk-away (fee = buyer_max − counter), YELLOW counter at
+  buyer_max − $12K when that is ≥ 92% of their number (the reply states the rehab, tax and carry figures), else RED hold at the
+  walk-away with a 14-day drip; best-and-final is never above the walk-away; a counter below the FRFPA floor or a PASS /
+  referral / short-sale verdict yields no price; "available" hands off to Touch 2; a proof-of-funds ask routes to the vault
+  (or "call your top 3 matched buyers"); an opt-out suppresses the agent immediately. Every priced reply carries the Offer
+  Summary and passes the copy linter (≤ 3 sentences, < 90 words above the sign-off).
+- **Item 14 rider & structure** (`engine/deal_structure.py`): the rider is gated like the LOI, references the "No Assignment"
+  section as numbered in the parties' contract (Section 37 on the current Form 118; Item 14 on the old NJAR form), asks for the
+  CPEA property-condition statement (P.L.2024, c.32, N.J.S.A. 45:15-16.87(e)) and the flood addendum, a 10-business-day inspection
+  with a tank sweep and escrow holdback, access for inspectors / partners / assignees, and tells the seller the buyer is an
+  investor who may resell or assign for profit and may take title in an entity (CFA: nothing hidden). The assignment carries the
+  Correa / Weintraub acknowledgment. Double close is recommended when the seller refuses the rider or the spread exceeds $30K;
+  the net check charges transactional funding, both closings and the RTF (+ graduated fee) on the full B-to-C price; taking title
+  in an LLC adds the C-9600 (10 business days) and GIT/REP-3 notes. The LLC membership-interest route is always disclosed.
+- **Fast skip-trace** (`engine/clipboard_skiptrace.py`): only unlisted, underwritten leads with nobody to call enter the queue;
+  pasted numbers are classified before they are saved (DNC numbers stay visible with confidence 0 and never callable;
+  unscrubbed = not callable until fresh FTC data is loaded); wireless + recently reported ranks first; relatives are saved only
+  for estates / deceased owners; READY_TO_CALL is recomputed on save.
+
 ## Coding standards
 
 - **No placeholders, mock data or TODO stubs in shipped code.** Every scraper is tested live from
@@ -461,5 +529,12 @@ python manage.py install-shortcut           # Desktop launcher: double-click →
 python -m swarm.orchestrator run lis_pendens --opt days=30   # clerk filings (Union, Essex, Monmouth + imports)
 python -m swarm.orchestrator run outlier_guard  # re-check every valuation (comp hygiene + ARV guard)
 python manage.py pii-scan                   # before every commit: DB names in tracked + new files → exit 1
+python manage.py calibrate                  # local investor pricing (alpha) from recorded buyer purchases → config/market_calibration.yaml
+python manage.py recalibrate                # re-price every valuation under the quant model + striking-distance report
+python manage.py vault --seed 30            # JV partner & POF vault; --script <id>, --touch <id>, --pof <id> --file pof.pdf [--share]
+python manage.py skiptrace-fast --links     # fast skip-trace queue; --lead <id> --paste page.txt saves a copied people-search page
+python manage.py reply <id> --text '...'    # agent reply → traffic light, math, 3-sentence answer (--dry-run to preview)
+python manage.py structure <id>             # assignment vs double close net check (--contract 250k --buyer 295k works without a lead)
+python manage.py docs <id> --type rider     # Item 14 / Section 37 attorney-review assignment rider
 pytest                                      # tests
 ```

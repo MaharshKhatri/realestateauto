@@ -34,11 +34,27 @@ def test_dashboard_tabs_and_lead_page(db, client):
 
 
 def test_calculator_matches_offer_math(client):
-    r = client.post("/api/calc", json={"arv": 500000, "repairs": 60000, "debt": 150000}).json()
+    r = client.post("/api/calc", json={"arv": 500000, "repairs": 60000, "debt": 150000,
+                                       "pricing_model": "fixed_pct"}).json()
+    assert r["pricing_model"] == "fixed_pct" and r["quant"] is None
     assert r["mao_conservative"] == 500000 * 0.70 - 60000 - r["assignment_fee"]
     blocked = client.post("/api/calc", json={"arv": 500000, "repairs": 60000, "debt": 200000, "fmv": 420000,
-                                             "frfpa": True}).json()
+                                             "frfpa": True, "pricing_model": "fixed_pct"}).json()
     assert blocked["verdict"] == "EQUITY_RESCUE_REFERRAL" and blocked["anchor_offer"] is None
+
+
+def test_calculator_quant_model_exposes_buyer_math(client):
+    r = client.post("/api/calc", json={"arv": 500000, "repairs": 60000, "annual_taxes": 10000, "ask": 400000,
+                                       "mun_code": "1205", "county": "Middlesex", "pricing_model": "quant"}).json()
+    q = r["quant"]
+    assert r["pricing_model"] == "quant" and q["buyer_max"] == r["buyer_purchase_price"]
+    assert q["mao_walkaway"] == r["mao_aggressive"] == q["buyer_max"] - 10000
+    assert r["mao_conservative"] == q["mao_target"] < q["mao_walkaway"]
+    assert r["anchor_offer"] == q["opening_offer"] <= 0.90 * 400000
+    assert q["buyer"]["roi"] >= 0.15 - 1e-9 and q["buyer"]["profit"] >= 45000 - 1 or q["binding"] == "local_alpha"
+    tighter = client.post("/api/calc", json={"arv": 500000, "repairs": 60000, "annual_taxes": 10000,
+                                             "min_roi": 0.25, "pricing_model": "quant"}).json()
+    assert tighter["buyer_purchase_price"] < r["buyer_purchase_price"]
 
 
 def test_call_logging_occupancy_and_documents(db, client):

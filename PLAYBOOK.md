@@ -85,6 +85,20 @@ no contact details but yours. Import what comes in with `python manage.py inboun
 
 ---
 
+## Part 1½ — Phase 0: lock in your three funding partners (before the first offer)
+
+You have no capital and no car, so the people who sign and fund the contracts are rehabbers who already buy in your towns.
+The dashboard's 🎯 Autopilot opens with **Phase 0** until three partners are "verified" (proof of funds on file).
+
+1. 🤝 **Partners & POF** → "Seed the top 30 from the deed records". These are named repeat buyers from the county deed exports,
+   ranked by purchases, confirmed flips and your priority counties.
+2. Work the cards: the e-mail is one plain paragraph (the public deed fact, who you are, the ask) with the JV terms under
+   `--- Details ---`. Copy it, send it from your own mail, click **Mark e-mailed**. Text and call scripts are there too.
+3. When one says yes: fill the buy box (counties, towns, price band, light/medium/heavy), tick "posts EMD" and "walks houses",
+   set the split, upload their proof-of-funds letter and tick "may attach to offers". Status flips to ACTIVE_PARTNER.
+4. From then on offers in that buy box say "acquiring with our verified local capital partner", the negotiator can answer a
+   proof-of-funds request, and the JV agreement is pre-filled with that partner.
+
 ## Part 2 — every day: two focused hours
 
 Double-click the Desktop icon. The home page is **🎯 Step-by-Step Mode**:
@@ -164,6 +178,31 @@ value. The engine refuses to generate that contract. Send the LOI and the deal s
 
 ---
 
+## Part 4½ — when the agent writes back: the live negotiator
+
+Every deal card and lead page has **"💬 Agent replied or countered? Paste their message here."** Paste the whole e-mail or
+text and click Analyze. You get:
+
+* a traffic light: 🟢 **ACCEPT & LOCK UP NOW** (their number is at or under your walk-away; the fee is shown), 🟡 **COUNTER AT
+  $X** (keeps a $12,000 fee and explains the gap with the actual repair, tax and carrying numbers), 🔴 **HOLD FIRM / 14-DAY
+  DRIP** (the follow-up is scheduled for you), or ℹ️ when there is no number to give (proof of funds asked, under contract,
+  FRFPA floor, opt-out);
+* the math: their number, your counter, the fee at each, the buyer's profit and ROI, and the risk buffer when they mention an
+  oil tank, tenants or a certificate of occupancy (the reply adds the tank-sweep / lease-and-deposit / certificate lines);
+* a three-sentence reply and a text, already in your voice, with the Offer Summary underneath. Copy it or open it in e-mail.
+
+"Still available?" answers from your two-line opener come back as **They replied: send the offer** cards: that is Touch 2, the
+priced note. A bidding war never moves you above the walk-away. "Remove me" puts the agent on your stop list on the spot.
+
+**Two-step funnel:** by default a listing agent you have never written to gets the two-line opener (no price, nothing to mark
+as spam); the priced note goes out when they answer. Switch "First touch" in the Autopilot header to "priced note first" if
+you prefer. Listed foreclosures with a sale inside 14 days always get the direct auction-date packet.
+
+**⚡ Skip Trace** (owners who are not listed): the queue is ordered by who converts from a desk (exempt estates, vacant sheriff
+sales, lis pendens, absentee owners). Click the lookup link, select the whole result page, copy, come back and click
+**Paste raw page**. Numbers are checked against the FTC data and your stop list, the best mobile is ranked first, contacts
+are saved and the lead turns Ready-to-Call. The sites are never fetched by the app.
+
 ## Part 5 — signed contract → attorney review → assignment → paid
 
 1. **Record the contract** on the day the fully signed contract reaches both sides:
@@ -188,6 +227,22 @@ value. The engine refuses to generate that contract. Send the LOI and the deal s
    `python manage.py closing <id> --close --fee 32k` books it in your ledger.
 
 ---
+
+## Part 5½ — the contract says "no assignment" (Item 14 / Section 37), and assignment vs double close
+
+Most listing agents use the NJ REALTORS form, which has a "No Assignment" section (Section 37 today, Item 14 on the old NJAR
+form). Do not argue about it on the phone: generate the **Item 14 rider** (Documents → "Item 14 rider (attorney review)") and
+have your attorney submit it during the three-day attorney review. It replaces that section with a right to assign to a
+single-purpose LLC or an affiliated investment partner, asks for the seller's property-condition disclosure (required by NJ law
+since August 2024) and the flood addendum, sets a 10-business-day inspection period with an underground oil tank sweep (seller
+removes it or money is held in escrow), lets your inspectors, partners and assignees in on 24 hours' notice, and tells the seller
+in plain words that you are an investor who may resell or assign for profit. Nothing is hidden from the seller, ever.
+
+The lead page's **Assignment vs double close** card shows the net under both. The rule of thumb it applies: assign when the
+spread is under $30,000 and the seller accepted the rider; double close (two same-day closings funded by a transactional lender
+at about 1% plus fees, you pay the transfer fee on the resale deed) when the seller refused the rider or the spread is large
+enough that a fee on the settlement statement would blow up the deal. The disclosed single-purpose LLC route is explained
+under the card; it needs your attorney and a cash end buyer.
 
 ## Part 6 — money and taxes
 

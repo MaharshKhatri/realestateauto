@@ -1,0 +1,99 @@
+# NJ end-buyer (flipper) economics used by engine/quant_pricing.py to solve the End-Buyer Max Acquisition Price.
+# Every rate below is either a statute / Treasury schedule (source given) or a stated operating assumption the
+# operator can tune. Update the statutory blocks whenever the Division of Taxation changes them.
+
+realty_transfer_fee:
+  # N.J.S.A. 46:15-7 et seq. The SELLER (grantor) pays the RTF when the deed is recorded. Fee per $500 of
+  # consideration or fraction thereof; two schedules depending on the total consideration.
+  # Sources (Division of Taxation fee schedules, checked 2026-10-28):
+  #   https://www.nj.gov/treasury/taxation/realty.shtml
+  #   https://www.nj.gov/treasury/taxation/pdf/other_forms/lpt/feeschedunder350.pdf
+  #   https://www.nj.gov/treasury/taxation/pdf/other_forms/lpt/feeschedover350.pdf
+  seller_pays: true
+  threshold: 350000
+  schedules:
+    not_over_350k:                       # total consideration <= $350,000
+      - {up_to: 150000, per_500: 2.00}
+      - {up_to: 200000, per_500: 3.35}
+      - {up_to: 350000, per_500: 3.90}
+    over_350k:                           # total consideration > $350,000
+      - {up_to: 150000, per_500: 2.90}
+      - {up_to: 200000, per_500: 4.25}
+      - {up_to: 550000, per_500: 4.80}
+      - {up_to: 850000, per_500: 5.30}
+      - {up_to: 1000000, per_500: 5.80}
+      - {up_to: null, per_500: 6.05}
+  # Graduated Percent Fee (the former 1% "mansion tax"), P.L.2025, c.69, deeds recorded on/after 2025-07-10:
+  # a percentage of the TOTAL consideration (not marginal) on Class 2 residential deeds over $1,000,000, and the
+  # seller is now statutorily responsible. Source: Division of Taxation notice (2025-07-02) and policy memo:
+  #   https://nj.gov/treasury/taxation/pdf/lpt/GraduatedPercentFeeNotice.pdf
+  #   https://nj.gov/treasury/taxation/pdf/other_forms/lpt/GraduatedPercentFeePolicies.pdf
+  graduated_percent_fee:
+    effective: 2025-07-10
+    seller_pays: true
+    tiers:
+      - {over: 1000000, up_to: 2000000, pct: 0.01}
+      - {over: 2000000, up_to: 2500000, pct: 0.02}
+      - {over: 2500000, up_to: 3000000, pct: 0.025}
+      - {over: 3000000, up_to: 3500000, pct: 0.03}
+      - {over: 3500000, up_to: null, pct: 0.035}
+
+end_buyer:
+  # Operating assumptions for a local rehabber's resale. The solve requires BOTH constraints at the buyer's max price.
+  min_roi: 0.15                 # net profit / total cash invested over the hold (>= 15%)
+  target_roi: 0.16              # mao_target is set where the buyer still clears this
+  min_profit: 45000             # net profit floor in dollars
+  resale_commission_pct: 0.05   # listing + buyer-agent commission on the resale
+  seller_closing_pct: 0.005     # attorney, payoff / recording, misc. seller costs on the resale
+  buyer_closing_pct: 0.015      # title insurance, attorney, recording, survey, inspections at acquisition
+  holding_months: 6             # acquisition to resale closing
+  insurance_per_month: 200      # builder's-risk / vacant-dwelling policy
+  utilities_per_month: 150
+  capital_cost_annual_pct: 0.11 # hard-money rate or opportunity cost on purchase + rehab
+  capital_points_pct: 0.02      # origination points on purchase + rehab
+  rehab_draw_factor: 0.5        # share of the rehab budget outstanding on average (draws over the hold): interest
+                                # accrues on purchase + this share of rehab; points on the whole loan
+  rehab_contingency_pct: 0.10   # overrun buffer on the rehab estimate
+  default_effective_tax_rate: 0.023   # annual taxes / ARV when the parcel's tax bill is unknown
+
+alpha:
+  # Empirical Investor ARV Multiplier: (buyer price + rehab) / ARV that local investors actually accept.
+  # Calibrated from recorded investor purchases (config/market_calibration.yaml, `manage.py calibrate`):
+  # q25 = lower-quartile of purchase price / equalized market value in the town (county, then state, as fallbacks).
+  floor: 0.68
+  ceiling: 0.80
+  baseline: 0.70                # = the classic 70% rule, at the statewide q25
+  slope: 0.5                    # alpha = baseline + slope * (local q25 - statewide q25), then density nudges, then clamp
+  min_town_sample: 8
+  min_county_sample: 20
+  dense_market_share: 0.03      # investor purchases / class-2 sales sampled above this: +0.01 (deep demand)
+  thin_market_share: 0.005      # below this: -0.01 (few local buyers to assign to)
+
+fees:
+  min_fee: 10000                # mao_walkaway = buyer_max - min_fee
+  target_by_arv:                # mao_target = buyer price at target_roi - this fee
+    - {up_to: 300000, fee: 15000}
+    - {up_to: 600000, fee: 20000}
+    - {up_to: null, fee: 25000}
+  tight_spread: 15000           # known debt within this of mao_target -> TIGHT
+
+double_close:
+  # engine/deal_structure.py: same-day A-B / B-C closings when the seller refuses an assignment.
+  transactional_funding_pct: 0.01     # typical NJ transactional lender: ~1% of the A-B price ...
+  transactional_min_fee: 2500         # ... with a minimum fee ...
+  transactional_flat_fees: 750        # ... plus doc / wire / processing fees
+  our_closing_costs_leg_a: 1800       # attorney, recording, searches on the A-B leg (we are the buyer)
+  our_closing_costs_leg_b: 900        # attorney / payoff on the B-C leg (we are the seller; RTF comes on top)
+  assignment_recording_fee: 150       # recording the assignment (or an extra rider) when assigning instead
+  prefer_double_close_over_spread: 30000   # spread above this -> double close (the fee stays off the HUD)
+
+negotiation:
+  # engine/reply_negotiator.py: what a seller's counter leaves everyone, and the risk buffers the agent's reply triggers.
+  oil_tank_buffer: 12000        # tank sweep (~$500) plus a reserve toward removal / NJDEP closure or an escrow holdback
+  tenant_buffer: 9000           # holdover / turnover reserve: 2-3 months of carry and notice time (Anti-Eviction Act)
+  co_buffer: 2500               # smoke / CO / fire-extinguisher certificate (N.J.A.C. 5:70-2.3) plus typical municipal CCO repairs
+  counter_fee_floor: 12000      # YELLOW: our counter keeps at least this fee for us
+  counter_within_pct: 0.92      # YELLOW only when our counter is at least this share of their number; otherwise hold (RED)
+  drip_days: 14                 # RED: come back in two weeks
+  yellow_followup_days: 2
+  under_contract_days: 45       # deals fall out of attorney review / inspection: check back then

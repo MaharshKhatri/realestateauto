@@ -1,0 +1,1446 @@
+# Empirical investor pricing calibration — written by `manage.py calibrate` (engine/quant_pricing.py).
+# Aggregates only: per-town lower-quartile / median of (investor purchase price / equalized market value)
+# and the share of recent class-2 sales bought by repeat investors. No parcels, no names.
+generated_on: '2026-10-29'
+method: q = recorded investor purchase price / (MOD-IV assessment x town sale-assessment
+  ratio); lower quartile (q25) per town (>= 8 purchases), county (>= 20), statewide
+purchases_total: 1401
+purchases_clean: 1162
+statewide:
+  n: 1162
+  q25: 0.6808
+  q50: 0.8543
+counties:
+  Atlantic:
+    n: 1
+    q25: 0.7066
+    q50: 0.7066
+  Bergen:
+    n: 93
+    q25: 0.7386
+    q50: 0.8621
+  Burlington:
+    n: 2
+    q25: 0.6458
+    q50: 0.6458
+  Camden:
+    n: 238
+    q25: 0.6291
+    q50: 0.75
+  Cumberland:
+    n: 5
+    q25: 0.4085
+    q50: 0.5604
+  Essex:
+    n: 308
+    q25: 0.7633
+    q50: 0.956
+  Hudson:
+    n: 61
+    q25: 0.5041
+    q50: 0.8176
+  Hunterdon:
+    n: 2
+    q25: 1.0551
+    q50: 1.0813
+  Mercer:
+    n: 2
+    q25: 0.5407
+    q50: 0.5417
+  Middlesex:
+    n: 152
+    q25: 0.6811
+    q50: 0.8561
+  Monmouth:
+    n: 4
+    q25: 0.5481
+    q50: 0.6489
+  Morris:
+    n: 10
+    q25: 0.682
+    q50: 0.78
+  Ocean:
+    n: 3
+    q25: 0.5717
+    q50: 0.6845
+  Passaic:
+    n: 120
+    q25: 0.6738
+    q50: 0.8466
+  Salem:
+    n: 3
+    q25: 0.4186
+    q50: 0.5826
+  Somerset:
+    n: 8
+    q25: 0.6456
+    q50: 0.7451
+  Union:
+    n: 149
+    q25: 0.762
+    q50: 0.8687
+  Warren:
+    n: 1
+    q25: 1.0565
+    q50: 1.0565
+towns:
+  0108:
+    name: EGG HARBOR TWP
+    county: Atlantic
+    n: 1
+    q25: 0.7066
+    q50: 0.7066
+    sales_sampled: 383
+    share: 0.0026
+  '0201':
+    name: ALLENDALE BORO
+    county: Bergen
+    n: 1
+    q25: 0.9314
+    q50: 0.9314
+    sales_sampled: 57
+    share: 0.0175
+  '0203':
+    name: BERGENFIELD BORO
+    county: Bergen
+    n: 4
+    q25: 1.1778
+    q50: 1.2831
+    sales_sampled: 112
+    share: 0.0357
+  '0207':
+    name: CLOSTER BORO
+    county: Bergen
+    n: 2
+    q25: 0.789
+    q50: 0.8135
+    sales_sampled: 82
+    share: 0.0244
+  0208:
+    name: CRESSKILL BORO
+    county: Bergen
+    n: 3
+    q25: 0.3431
+    q50: 0.3553
+    sales_sampled: 84
+    share: 0.0357
+  0209:
+    name: DEMAREST BORO
+    county: Bergen
+    n: 3
+    q25: 1.0374
+    q50: 1.044
+    sales_sampled: 52
+    share: 0.0577
+  '0210':
+    name: DUMONT BORO
+    county: Bergen
+    n: 3
+    q25: 0.7321
+    q50: 0.8168
+    sales_sampled: 114
+    share: 0.0263
+  '0211':
+    name: ELMWOOD PARK BORO
+    county: Bergen
+    n: 3
+    q25: 0.7515
+    q50: 0.9084
+    sales_sampled: 97
+    share: 0.0309
+  '0213':
+    name: EDGEWATER BORO
+    county: Bergen
+    n: 2
+    q25: 1.0752
+    q50: 1.0793
+    sales_sampled: 150
+    share: 0.0133
+  '0214':
+    name: EMERSON BORO
+    county: Bergen
+    n: 1
+    q25: 0.9996
+    q50: 0.9996
+    sales_sampled: 47
+    share: 0.0213
+  '0215':
+    name: ENGLEWOOD CITY
+    county: Bergen
+    n: 3
+    q25: 0.5924
+    q50: 0.6144
+    sales_sampled: 162
+    share: 0.0185
+  '0217':
+    name: FAIRLAWN BORO
+    county: Bergen
+    n: 8
+    q25: 0.6568
+    q50: 0.7823
+    sales_sampled: 199
+    share: 0.0402
+  '0221':
+    name: GARFIELD CITY
+    county: Bergen
+    n: 1
+    q25: 0.8058
+    q50: 0.8058
+    sales_sampled: 91
+    share: 0.011
+  '0222':
+    name: GLEN ROCK BORO
+    county: Bergen
+    n: 2
+    q25: 0.9615
+    q50: 0.9636
+    sales_sampled: 74
+    share: 0.027
+  '0225':
+    name: HASBROUCK HGHTS BORO
+    county: Bergen
+    n: 1
+    q25: 0.8962
+    q50: 0.8962
+    sales_sampled: 74
+    share: 0.0135
+  '0226':
+    name: HAWORTH BORO
+    county: Bergen
+    n: 1
+    q25: 1.154
+    q50: 1.154
+    sales_sampled: 40
+    share: 0.025
+  '0227':
+    name: HILLSDALE BORO
+    county: Bergen
+    n: 1
+    q25: 0.9958
+    q50: 0.9958
+    sales_sampled: 63
+    share: 0.0159
+  0228:
+    name: HOHOKUS BORO
+    county: Bergen
+    n: 1
+    q25: 0.9805
+    q50: 0.9805
+    sales_sampled: 39
+    share: 0.0256
+  0229:
+    name: LEONIA BORO
+    county: Bergen
+    n: 2
+    q25: 0.8641
+    q50: 0.9503
+    sales_sampled: 61
+    share: 0.0328
+  '0231':
+    name: LODI BORO
+    county: Bergen
+    n: 8
+    q25: 0.7435
+    q50: 0.799
+    sales_sampled: 68
+    share: 0.1176
+  '0232':
+    name: LYNDHURST TWP
+    county: Bergen
+    n: 2
+    q25: 0.9762
+    q50: 1.0033
+    sales_sampled: 87
+    share: 0.023
+  '0233':
+    name: MAHWAH TWP
+    county: Bergen
+    n: 3
+    q25: 0.9294
+    q50: 1.0062
+    sales_sampled: 215
+    share: 0.014
+  '0236':
+    name: MONTVALE BORO
+    county: Bergen
+    n: 1
+    q25: 0.9962
+    q50: 0.9962
+    sales_sampled: 81
+    share: 0.0123
+  0238:
+    name: NEW MILFORD BORO
+    county: Bergen
+    n: 1
+    q25: 0.9617
+    q50: 0.9617
+    sales_sampled: 95
+    share: 0.0105
+  '0245':
+    name: PALISADES PARK BORO
+    county: Bergen
+    n: 3
+    q25: 0.872
+    q50: 0.9097
+    sales_sampled: 137
+    share: 0.0219
+  '0246':
+    name: PARAMUS BORO
+    county: Bergen
+    n: 6
+    q25: 0.4386
+    q50: 0.91
+    sales_sampled: 197
+    share: 0.0305
+  0249:
+    name: RIDGEFIELD BORO
+    county: Bergen
+    n: 1
+    q25: 0.7777
+    q50: 0.7777
+    sales_sampled: 51
+    share: 0.0196
+  '0250':
+    name: RIDGEFIELD PARK VILLAGE
+    county: Bergen
+    n: 2
+    q25: 0.4406
+    q50: 0.4406
+    sales_sampled: 68
+    share: 0.0294
+  '0251':
+    name: RIDGEWOOD VILLAGE
+    county: Bergen
+    n: 3
+    q25: 0.5345
+    q50: 0.5886
+    sales_sampled: 176
+    share: 0.017
+  '0252':
+    name: RIVEREDGE BORO
+    county: Bergen
+    n: 1
+    q25: 1.2708
+    q50: 1.2708
+    sales_sampled: 61
+    share: 0.0164
+  '0253':
+    name: RIVERVALE TWP
+    county: Bergen
+    n: 1
+    q25: 0.7386
+    q50: 0.7386
+    sales_sampled: 91
+    share: 0.011
+  '0256':
+    name: RUTHERFORD BORO
+    county: Bergen
+    n: 4
+    q25: 0.5767
+    q50: 0.7812
+    sales_sampled: 88
+    share: 0.0455
+  '0257':
+    name: SADDLE BROOK TWP
+    county: Bergen
+    n: 1
+    q25: 0.9996
+    q50: 0.9996
+    sales_sampled: 90
+    share: 0.0111
+  '0260':
+    name: TEANECK TWP
+    county: Bergen
+    n: 6
+    q25: 0.8263
+    q50: 0.8426
+    sales_sampled: 190
+    share: 0.0316
+  '0261':
+    name: TENAFLY BORO
+    county: Bergen
+    n: 7
+    q25: 0.754
+    q50: 0.8544
+    sales_sampled: 130
+    share: 0.0538
+  '0265':
+    name: WALLINGTON BORO
+    county: Bergen
+    n: 1
+    q25: 1.1466
+    q50: 1.1466
+    sales_sampled: 53
+    share: 0.0189
+  '0306':
+    name: BURLINGTON TWP
+    county: Burlington
+    n: 2
+    q25: 0.6458
+    q50: 0.6458
+    sales_sampled: 106
+    share: 0.0189
+  '0401':
+    name: AUDUBON BORO
+    county: Camden
+    n: 4
+    q25: 0.7631
+    q50: 0.8117
+    sales_sampled: 72
+    share: 0.0556
+  '0404':
+    name: BELLMAWR BORO
+    county: Camden
+    n: 6
+    q25: 0.3075
+    q50: 0.5477
+    sales_sampled: 96
+    share: 0.0625
+  '0405':
+    name: BERLIN BORO
+    county: Camden
+    n: 2
+    q25: 0.6057
+    q50: 0.6125
+    sales_sampled: 60
+    share: 0.0333
+  '0406':
+    name: BERLIN TWP
+    county: Camden
+    n: 1
+    q25: 0.5863
+    q50: 0.5863
+    sales_sampled: 52
+    share: 0.0192
+  0408:
+    name: CAMDEN CITY
+    county: Camden
+    n: 66
+    q25: 0.6222
+    q50: 0.7497
+    sales_sampled: 371
+    share: 0.1779
+  0409:
+    name: CHERRY HILL TWNSHP
+    county: Camden
+    n: 11
+    q25: 0.6419
+    q50: 0.7602
+    sales_sampled: 605
+    share: 0.0182
+  '0411':
+    name: CLEMENTON BORO
+    county: Camden
+    n: 5
+    q25: 0.5964
+    q50: 0.7634
+    sales_sampled: 57
+    share: 0.0877
+  '0412':
+    name: COLLINGSWOOD BORO
+    county: Camden
+    n: 4
+    q25: 0.6178
+    q50: 0.6996
+    sales_sampled: 125
+    share: 0.032
+  '0414':
+    name: GLOUCESTER CITY
+    county: Camden
+    n: 32
+    q25: 0.6113
+    q50: 0.705
+    sales_sampled: 150
+    share: 0.2133
+  '0415':
+    name: GLOUCESTER TWP
+    county: Camden
+    n: 21
+    q25: 0.6603
+    q50: 0.8141
+    sales_sampled: 537
+    share: 0.0391
+  '0416':
+    name: HADDON TWP
+    county: Camden
+    n: 6
+    q25: 0.6706
+    q50: 0.6955
+    sales_sampled: 128
+    share: 0.0469
+  '0417':
+    name: HADDONFIELD BORO
+    county: Camden
+    n: 2
+    q25: 0.6701
+    q50: 0.8662
+    sales_sampled: 129
+    share: 0.0155
+  '0421':
+    name: LAWNSIDE BORO
+    county: Camden
+    n: 3
+    q25: 0.753
+    q50: 0.8437
+    sales_sampled: 26
+    share: 0.1154
+  '0422':
+    name: LINDENWOLD BORO
+    county: Camden
+    n: 10
+    q25: 0.5777
+    q50: 0.6748
+    sales_sampled: 102
+    share: 0.098
+  '0423':
+    name: MAGNOLIA BORO
+    county: Camden
+    n: 2
+    q25: 0.5351
+    q50: 0.5687
+    sales_sampled: 33
+    share: 0.0606
+  '0424':
+    name: MERCHANTVILLE BORO
+    county: Camden
+    n: 1
+    q25: 0.5677
+    q50: 0.5677
+    sales_sampled: 25
+    share: 0.04
+  '0425':
+    name: MOUNT EPHRAIM BORO
+    county: Camden
+    n: 1
+    q25: 0.7432
+    q50: 0.7432
+    sales_sampled: 30
+    share: 0.0333
+  '0426':
+    name: OAKLYN BORO
+    county: Camden
+    n: 2
+    q25: 0.9169
+    q50: 0.918
+    sales_sampled: 49
+    share: 0.0408
+  '0427':
+    name: PENNSAUKEN TWP
+    county: Camden
+    n: 16
+    q25: 0.6427
+    q50: 0.6959
+    sales_sampled: 270
+    share: 0.0593
+  0428:
+    name: PINE HILL BORO
+    county: Camden
+    n: 7
+    q25: 0.6515
+    q50: 0.7448
+    sales_sampled: 97
+    share: 0.0722
+  '0430':
+    name: RUNNEMEDE BORO
+    county: Camden
+    n: 4
+    q25: 0.6174
+    q50: 0.6433
+    sales_sampled: 66
+    share: 0.0606
+  '0431':
+    name: SOMERDALE BORO
+    county: Camden
+    n: 1
+    q25: 0.6473
+    q50: 0.6473
+    sales_sampled: 53
+    share: 0.0189
+  '0432':
+    name: STRATFORD BORO
+    county: Camden
+    n: 1
+    q25: 0.8926
+    q50: 0.8926
+    sales_sampled: 59
+    share: 0.0169
+  '0434':
+    name: VOORHEES TWP
+    county: Camden
+    n: 8
+    q25: 0.7968
+    q50: 0.8859
+    sales_sampled: 234
+    share: 0.0342
+  '0435':
+    name: WATERFORD TWP
+    county: Camden
+    n: 1
+    q25: 0.6646
+    q50: 0.6646
+    sales_sampled: 69
+    share: 0.0145
+  '0436':
+    name: WINSLOW TWP
+    county: Camden
+    n: 21
+    q25: 0.7152
+    q50: 0.8032
+    sales_sampled: 306
+    share: 0.0686
+  '0601':
+    name: BRIDGETON CITY
+    county: Cumberland
+    n: 2
+    q25: 0.2891
+    q50: 0.3289
+    sales_sampled: 125
+    share: 0.016
+  '0614':
+    name: VINELAND CITY
+    county: Cumberland
+    n: 3
+    q25: 0.6286
+    q50: 0.6969
+    sales_sampled: 470
+    share: 0.0064
+  '0701':
+    name: BELLEVILLE TWP
+    county: Essex
+    n: 2
+    q25: 0.8539
+    q50: 0.9885
+    sales_sampled: 176
+    share: 0.0114
+  '0702':
+    name: BLOOMFIELD TWP
+    county: Essex
+    n: 2
+    q25: 0.3696
+    q50: 0.4426
+    sales_sampled: 260
+    share: 0.0077
+  '0703':
+    name: CALDWELL BORO TWP
+    county: Essex
+    n: 1
+    q25: 0.5035
+    q50: 0.5035
+    sales_sampled: 52
+    share: 0.0192
+  '0705':
+    name: EAST ORANGE CITY
+    county: Essex
+    n: 29
+    q25: 0.9036
+    q50: 0.9802
+    sales_sampled: 288
+    share: 0.1007
+  0708:
+    name: GLEN RIDGE BORO
+    county: Essex
+    n: 1
+    q25: 0.7946
+    q50: 0.7946
+    sales_sampled: 66
+    share: 0.0152
+  0709:
+    name: IRVINGTON TWP
+    county: Essex
+    n: 33
+    q25: 0.7312
+    q50: 0.8731
+    sales_sampled: 281
+    share: 0.1174
+  '0710':
+    name: LIVINGSTON TWP
+    county: Essex
+    n: 29
+    q25: 0.9584
+    q50: 1.0271
+    sales_sampled: 314
+    share: 0.0924
+  '0711':
+    name: MAPLEWOOD TWP
+    county: Essex
+    n: 6
+    q25: 0.526
+    q50: 0.6063
+    sales_sampled: 238
+    share: 0.0252
+  '0712':
+    name: MILLBURN TWP
+    county: Essex
+    n: 7
+    q25: 1.0326
+    q50: 1.0501
+    sales_sampled: 210
+    share: 0.0333
+  '0713':
+    name: MONTCLAIR TWP
+    county: Essex
+    n: 7
+    q25: 0.8554
+    q50: 0.9178
+    sales_sampled: 293
+    share: 0.0239
+  '0714':
+    name: NEWARK CITY
+    county: Essex
+    n: 176
+    q25: 0.7519
+    q50: 0.992
+    sales_sampled: 960
+    share: 0.1833
+  '0715':
+    name: NORTH CALDWELL TWP
+    county: Essex
+    n: 2
+    q25: 0.8126
+    q50: 0.8604
+    sales_sampled: 67
+    share: 0.0299
+  '0716':
+    name: NUTLEY TWP
+    county: Essex
+    n: 1
+    q25: 0.7701
+    q50: 0.7701
+    sales_sampled: 234
+    share: 0.0043
+  '0717':
+    name: ORANGE CITY TWP
+    county: Essex
+    n: 6
+    q25: 0.5366
+    q50: 0.7024
+    sales_sampled: 130
+    share: 0.0462
+  '0720':
+    name: VERONA TWP
+    county: Essex
+    n: 1
+    q25: 0.7494
+    q50: 0.7494
+    sales_sampled: 117
+    share: 0.0085
+  '0722':
+    name: WEST ORANGE TWP
+    county: Essex
+    n: 5
+    q25: 0.7245
+    q50: 0.8014
+    sales_sampled: 465
+    share: 0.0108
+  0901:
+    name: BAYONNE CITY
+    county: Hudson
+    n: 10
+    q25: 0.457
+    q50: 0.5767
+    sales_sampled: 270
+    share: 0.037
+  0906:
+    name: JERSEY CITY CITY
+    county: Hudson
+    n: 38
+    q25: 0.7242
+    q50: 1.0678
+    sales_sampled: 1500
+    share: 0.0253
+  0908:
+    name: NORTH BERGEN TWP
+    county: Hudson
+    n: 2
+    q25: 0.5756
+    q50: 0.6434
+    sales_sampled: 246
+    share: 0.0081
+  0909:
+    name: SECAUCUS TOWN
+    county: Hudson
+    n: 7
+    q25: 0.2462
+    q50: 0.3386
+    sales_sampled: 119
+    share: 0.0588
+  0910:
+    name: UNION CITY CITY
+    county: Hudson
+    n: 1
+    q25: 0.5041
+    q50: 0.5041
+    sales_sampled: 207
+    share: 0.0048
+  0911:
+    name: WEEHAWKEN TWP
+    county: Hudson
+    n: 3
+    q25: 0.8316
+    q50: 0.9137
+    sales_sampled: 88
+    share: 0.0341
+  '1009':
+    name: FLEMINGTON BORO
+    county: Hunterdon
+    n: 1
+    q25: 1.0289
+    q50: 1.0289
+    sales_sampled: 25
+    share: 0.04
+  '1014':
+    name: HIGH BRIDGE BORO
+    county: Hunterdon
+    n: 1
+    q25: 1.1337
+    q50: 1.1337
+    sales_sampled: 40
+    share: 0.025
+  '1102':
+    name: EWING TWP
+    county: Mercer
+    n: 1
+    q25: 0.5438
+    q50: 0.5438
+    sales_sampled: 316
+    share: 0.0032
+  '1111':
+    name: TRENTON CITY
+    county: Mercer
+    n: 1
+    q25: 0.5397
+    q50: 0.5397
+    sales_sampled: 652
+    share: 0.0015
+  '1201':
+    name: CARTERET BORO
+    county: Middlesex
+    n: 4
+    q25: 0.4582
+    q50: 0.5716
+    sales_sampled: 113
+    share: 0.0354
+  '1203':
+    name: DUNELLEN BORO
+    county: Middlesex
+    n: 4
+    q25: 0.3421
+    q50: 0.4898
+    sales_sampled: 59
+    share: 0.0678
+  '1204':
+    name: EAST BRUNSWICK TWP
+    county: Middlesex
+    n: 2
+    q25: 0.61
+    q50: 0.7675
+    sales_sampled: 425
+    share: 0.0047
+  '1205':
+    name: EDISON TWP
+    county: Middlesex
+    n: 20
+    q25: 0.8544
+    q50: 0.8893
+    sales_sampled: 618
+    share: 0.0324
+  '1207':
+    name: HIGHLAND PARK BORO
+    county: Middlesex
+    n: 2
+    q25: 0.3143
+    q50: 0.4637
+    sales_sampled: 86
+    share: 0.0233
+  '1208':
+    name: JAMESBURG BORO
+    county: Middlesex
+    n: 5
+    q25: 0.5904
+    q50: 0.7675
+    sales_sampled: 51
+    share: 0.098
+  '1209':
+    name: METUCHEN BORO
+    county: Middlesex
+    n: 1
+    q25: 0.6608
+    q50: 0.6608
+    sales_sampled: 114
+    share: 0.0088
+  '1210':
+    name: MIDDLESEX BORO
+    county: Middlesex
+    n: 2
+    q25: 0.4649
+    q50: 0.6499
+    sales_sampled: 135
+    share: 0.0148
+  '1211':
+    name: MILLTOWN BORO
+    county: Middlesex
+    n: 1
+    q25: 0.6337
+    q50: 0.6337
+    sales_sampled: 52
+    share: 0.0192
+  '1212':
+    name: MONROE TWP
+    county: Middlesex
+    n: 3
+    q25: 0.356
+    q50: 0.356
+    sales_sampled: 672
+    share: 0.0045
+  '1213':
+    name: NEW BRUNSWICK CITY
+    county: Middlesex
+    n: 61
+    q25: 0.8445
+    q50: 0.8703
+    sales_sampled: 139
+    share: 0.4388
+  '1215':
+    name: OLD BRIDGE TWP
+    county: Middlesex
+    n: 4
+    q25: 0.6038
+    q50: 0.7046
+    sales_sampled: 599
+    share: 0.0067
+  '1216':
+    name: PERTH AMBOY CITY
+    county: Middlesex
+    n: 9
+    q25: 0.8189
+    q50: 0.9246
+    sales_sampled: 168
+    share: 0.0536
+  '1217':
+    name: PISCATAWAY TWP
+    county: Middlesex
+    n: 8
+    q25: 0.7423
+    q50: 0.8616
+    sales_sampled: 341
+    share: 0.0235
+  '1220':
+    name: SOUTH AMBOY CITY
+    county: Middlesex
+    n: 1
+    q25: 0.6027
+    q50: 0.6027
+    sales_sampled: 50
+    share: 0.02
+  '1221':
+    name: SOUTH BRUNSWICK TWP
+    county: Middlesex
+    n: 5
+    q25: 0.7359
+    q50: 0.7491
+    sales_sampled: 239
+    share: 0.0209
+  '1222':
+    name: SOUTH PLAINFIELD BORO
+    county: Middlesex
+    n: 1
+    q25: 0.6288
+    q50: 0.6288
+    sales_sampled: 139
+    share: 0.0072
+  '1223':
+    name: SOUTH RIVER BORO
+    county: Middlesex
+    n: 3
+    q25: 0.4504
+    q50: 0.4504
+    sales_sampled: 78
+    share: 0.0385
+  '1224':
+    name: SPOTSWOOD BORO
+    county: Middlesex
+    n: 1
+    q25: 0.8356
+    q50: 0.8356
+    sales_sampled: 51
+    share: 0.0196
+  '1225':
+    name: WOODBRIDGE TWP
+    county: Middlesex
+    n: 15
+    q25: 0.5882
+    q50: 0.7423
+    sales_sampled: 663
+    share: 0.0226
+  '1317':
+    name: FREEHOLD TWP
+    county: Monmouth
+    n: 2
+    q25: 0.735
+    q50: 0.735
+    sales_sampled: 273
+    share: 0.0073
+  '1328':
+    name: MANALAPAN TWP
+    county: Monmouth
+    n: 1
+    q25: 0.5629
+    q50: 0.5629
+    sales_sampled: 394
+    share: 0.0025
+  '1350':
+    name: UNION BEACH BORO
+    county: Monmouth
+    n: 1
+    q25: 0.5039
+    q50: 0.5039
+    sales_sampled: 49
+    share: 0.0204
+  '1401':
+    name: BOONTON TOWN
+    county: Morris
+    n: 1
+    q25: 0.9526
+    q50: 0.9526
+    sales_sampled: 66
+    share: 0.0152
+  '1404':
+    name: CHATHAM BORO
+    county: Morris
+    n: 1
+    q25: 0.6767
+    q50: 0.6767
+    sales_sampled: 80
+    share: 0.0125
+  '1405':
+    name: CHATHAM TWP
+    county: Morris
+    n: 1
+    q25: 0.8757
+    q50: 0.8757
+    sales_sampled: 147
+    share: 0.0068
+  '1414':
+    name: JEFFERSON TWP
+    county: Morris
+    n: 1
+    q25: 0.7934
+    q50: 0.7934
+    sales_sampled: 198
+    share: 0.0051
+  '1420':
+    name: MINE HILL TWP
+    county: Morris
+    n: 1
+    q25: 0.7666
+    q50: 0.7666
+    sales_sampled: 37
+    share: 0.027
+  '1423':
+    name: MORRIS PLAINS BORO
+    county: Morris
+    n: 2
+    q25: 0.6751
+    q50: 0.6751
+    sales_sampled: 86
+    share: 0.0233
+  '1427':
+    name: MOUNT OLIVE TWP
+    county: Morris
+    n: 1
+    q25: 0.6978
+    q50: 0.6978
+    sales_sampled: 206
+    share: 0.0049
+  '1429':
+    name: PARSIPPANY TR HLS TWP
+    county: Morris
+    n: 2
+    q25: 0.9442
+    q50: 1.0289
+    sales_sampled: 361
+    share: 0.0055
+  '1508':
+    name: TOMS RIVER TWP
+    county: Ocean
+    n: 1
+    q25: 0.459
+    q50: 0.459
+    sales_sampled: 1086
+    share: 0.0009
+  '1517':
+    name: LITTLE EGG HARBOR TWP
+    county: Ocean
+    n: 1
+    q25: 0.8197
+    q50: 0.8197
+    sales_sampled: 330
+    share: 0.003
+  '1519':
+    name: MANCHESTER TWP
+    county: Ocean
+    n: 1
+    q25: 0.6845
+    q50: 0.6845
+    sales_sampled: 690
+    share: 0.0014
+  '1601':
+    name: BLOOMINGDALE BORO
+    county: Passaic
+    n: 4
+    q25: 0.7476
+    q50: 0.8377
+    sales_sampled: 57
+    share: 0.0702
+  '1602':
+    name: CLIFTON CITY
+    county: Passaic
+    n: 22
+    q25: 0.7285
+    q50: 0.8196
+    sales_sampled: 525
+    share: 0.0419
+  '1603':
+    name: HALEDON BORO
+    county: Passaic
+    n: 2
+    q25: 0.7967
+    q50: 0.8947
+    sales_sampled: 54
+    share: 0.037
+  '1604':
+    name: HAWTHORNE BORO
+    county: Passaic
+    n: 3
+    q25: 0.5816
+    q50: 0.603
+    sales_sampled: 102
+    share: 0.0294
+  '1605':
+    name: LITTLE FALLS TWP
+    county: Passaic
+    n: 2
+    q25: 0.695
+    q50: 0.7068
+    sales_sampled: 68
+    share: 0.0294
+  '1607':
+    name: PASSAIC CITY
+    county: Passaic
+    n: 5
+    q25: 0.6646
+    q50: 0.8653
+    sales_sampled: 120
+    share: 0.0417
+  '1608':
+    name: PATERSON CITY
+    county: Passaic
+    n: 55
+    q25: 0.7871
+    q50: 1.1001
+    sales_sampled: 518
+    share: 0.1062
+  '1609':
+    name: POMPTON LAKES BORO
+    county: Passaic
+    n: 2
+    q25: 0.6569
+    q50: 0.6664
+    sales_sampled: 106
+    share: 0.0189
+  '1610':
+    name: PROSPECT PARK BORO
+    county: Passaic
+    n: 3
+    q25: 0.73
+    q50: 0.7337
+    sales_sampled: 23
+    share: 0.1304
+  '1611':
+    name: RINGWOOD BORO
+    county: Passaic
+    n: 2
+    q25: 0.6706
+    q50: 0.7539
+    sales_sampled: 81
+    share: 0.0247
+  '1612':
+    name: TOTOWA BORO
+    county: Passaic
+    n: 1
+    q25: 0.9319
+    q50: 0.9319
+    sales_sampled: 85
+    share: 0.0118
+  '1613':
+    name: WANAQUE BORO
+    county: Passaic
+    n: 3
+    q25: 0.5301
+    q50: 0.6843
+    sales_sampled: 78
+    share: 0.0385
+  '1614':
+    name: WAYNE TWP
+    county: Passaic
+    n: 5
+    q25: 0.6487
+    q50: 0.9118
+    sales_sampled: 403
+    share: 0.0124
+  '1615':
+    name: WEST MILFORD TWP
+    county: Passaic
+    n: 6
+    q25: 0.4229
+    q50: 0.5129
+    sales_sampled: 253
+    share: 0.0237
+  '1616':
+    name: WOODLAND PARK BORO
+    county: Passaic
+    n: 5
+    q25: 0.7074
+    q50: 0.8867
+    sales_sampled: 70
+    share: 0.0714
+  '1709':
+    name: PENNSVILLE TWP
+    county: Salem
+    n: 1
+    q25: 0.5826
+    q50: 0.5826
+    sales_sampled: 146
+    share: 0.0068
+  '1711':
+    name: PITTSGROVE TWP
+    county: Salem
+    n: 1
+    q25: 0.2547
+    q50: 0.2547
+    sales_sampled: 49
+    share: 0.0204
+  '1715':
+    name: WOODSTOWN BORO
+    county: Salem
+    n: 1
+    q25: 0.9432
+    q50: 0.9432
+    sales_sampled: 39
+    share: 0.0256
+  '1803':
+    name: BERNARDSVILLE BORO
+    county: Somerset
+    n: 1
+    q25: 0.6908
+    q50: 0.6908
+    sales_sampled: 91
+    share: 0.011
+  '1804':
+    name: BOUND BROOK BORO
+    county: Somerset
+    n: 2
+    q25: 0.8415
+    q50: 0.918
+    sales_sampled: 65
+    share: 0.0308
+  '1806':
+    name: BRIDGEWATER TWP
+    county: Somerset
+    n: 2
+    q25: 0.8455
+    q50: 0.9403
+    sales_sampled: 414
+    share: 0.0048
+  '1808':
+    name: FRANKLIN TWP
+    county: Somerset
+    n: 1
+    q25: 0.5102
+    q50: 0.5102
+    sales_sampled: 562
+    share: 0.0018
+  '1814':
+    name: NORTH PLAINFIELD BORO
+    county: Somerset
+    n: 1
+    q25: 0.7396
+    q50: 0.7396
+    sales_sampled: 131
+    share: 0.0076
+  '1819':
+    name: SO BOUND BROOK BORO
+    county: Somerset
+    n: 1
+    q25: 0.4685
+    q50: 0.4685
+    sales_sampled: 27
+    share: 0.037
+  '2001':
+    name: BERKELEY HEIGHTS TWP
+    county: Union
+    n: 3
+    q25: 0.8777
+    q50: 0.8881
+    sales_sampled: 110
+    share: 0.0273
+  '2002':
+    name: CLARK TWP
+    county: Union
+    n: 3
+    q25: 0.7763
+    q50: 0.8917
+    sales_sampled: 122
+    share: 0.0246
+  '2003':
+    name: CRANFORD TWP
+    county: Union
+    n: 10
+    q25: 0.7507
+    q50: 0.8342
+    sales_sampled: 184
+    share: 0.0543
+  '2004':
+    name: ELIZABETH CITY
+    county: Union
+    n: 33
+    q25: 0.6774
+    q50: 0.831
+    sales_sampled: 352
+    share: 0.0938
+  '2005':
+    name: FANWOOD BORO
+    county: Union
+    n: 1
+    q25: 0.8305
+    q50: 0.8305
+    sales_sampled: 63
+    share: 0.0159
+  '2006':
+    name: GARWOOD BORO
+    county: Union
+    n: 1
+    q25: 0.6437
+    q50: 0.6437
+    sales_sampled: 33
+    share: 0.0303
+  '2007':
+    name: HILLSIDE TWP
+    county: Union
+    n: 11
+    q25: 0.6754
+    q50: 0.8282
+    sales_sampled: 137
+    share: 0.0803
+  '2008':
+    name: KENILWORTH BORO
+    county: Union
+    n: 1
+    q25: 0.8903
+    q50: 0.8903
+    sales_sampled: 53
+    share: 0.0189
+  '2009':
+    name: LINDEN CITY
+    county: Union
+    n: 11
+    q25: 0.7732
+    q50: 0.8565
+    sales_sampled: 323
+    share: 0.0341
+  '2010':
+    name: MOUNTAINSIDE BORO
+    county: Union
+    n: 2
+    q25: 0.812
+    q50: 0.8151
+    sales_sampled: 65
+    share: 0.0308
+  '2011':
+    name: NEW PROVIDENCE BORO
+    county: Union
+    n: 1
+    q25: 0.8075
+    q50: 0.8075
+    sales_sampled: 107
+    share: 0.0093
+  '2012':
+    name: PLAINFIELD CITY
+    county: Union
+    n: 14
+    q25: 0.8349
+    q50: 1.0257
+    sales_sampled: 240
+    share: 0.0583
+  '2013':
+    name: RAHWAY CITY
+    county: Union
+    n: 12
+    q25: 0.7399
+    q50: 0.9769
+    sales_sampled: 220
+    share: 0.0545
+  '2014':
+    name: ROSELLE BORO
+    county: Union
+    n: 5
+    q25: 0.8518
+    q50: 0.8669
+    sales_sampled: 153
+    share: 0.0327
+  '2015':
+    name: ROSELLE PARK BORO
+    county: Union
+    n: 1
+    q25: 0.6596
+    q50: 0.6596
+    sales_sampled: 92
+    share: 0.0109
+  '2016':
+    name: SCOTCH PLAINS TWP
+    county: Union
+    n: 6
+    q25: 0.8127
+    q50: 0.9164
+    sales_sampled: 186
+    share: 0.0323
+  '2017':
+    name: SPRINGFIELD TWP
+    county: Union
+    n: 3
+    q25: 0.5533
+    q50: 0.886
+    sales_sampled: 145
+    share: 0.0207
+  '2018':
+    name: SUMMIT CITY
+    county: Union
+    n: 7
+    q25: 0.896
+    q50: 0.9989
+    sales_sampled: 187
+    share: 0.0374
+  '2019':
+    name: UNION TWP
+    county: Union
+    n: 6
+    q25: 0.8927
+    q50: 0.9829
+    sales_sampled: 339
+    share: 0.0177
+  '2020':
+    name: WESTFIELD TOWN
+    county: Union
+    n: 18
+    q25: 0.8679
+    q50: 0.8921
+    sales_sampled: 275
+    share: 0.0655
+  '2105':
+    name: FRANKLIN TWP
+    county: Warren
+    n: 1
+    q25: 1.0565
+    q50: 1.0565
+    sales_sampled: 30
+    share: 0.0333

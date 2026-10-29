@@ -21,6 +21,8 @@ config/settings.local.yaml
 logs/*.log
 
 data/imports/
+# JV partners' proof-of-funds letters and bank statements
+data/partners/
 
 # Generated deal documents (LOI/PSA/deal sheets name the seller) — never commit.
 deals/

@@ -12,7 +12,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -30,7 +30,8 @@ from engine.contracts import DEALS_DIR, DOC_TYPES, ContractBlocked, contract_gat
 from engine.frfpa_classifier import COVERED_TRACKS, covered_track
 from engine.scoring import stack_badge
 from engine.scripts import NO_OFFER_VERDICTS, build_battle_card, build_buyer_pitch
-from engine.underwriter import frfpa_decision, offer_math
+from engine import quant_pricing as qp
+from engine.underwriter import frfpa_decision, offer_math, quant_overlay
 
 STATIC = Path(__file__).parent / "static"
 ALLOWED_HOSTS = {"127.0.0.1", "localhost"}
@@ -140,7 +141,8 @@ def valuation_dict(v: Valuation | None) -> dict[str, Any] | None:
             "effective_tax_rate": v.effective_tax_rate, "flags": a.get("flags") or [],
             "comp_notes": a.get("comp_notes") or [], "frfpa_floor": a.get("frfpa_floor"),
             "compliant_offer": a.get("compliant_offer"), "exempt_scenario": a.get("exempt_scenario"),
-            "valued_on": a.get("valued_on"),
+            "valued_on": a.get("valued_on"), "quant": a.get("quant"), "listing": a.get("listing"),
+            "pricing_model": a.get("pricing_model") or ("quant" if a.get("quant") else "fixed_pct"),
             "comps": sorted(v.comps_json or [], key=lambda c: c.get("distance_mi") or 9)[:8]}
 
 
@@ -277,14 +279,22 @@ def lead_detail(lead_id: int, contact_id: int | None = None, session: Session = 
              for t in DOC_TYPES for g in [contract_gate(lead, t, price)]}
     docs = session.scalars(select(GeneratedDocument).where(GeneratedDocument.lead_id == lead.id)
                            .order_by(GeneratedDocument.created_at.desc()).limit(20)).all()
+    from engine import agent_outreach as ao
+    from engine import deal_structure as ds
+    from engine import jv_partner_vault as vault
+    structure = ds.structure_for_lead(lead).to_json() if (p.current_valuation and price) else None
     return {
+        "partner": vault.deal_partner_summary(session, lead), "structure": structure,
+        "funnel": {"first_touch": "opener" if ao.opener_enabled() else "offer", "last_touch": ao.last_touch(session, lead),
+                   "touches": ao.prior_touches(session, lead), "last_counter_amount": lead.last_counter_amount},
         "lead": {**lead_row(session, lead), "occupancy": lead.occupancy_status, "occupancy_source": lead.occupancy_source,
                  "occupancy_confirmed_at": iso(lead.occupancy_confirmed_at), "offer_amount": lead.offer_amount,
                  "contract_date": iso(lead.contract_date), "attorney_review_ends": iso(lead.attorney_review_ends),
                  "notes": lead.notes, "brief": lead.ai_strategy_brief,
                  "score": lead.score_breakdown_json or {}},
         "property": {"parcel_id": p.parcel_id, "block": p.block, "lot": p.lot, "qual": p.qual,
-                     "municipality": p.municipality, "class": p.property_class, "building": p.building_desc,
+                     "municipality": p.municipality, "mun_code": p.mun_code, "county": p.county,
+                     "class": p.property_class, "building": p.building_desc,
                      "units": p.dwellings, "year_built": p.year_built, "sqft": p.sqft, "beds": p.beds, "baths": p.baths,
                      "lot_size": p.lot_size, "assessed": p.assessed_total, "taxes": p.annual_taxes,
                      "last_sale_date": iso(p.last_sale_date), "last_sale_price": p.last_sale_price,
@@ -307,8 +317,10 @@ def lead_detail(lead_id: int, contact_id: int | None = None, session: Session = 
         "documents": [{"type": d.doc_type, "price": d.price, "at": iso(d.created_at),
                        "files": _doc_files(lead.property_id, d.doc_type)} for d in docs],
         "gates": gates, "default_price": price,
-        "deal_cfg": {k: settings().deal.get(k) for k in ("mao_pct_conservative", "mao_pct_aggressive",
-                                                         "anchor_discount_pct", "min_assignment_fee")},
+        "deal_cfg": {**{k: settings().deal.get(k) for k in ("mao_pct_conservative", "mao_pct_aggressive",
+                                                            "anchor_discount_pct", "min_assignment_fee")},
+                     "pricing_model": qp.pricing_model(), "min_roi": qp.costs()["end_buyer"]["min_roi"],
+                     "min_profit": qp.costs()["end_buyer"]["min_profit"]},
         "outcomes": crm.OUTCOME_LABELS, "occupancy_values": list(Occupancy.__members__),
     }
 
@@ -328,21 +340,34 @@ class CalcIn(BaseModel):
     mao_pct_conservative: float = Field(0.70, gt=0.3, lt=0.95)
     mao_pct_aggressive: float = Field(0.75, gt=0.3, lt=0.95)
     anchor_discount_pct: float = Field(0.12, ge=0, lt=0.5)
+    pricing_model: str | None = Field(None, pattern="^(quant|fixed_pct)$")   # default: settings deal.pricing_model
+    min_roi: float | None = Field(None, ge=0, le=0.6)          # quant: the end buyer's ROI floor
+    min_profit: float | None = Field(None, ge=0, le=500000)    # quant: the end buyer's $ profit floor
+    ask: float | None = Field(None, gt=0)
+    mun_code: str | None = Field(None, max_length=8)
+    county: str | None = Field(None, max_length=40)
 
 
 @app.post("/api/calc")
 def calc(body: CalcIn) -> dict[str, Any]:
-    """Slider calculator: the same offer_math the underwriter uses, with operator overrides."""
+    """Slider calculator: the same offer math the underwriter uses, with operator overrides."""
     cfg = {**dict(settings().deal), "mao_pct_conservative": body.mao_pct_conservative,
            "mao_pct_aggressive": body.mao_pct_aggressive, "anchor_discount_pct": body.anchor_discount_pct}
     om = offer_math(arv=body.arv, repairs=body.repairs, annual_taxes=body.annual_taxes, debt=body.debt, cfg=cfg,
                     frfpa=body.frfpa, fmv=body.fmv)
+    model = body.pricing_model or qp.pricing_model(cfg)
+    extra: dict[str, Any] = {}
+    if model == "quant":
+        om, extra = quant_overlay(om, arv=body.arv, repairs=body.repairs, annual_taxes=body.annual_taxes, debt=body.debt,
+                                  ask=body.ask, mun_code=body.mun_code, county=body.county, cfg=cfg,
+                                  min_roi=body.min_roi, min_profit=body.min_profit)
     out = {k: getattr(om, k) for k in ("arv", "repairs", "assignment_fee", "mao_conservative", "mao_aggressive",
                                        "anchor_offer", "buyer_purchase_price", "buyer_profit", "buyer_roi",
                                        "deal_spread", "verdict", "frfpa_floor", "flags", "tax_drag_adjustment")}
+    out.update({"pricing_model": model, "quant": extra.get("quant")})
     if body.frfpa and om.verdict == "FRFPA_BLOCKED" and body.fmv:
         ct = covered_track(arv=om.arv, fmv=body.fmv, repairs=om.repairs, debt=body.debt,
-                           aggressive_pct=body.mao_pct_aggressive,
+                           aggressive_pct=(extra.get("quant") or {}).get("alpha_effective") or body.mao_pct_aggressive,
                            min_fee=float(settings().deal.get("min_assignment_fee", 10000)))
         if ct.track != "FRFPA_BLOCKED":
             out["flags"] = [f for f in out["flags"] if "no compliant wholesale offer" not in f]
@@ -966,6 +991,201 @@ def autopilot_outcome(lead_id: int, body: AutoOutcomeIn, session: Session = Depe
         return outcome(session, lead_id, body.outcome, notes=body.notes)
     except AutopilotError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+# -- Phase 6: fast skip-trace mode, deal structure, first-touch preference ---------------------------------------
+@app.get("/api/skiptrace/queue")
+def skiptrace_queue(limit: int = 25, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import clipboard_skiptrace as cs
+    return {"rows": cs.queue(session, limit=max(1, min(limit, 100)))}
+
+
+@app.post("/api/leads/{lead_id}/skiptrace-paste")
+def skiptrace_fast(lead_id: int, body: PasteIn, session: Session = Depends(db)) -> dict[str, Any]:
+    """One-click paste of a people-search page: parse, DNC-scrub, rank, save, flip READY_TO_CALL, hand back the next lead."""
+    from engine import clipboard_skiptrace as cs
+    try:
+        return cs.trace(session, lead_id, body.text)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/api/leads/{lead_id}/structure")
+def lead_structure(lead_id: int, buyer_price: float | None = None, seller_refuses: bool = False,
+                   session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import deal_structure as ds
+    lead = get_lead(session, lead_id)
+    c = ds.structure_for_lead(lead, buyer_price=buyer_price, seller_refuses_assignment=seller_refuses)
+    g = contract_gate(lead, "loi", default_price(lead))
+    return {**c.to_json(), "entity_option": ds.entity_option(lead),
+            "rider_gate": {"allowed": g.allowed, "reasons": g.reasons, "warnings": g.warnings}}
+
+
+class StructureIn(BaseModel):
+    contract_price: float = Field(gt=0)
+    buyer_price: float = Field(gt=0)
+    seller_refuses_assignment: bool = False
+    in_llc: bool = False
+
+
+@app.post("/api/structure/compare")
+def structure_compare(body: StructureIn) -> dict[str, Any]:
+    from engine import deal_structure as ds
+    return ds.compare_structures(contract_price=body.contract_price, buyer_price=body.buyer_price,
+                                 seller_refuses_assignment=body.seller_refuses_assignment, in_llc=body.in_llc).to_json()
+
+
+class FirstTouchIn(BaseModel):
+    mode: str = Field(pattern="^(opener|offer)$")
+
+
+@app.post("/api/autopilot/first-touch")
+def set_first_touch(body: FirstTouchIn) -> dict[str, Any]:
+    """opener = the two-line availability question first (default); offer = the priced note first."""
+    from engine import operator_setup
+    operator_setup.save_preference("autopilot", "first_touch", body.mode)
+    return {"first_touch": body.mode}
+
+
+# -- Phase 6: live agent-reply negotiator ----------------------------------------------------------------------
+class ReplyIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=20000)
+    save: bool = True
+
+
+@app.post("/api/leads/{lead_id}/analyze-reply")
+def analyze_reply(lead_id: int, body: ReplyIn, session: Session = Depends(db)) -> dict[str, Any]:
+    """Paste the agent's reply: parsed intent and counter, the traffic light against the buyer-implied numbers, the
+    three-sentence reply, the follow-up it schedules. save=false previews without recording."""
+    from engine import reply_negotiator as rn
+    lead = session.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(404, "lead not found")
+    if body.save:
+        analysis, inter = rn.analyze_and_record(session, lead, body.text)
+        out = analysis.to_json()
+        out["interaction_id"] = inter.id
+    else:
+        out = rn.analyze(session, lead, body.text).to_json()
+    out.update({"lead_id": lead.id, "stage": lead.status_stage, "last_counter_amount": lead.last_counter_amount,
+                "next_followup_at": iso(lead.next_followup_at)})
+    return out
+
+
+# -- Phase 6: JV partner & proof-of-funds vault ----------------------------------------------------------------
+@app.get("/api/partners")
+def partners_list(session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import jv_partner_vault as vault
+    rows = vault.partners(session)
+    return {"partners": [vault.partner_dict(p) for p in rows], "active": vault.active_count(session),
+            "needed": vault.partners_needed(), "phase0_open": vault.phase0_open(session),
+            "cards": vault.phase0_cards(session, limit=5)}
+
+
+@app.post("/api/partners/seed")
+def partners_seed(top: int = 30, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import jv_partner_vault as vault
+    rows = vault.seed(session, top=max(1, min(top, 100)))
+    return {"seeded": len(rows), "partners": [vault.partner_dict(p) for p in rows]}
+
+
+class PartnerIn(BaseModel):
+    contact_name: str | None = None
+    entity_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    target_counties: list[str] | None = None
+    target_towns: list[str] | None = None
+    min_price: float | None = Field(None, ge=0)
+    max_price: float | None = Field(None, ge=0)
+    max_rehab: str | None = Field(None, pattern="^(LIGHT|MEDIUM|HEAVY)$")
+    pof_verified: bool | None = None
+    pof_share_ok: bool | None = None
+    provides_emd: bool | None = None
+    will_walk_properties: bool | None = None
+    default_split_pct: float | None = Field(None, ge=0, le=100)
+    status: str | None = None
+    notes: str | None = None
+
+
+def _partner(session: Session, partner_id: int) -> Any:
+    from db.models import JVPartner
+    p = session.get(JVPartner, partner_id)
+    if p is None:
+        raise HTTPException(404, "partner not found")
+    return p
+
+
+@app.post("/api/partners")
+def partners_create(body: PartnerIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from db.models import JVPartner
+    from engine import jv_partner_vault as vault
+    if not (body.entity_name or body.contact_name):
+        raise HTTPException(400, "give the partner a name or an entity name")
+    p = JVPartner(entity_name=body.entity_name or body.contact_name, status="TARGET")
+    session.add(p)
+    session.flush()
+    try:
+        vault.update(session, p, **body.model_dump(exclude_none=True))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return vault.partner_dict(p)
+
+
+@app.patch("/api/partners/{partner_id}")
+def partners_update(partner_id: int, body: PartnerIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import jv_partner_vault as vault
+    p = _partner(session, partner_id)
+    try:
+        vault.update(session, p, **body.model_dump(exclude_none=True))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return vault.partner_dict(p)
+
+
+class PartnerTouchIn(BaseModel):
+    channel: str = Field("email", pattern="^(email|sms|phone)$")
+    notes: str = ""
+
+
+@app.post("/api/partners/{partner_id}/touch")
+def partners_touch(partner_id: int, body: PartnerTouchIn, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import jv_partner_vault as vault
+    p = vault.log_touch(session, _partner(session, partner_id), body.channel, body.notes)
+    return {**vault.partner_dict(p), "phase0_open": vault.phase0_open(session)}
+
+
+@app.post("/api/partners/{partner_id}/pof")
+async def partners_pof(partner_id: int, file: UploadFile = File(...), share_ok: bool = Form(False),
+                       session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import jv_partner_vault as vault
+    p = _partner(session, partner_id)
+    data = await file.read()
+    try:
+        vault.attach_pof(session, p, file.filename or "pof.pdf", data)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    vault.update(session, p, pof_share_ok=bool(share_ok))
+    return {**vault.partner_dict(p), "active": vault.active_count(session), "needed": vault.partners_needed()}
+
+
+@app.get("/api/leads/{lead_id}/partner")
+def lead_partner(lead_id: int, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import jv_partner_vault as vault
+    lead = session.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(404, "lead not found")
+    return vault.deal_partner_summary(session, lead)
+
+
+@app.get("/api/pricing/calibration")
+def pricing_calibration() -> dict[str, Any]:
+    """The empirical alpha table the quant model prices from (aggregates only)."""
+    cal = qp.calibration()
+    towns = sorted(((code, t) for code, t in (cal.get("towns") or {}).items()), key=lambda kv: -kv[1].get("n", 0))
+    return {"generated_on": cal.get("generated_on"), "statewide": cal.get("statewide"), "counties": cal.get("counties"),
+            "towns": [{"code": code, **t, "alpha": qp.local_alpha(code, t.get("county")).alpha} for code, t in towns[:60]],
+            "model": qp.pricing_model()}
 
 
 # -- Phase 5: public records (OPRA tax lists, clerk filings, uploads) ----------------------------------------

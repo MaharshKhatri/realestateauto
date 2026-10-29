@@ -31,6 +31,7 @@ from datetime import datetime, time, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -43,6 +44,19 @@ from engine.scripts import lead_facts, money
 
 NO_OFFER = {"EQUITY_RESCUE_REFERRAL", "FRFPA_BLOCKED", "PASS", "SHORT_SALE_ONLY"}
 SENT_OUTCOME = "OFFER_SENT_TO_AGENT"
+OPENER_OUTCOME = "AGENT_OPENER_SENT"            # Touch 1: the two-line availability check
+TOUCH_OUTCOMES = (SENT_OUTCOME, "AGENT_INQUIRY_SENT", OPENER_OUTCOME, "AGENT_FOLLOWUP_SENT")
+REPLY_OUTCOME = "AGENT_REPLIED"                 # engine/reply_negotiator.py logs the agent's answer
+# Touch 1 bodies: a question a person would type, nothing else. Structure varies per lead so no two agents at
+# the same brokerage see the same template; the priced note (Touch 2) goes out when they answer.
+OPENER_BODIES = (
+    "Quick question on your listing at {place}. Is it still available, or are you already in attorney review?",
+    "Is {place} still available, or is it already in attorney review? Wanted to check before I send anything over.",
+    "Checking on {place}: is it still available, or did it already go into attorney review?",
+    "Is your listing at {place} still available? I wasn't sure if it's already in attorney review.",
+)
+OPENER_SUBJECTS = ("{st}", "question on {st}", "{st} - still available?", "{place}")
+OPENER_OPT_OUT = 'If you\'d rather not hear from me, reply "no more".'
 OUTREACH_DIR = DEALS_DIR / "agent_blast"
 
 
@@ -290,6 +304,94 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
     return packet
 
 
+def opener_enabled() -> bool:
+    """autopilot.first_touch: opener (default) sends the availability check first; offer sends the priced note first."""
+    return str((settings().get("autopilot", {}) or {}).get("first_touch", "opener")).lower() == "opener"
+
+
+def prior_touches(session: Session, lead: Lead) -> int:
+    return int(session.scalar(select(func.count(Interaction.id)).where(
+        Interaction.lead_id == lead.id, Interaction.outcome.in_(TOUCH_OUTCOMES))) or 0)
+
+
+def last_touch(session: Session, lead: Lead) -> str | None:
+    """Kind of the most recent exchange with the listing agent: opener / offer / inquiry / followup / reply / None."""
+    inter = session.scalar(select(Interaction).where(
+        Interaction.lead_id == lead.id, Interaction.outcome.in_(TOUCH_OUTCOMES + (REPLY_OUTCOME,)))
+        .order_by(Interaction.occurred_at.desc(), Interaction.id.desc()).limit(1))
+    if inter is None:
+        return None
+    if inter.outcome == REPLY_OUTCOME:
+        return "reply"
+    return ((inter.debrief_json or {}).get("packet") or {}).get("kind") or {
+        SENT_OUTCOME: "offer", "AGENT_INQUIRY_SENT": "inquiry", OPENER_OUTCOME: "opener",
+        "AGENT_FOLLOWUP_SENT": "followup"}.get(inter.outcome)
+
+
+def build_opener(lead: Lead, agent: Contact | None = None) -> AgentPacket:
+    """Touch 1: the two-line availability question. No price, no links, no attachment, no formatting.
+
+    The only additions to the question are what the law and the house rules require of any commercial e-mail: the
+    operator's name and phone, one line with the company and postal address (CAN-SPAM) and a one-clause opt-out.
+    The investor / may-assign disclosure and the terms arrive with the priced note once the agent answers.
+    """
+    from engine import human_copy as hc
+    agent = agent or agent_contact(lead)
+    if agent is None:
+        raise ValueError(f"lead {lead.id} has no reachable listing agent")
+    f = lead_facts(lead)
+    gap = listing_gap(lead)
+    op = hc.operator()
+    first = hc.first_name(agent.name)
+    st, town = hc.street(f["address"]), f.get("town") or ""
+    place = f"{st} in {town}" if town else st
+    body = hc.pick(list(OPENER_BODIES), lead.id).format(place=place)
+    subject = hc.pick(list(OPENER_SUBJECTS), lead.id + 1).format(st=st, place=place)
+    signature = [x for x in ("Thanks,", op["first"] or op["name"], op["phone"]) if x]
+    who = op["company"] or op["name"]
+    footer = [x for x in ((f"{who}, {op['postal']}" if op["postal"] else who), OPENER_OPT_OUT) if x]
+    text = f"Hi {first},\n\n{body}\n\n" + "\n".join(signature) + "\n\n" + "\n".join(footer)
+    me = " ".join(x for x in (op["first"], "with " + op["company"] if op["company"] else "") if x) or "an investor"
+    sms = f"Hi {first}, it's {me}. Is {place} still available, or already in attorney review? Reply STOP to opt out."
+    phone = [f"Hi {first}, this is {me}, calling about your listing at {st}.",
+             "Is it still available, or are you already in attorney review?",
+             "Good to know. I'm an investor and I can e-mail you a written offer today; is this the best address for it?"]
+    mailto = f"mailto:{agent.email}?subject={quote(subject)}&body={quote(text)}" if agent.email else None
+    packet = AgentPacket(
+        lead_id=lead.id, property_id=lead.property_id, kind="opener", agent_contact_id=agent.id,
+        agent_name=agent.name or "", agent_first=first, brokerage=agent.company, agent_email=agent.email,
+        agent_phone=format_phone(agent.phone) if agent.phone else None, address=f["address"],
+        list_price=gap.get("list_price"), dom=f.get("dom"), anchor=None, best=None,
+        list_to_mao_75=gap.get("list_to_mao_75"), subject=subject, email_body=text, sms_text=sms, mailto=mailto,
+        reasons=["Touch 1: availability check. The priced note (Touch 2) goes out when the agent answers."],
+        phone_script=phone)
+    if not op["postal"]:
+        packet.warnings.append("Set your mailing address in My Setup (or operator.mailing_address in "
+                               "config/settings.local.yaml): commercial e-mail must include your postal address "
+                               "(CAN-SPAM). SMTP sending is disabled until then.")
+    return packet
+
+
+def opener_applies(session: Session, lead: Lead, days_to_sale: int | None = None) -> bool:
+    """Touch 1 goes to a listing we have never written to, unless the sheriff sale is inside the urgent window."""
+    if not opener_enabled() or prior_touches(session, lead) > 0:
+        return False
+    urgent_days = int((settings().get("autopilot", {}) or {}).get("urgent_days_to_sale", 14))
+    return not (days_to_sale is not None and 0 <= days_to_sale <= urgent_days)
+
+
+def first_touch(lead: Lead, session: Session, agent: Contact | None = None, generate_loi: bool = True,
+                out_root: Path | None = None) -> AgentPacket:
+    """The packet this listing gets now: Touch 1 for a cold agent, else the priced note (urgent foreclosures: always)."""
+    days = None
+    from engine.fast_track import is_listed_foreclosure, listed_foreclosure
+    if is_listed_foreclosure(lead.property):
+        days = listed_foreclosure(session, lead).days_to_sale
+    if opener_applies(session, lead, days):
+        return build_opener(lead, agent)
+    return build_packet(lead, agent=agent, generate_loi=generate_loi, out_root=out_root, session=session)
+
+
 # -- dispatch ----------------------------------------------------------------------------------------
 def _eastern(now: datetime | None) -> datetime:
     """Naive America/New_York time, the convention crm.log_call stores interactions in."""
@@ -326,9 +428,10 @@ def record_sent(session: Session, lead: Lead, packet: AgentPacket, channel: str,
     contact = session.get(Contact, packet.agent_contact_id)
     outcome = SENT_OUTCOME if packet.kind == "offer" else "SPOKE_WARM_FOLLOWUP"
     if packet.kind != "offer":
-        # An inquiry is not an offer: keep the stage where it is, but schedule the same follow-up.
+        # An opener or inquiry is not an offer: keep the stage where it is, but schedule the same follow-up.
         inter = Interaction(lead_id=lead.id, contact_id=contact.id if contact else None, channel=channel,
-                            outcome="AGENT_INQUIRY_SENT", notes=packet.subject,
+                            outcome=OPENER_OUTCOME if packet.kind == "opener" else "AGENT_INQUIRY_SENT",
+                            notes=packet.subject,
                             debrief_json={"packet": {"kind": packet.kind}}, next_followup_at=followup_time(now),
                             occurred_at=_eastern(now))
         session.add(inter)

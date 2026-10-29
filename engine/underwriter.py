@@ -27,6 +27,7 @@ from agents.scrapers.sheriff_sale_agent import first_defendant
 from core.config import settings
 from db.models import DistressSignal, Lead, Property, SignalType, Valuation, utcnow
 from engine import rehab as rehab_model
+from engine import quant_pricing as qp
 from engine.comps import PublicRecordComps, ValueResult
 from engine.equity import estimate_equity
 from engine.frfpa_classifier import FrfpaDecision, OccupancyFacts, classify, covered_track
@@ -159,6 +160,71 @@ def offer_math(*, arv: float, repairs: float, annual_taxes: float | None, debt: 
         buyer_purchase_price=round(buyer_max, -2), buyer_profit=round(buyer_profit, -2), buyer_roi=round(roi, 3),
         debt=debt, deal_spread=round(spread, -2) if spread is not None else None, verdict=verdict,
         frfpa_floor=floor, flags=flags)
+
+
+QUANT_DROPPED_FLAG_PREFIXES = ("repairs + fee exceed", "high NJ tax drag", "known debt", "MAO $")
+
+
+def quant_overlay(om: OfferMath, *, arv: float, repairs: float, annual_taxes: float | None, debt: float | None,
+                  ask: float | None, mun_code: str | None, county: str | None, cfg: dict[str, Any],
+                  min_roi: float | None = None, min_profit: float | None = None) -> tuple[OfferMath, dict[str, Any]]:
+    """Replace the fixed-percentage numbers in `om` with the buyer-implied solve (engine/quant_pricing.py).
+
+    mao_conservative becomes mao_target (buyer clears 16% and we keep the $15K-$25K fee), mao_aggressive becomes
+    mao_walkaway (buyer max minus the $10K minimum fee) and anchor_offer the opening offer. Taxes enter the buyer's
+    holding costs explicitly, so the ARV tax-drag haircut is not applied on top; the FRFPA floor, guard flags and the
+    verdict rules stay the same, evaluated at the target / walk-away instead of 70% / 75% of ARV.
+    """
+    q = qp.quant_offer(arv=arv, repairs=repairs, annual_taxes=annual_taxes, ask=ask, mun_code=mun_code, county=county,
+                       frfpa_floor=om.frfpa_floor, min_roi=min_roi, min_profit=min_profit,
+                       anchor_discount=float(cfg.get("anchor_discount_pct", 0.12)))
+    floor = om.frfpa_floor
+    flags = [f for f in om.flags if not f.startswith(QUANT_DROPPED_FLAG_PREFIXES)]
+    fee, mao_t, mao_w, anchor = q.fee_target, q.mao_target, q.mao_walkaway, q.opening_offer
+    spread = (mao_t - debt) if debt else None
+    tight = float(qp.costs()["fees"].get("tight_spread", 15000))
+    if mao_t <= 0:
+        verdict = "PASS"
+        flags.append(f"a local buyer's max ${q.buyer_max:,.0f} leaves no room for a fee after ${repairs:,.0f} of repairs")
+    elif floor and mao_t < floor:
+        verdict = "FRFPA_BLOCKED"
+        flags.append(f"MAO ${mao_t:,.0f} is below the FRFPA floor ${floor:,.0f}: no compliant wholesale offer — "
+                     "refer to a listing agent, explore a short sale, or pass")
+    elif debt and mao_w < debt:
+        verdict = "SHORT_SALE_ONLY"
+        flags.append(f"known debt ${debt:,.0f} exceeds our walk-away ${mao_w:,.0f} by ${debt - mao_w:,.0f}")
+    elif debt and spread is not None and spread < tight:
+        verdict = "TIGHT"
+        if mao_t < debt:              # contract at the payoff; the fee is whatever room is left under the buyer's max
+            mao_t = round(debt, -2)
+            fee, anchor, spread = round(q.buyer_max - mao_t, -2), mao_t, 0.0
+            flags.append("thin spread over known debt — fee reduced")
+    elif mao_t / arv >= 0.45:
+        verdict = "STRONG"
+    else:
+        verdict = "WORKABLE"
+    flags.append(f"quant pricing: alpha {q.alpha.alpha:.2f} ({q.alpha.level} evidence) → buyer max ${q.buyer_max:,.0f} "
+                 f"set by {qp.BINDING_LABELS.get(q.binding, q.binding)}; target ${mao_t:,.0f} keeps a ${fee:,.0f} fee, "
+                 f"walk away at ${mao_w:,.0f}")
+    if om.effective_tax_rate and om.effective_tax_rate > float(cfg.get("high_tax_drag_threshold", 0.025)):
+        flags.append(f"NJ taxes run {om.effective_tax_rate:.2%} of ARV: ${q.buyer.taxes_held:,.0f} of the buyer's "
+                     f"{q.buyer.holding_months}-month hold is taxes")
+    om.arv, om.tax_drag_adjustment = round(arv, -3), 0.0
+    om.assignment_fee, om.mao_conservative, om.mao_aggressive, om.anchor_offer = fee, mao_t, mao_w, anchor
+    om.buyer_purchase_price, om.buyer_profit, om.buyer_roi = q.buyer_max, round(q.buyer_profit, -2), round(q.buyer_roi, 3)
+    om.deal_spread = round(spread, -2) if spread is not None else None
+    om.verdict, om.flags = verdict, flags
+    return om, {"quant": q.to_json(), "pricing_model": "quant"}
+
+
+def price_deal(prop: Property, *, arv: float, repairs: float, debt: float | None, cfg: dict[str, Any], frfpa: bool,
+               fmv: float | None) -> tuple[OfferMath, dict[str, Any]]:
+    """Offer math under the configured pricing model (deal.pricing_model: quant | fixed_pct)."""
+    om = offer_math(arv=arv, repairs=repairs, annual_taxes=prop.annual_taxes, debt=debt, cfg=cfg, frfpa=frfpa, fmv=fmv)
+    if qp.pricing_model(cfg) != "quant":
+        return om, {"pricing_model": "fixed_pct"}
+    return quant_overlay(om, arv=arv, repairs=repairs, annual_taxes=prop.annual_taxes, debt=debt, ask=asking_price(prop),
+                         mun_code=prop.mun_code, county=prop.county, cfg=cfg)
 
 
 def confidence(result: ValueResult, sqft_known: bool, min_comps: int) -> float:
@@ -384,7 +450,7 @@ def decide_offer(prop: Property, *, arv: float, repairs: float, as_is: float | N
     """Offer math + FRFPA track for already-valued inputs (shared by underwrite() and reprice())."""
     decision = frfpa_decision(prop)
     frfpa = decision.applies
-    om = offer_math(arv=arv, repairs=repairs, annual_taxes=prop.annual_taxes, debt=debt, cfg=cfg, frfpa=frfpa, fmv=as_is)
+    om, extra = price_deal(prop, arv=arv, repairs=repairs, debt=debt, cfg=cfg, frfpa=frfpa, fmv=as_is)
     if guard is not None:
         om.flags = guard.flags + om.flags
         if guard.non_residential and not asking_price(prop):
@@ -393,7 +459,8 @@ def decide_offer(prop: Property, *, arv: float, repairs: float, as_is: float | N
     track_info: dict[str, Any] = {}
     if frfpa and om.verdict == "FRFPA_BLOCKED" and as_is:
         ct = covered_track(arv=om.arv, fmv=as_is, repairs=om.repairs, debt=debt,
-                           aggressive_pct=float(cfg.get("mao_pct_aggressive", 0.75)),
+                           aggressive_pct=(extra.get("quant") or {}).get("alpha_effective")
+                           or float(cfg.get("mao_pct_aggressive", 0.75)),
                            min_fee=float(cfg.get("min_assignment_fee", 10000)))
         om.verdict = ct.track
         if ct.track != "FRFPA_BLOCKED":   # the 70%-MAO "no compliant offer" note no longer describes the deal
@@ -406,7 +473,7 @@ def decide_offer(prop: Property, *, arv: float, repairs: float, as_is: float | N
             om.assignment_fee = ct.fee
     exempt_scenario = None
     if frfpa:   # what the deal looks like if occupancy verification shows FRFPA does not apply
-        ex = offer_math(arv=arv, repairs=repairs, annual_taxes=prop.annual_taxes, debt=debt, cfg=cfg)
+        ex, _ = price_deal(prop, arv=arv, repairs=repairs, debt=debt, cfg=cfg, frfpa=False, fmv=None)
         exempt_scenario = {"verdict": ex.verdict, "mao_conservative": ex.mao_conservative,
                            "anchor_offer": ex.anchor_offer, "fee": ex.assignment_fee}
     if prop.lead:
@@ -414,7 +481,7 @@ def decide_offer(prop: Property, *, arv: float, repairs: float, as_is: float | N
     fields = {"frfpa_applies": frfpa, "frfpa_floor": om.frfpa_floor, "frfpa_track": decision.track,
               "frfpa_confidence": decision.confidence, "frfpa_basis": decision.basis,
               "verify_before_contract": decision.verify_before_contract, "exempt_scenario": exempt_scenario,
-              **track_info}
+              **track_info, **extra}
     return om, decision, fields
 
 
@@ -433,8 +500,9 @@ def listing_gap(list_price: float | None, mao_conservative: float | None, mao_ag
                 arv: float | None = None) -> dict[str, Any]:
     """How far our wholesale numbers sit from the seller's asking price (1.0 = we can pay full ask).
 
-    A listing that has sat 90+ days will often take 80-92% of ask in cash; `list_to_mao_75 >= 0.75` means
-    our ceiling is within realistic striking distance of the asking price.
+    A listing that has sat 90+ days will often take 80-92% of ask in cash; `list_to_mao_75 >= 0.75` (the ceiling —
+    the quant walk-away or the 75% MAO — over the ask, gate = deal.striking_distance_pct) means our ceiling is within
+    realistic striking distance of the asking price; `striking_distance_strict` uses the 78% reporting threshold.
     """
     if not list_price or list_price <= 0:
         return {}
@@ -447,14 +515,19 @@ def listing_gap(list_price: float | None, mao_conservative: float | None, mao_ag
     if arv:
         out["arv_to_list"] = round(arv / list_price, 2)
     out["valuation_conflict"] = bool(arv and arv > LISTING_ARV_CONFLICT * list_price)
-    out["striking_distance"] = bool(mao_aggressive is not None and mao_aggressive >= 0.75 * list_price
-                                    and not out["valuation_conflict"])
+    deal = settings().deal
+    gate, strict = float(deal.get("striking_distance_pct", 0.75)), float(deal.get("striking_distance_report_pct", 0.78))
+    reach = (mao_aggressive or 0) / list_price if mao_aggressive is not None else None
+    out["list_to_ceiling"] = round(reach, 3) if reach is not None else None    # = list_to_mao_75 (quant: walk-away / ask)
+    out["striking_distance"] = bool(reach is not None and reach >= gate and not out["valuation_conflict"])
+    out["striking_distance_strict"] = bool(reach is not None and reach >= strict and not out["valuation_conflict"])
+    out["striking_gate_pct"], out["striking_strict_pct"] = gate, strict
     return out
 
 
 FRFPA_FIELDS = ("frfpa_applies", "frfpa_floor", "frfpa_track", "frfpa_confidence", "frfpa_basis",
                 "verify_before_contract", "exempt_scenario", "compliant_offer", "track_buyer_price", "track_fee",
-                "equity_at_risk")
+                "equity_at_risk", "quant", "pricing_model")   # everything decide_offer() rewrites on a re-price
 
 
 def reprice(session: Session, prop: Property) -> Valuation | None:

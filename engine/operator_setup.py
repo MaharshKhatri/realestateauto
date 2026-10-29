@@ -87,6 +87,20 @@ def _write_env(updates: dict[str, str], path: Path) -> None:
         pass
 
 
+def save_preference(section: str, key: str, value: Any, *, local_path: Path | None = None) -> Any:
+    """Persist one dashboard preference (e.g. autopilot.first_touch) in settings.local.yaml and the live settings."""
+    local_path = local_path or LOCAL_SETTINGS
+    local = (yaml.safe_load(local_path.read_text()) or {}) if local_path.exists() else {}
+    local.setdefault(section, {})[key] = value
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(HEADER + yaml.safe_dump(local, sort_keys=False, allow_unicode=True))
+    cached = settings()
+    if not isinstance(cached.get(section), dict):
+        cached[section] = Section()
+    cached[section][key] = value
+    return value
+
+
 def save(data: dict[str, Any], *, local_path: Path | None = None, env_path: Path | None = None) -> dict[str, Any]:
     """Validate and persist the operator profile (+ optional SMTP credentials). Raises SetupError."""
     local_path = local_path or LOCAL_SETTINGS

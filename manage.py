@@ -6,6 +6,12 @@
     python manage.py briefing [--top 15]      Daily Action Briefing: (A) ready to call (B) sheriff/estate spreads (C) stacked
     python manage.py lead <id>                everything about one lead
     python manage.py underwrite [--top 15]    comps / ARV / MAO for the top leads
+    python manage.py calibrate                local investor pricing (alpha) from recorded buyer purchases
+    python manage.py recalibrate              re-price every valuation (quant model) + striking-distance report
+    python manage.py vault [--seed 30]        JV partner & proof-of-funds vault (Phase 0: 3 funding partners)
+    python manage.py skiptrace-fast           fast skip-trace queue; --lead <id> --paste page.txt saves a copied page
+    python manage.py reply <id> --text '...'  agent reply → traffic light, math, 3-sentence answer
+    python manage.py structure <id>           assignment vs double close net check
     python manage.py buyers [--top 20]        active cash buyers
     python manage.py stats                    database and pipeline stats
     python manage.py server [--port 8000]     local CRM cockpit at http://127.0.0.1:8000
@@ -38,6 +44,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import sys
 from collections import Counter
 from datetime import date, timedelta
@@ -50,7 +57,7 @@ from sqlalchemy import func, select
 
 from core.text import format_phone
 from db.database import init_db, session_scope
-from db.models import AgentRun, CashBuyer, Contact, DistressSignal, Lead, Property, SignalType, Valuation
+from db.models import AgentRun, CashBuyer, Contact, DistressSignal, Lead, Property, SignalType, Valuation, JVPartner
 
 console = Console(width=200)
 TERMINAL = ["DEAD", "DO_NOT_CONTACT", "CLOSED"]
@@ -1068,6 +1075,177 @@ def cmd_today(args: argparse.Namespace) -> None:
         console.print(Panel(t["reminder"], title="Every call", border_style="yellow"))
 
 
+def cmd_calibrate(args: argparse.Namespace) -> None:
+    """Measure what local investors pay (price / equalized value) from our recorded buyer purchases → market_calibration."""
+    from agents.scrapers.njgis_client import NJGISClient
+    from engine import quant_pricing as qp
+    init_db()
+    with session_scope() as s:
+        data = qp.calibrate(s, NJGISClient(), progress=lambda m: console.print(f"[dim]{m}[/dim]") if args.verbose else None)
+    st = data["statewide"]
+    console.print(f"[green]calibrated[/green] {data['purchases_clean']} clean investor purchases of {data['purchases_total']}; "
+                  f"statewide q25 {st['q25']:.2f} / q50 {st['q50']:.2f}; {len(data['towns'])} towns, "
+                  f"{len(data['counties'])} counties → {qp.CALIBRATION_FILE}")
+    t = Table(title="towns with the most evidence")
+    for col in ("code", "town", "county", "n", "q25", "q50", "investor share", "alpha"):
+        t.add_column(col)
+    towns = sorted(data["towns"].items(), key=lambda kv: -kv[1]["n"])[:args.top]
+    for code, row in towns:
+        la = qp.local_alpha(code, row.get("county"))
+        t.add_row(code, row.get("name") or "", row.get("county") or "", str(row["n"]), f"{row['q25']:.2f}",
+                  f"{row['q50']:.2f}", f"{(row.get('share') or 0):.1%}", f"{la.alpha:.2f}")
+    console.print(t)
+
+
+def cmd_recalibrate(args: argparse.Namespace) -> None:
+    """Re-price every current valuation under deal.pricing_model and report the striking-distance change."""
+    from engine import quant_pricing as qp
+    init_db()
+    with session_scope() as s:
+        r = qp.recalibrate_all(s, limit=args.limit, progress=lambda m: console.print(f"[dim]{m}[/dim]"))
+    b, a = r["before"], r["after"]
+    console.print(f"[green]re-priced {r['repriced']} valuations[/green] ({r['errors']} errors)")
+    t = Table(title="striking distance (listed leads our ceiling reaches, no ARV-vs-ask conflict)")
+    for col in ("metric", "before", "after", "change"):
+        t.add_column(col)
+    for key in ("valuations", "listed", "fixers", "foreclosures", "strike_75", "strike_78", "fixers_75", "fixers_78",
+                "foreclosures_75", "foreclosures_78", "conflicts", "quant", "buyer_roi_below_min"):
+        t.add_row(key, str(b.get(key, 0)), str(a.get(key, 0)), f"{a.get(key, 0) - b.get(key, 0):+d}")
+    console.print(t)
+    if a.get("buyer_roi_median") is not None:
+        console.print(f"end-buyer ROI at buyer max after re-pricing: median {a['buyer_roi_median']:.1%}, "
+                      f"min {a['buyer_roi_min']:.1%}; valuations under the ROI floor (not alpha-bound): "
+                      f"{a.get('buyer_roi_below_min', 0)}")
+    console.print("[dim]Scores and READY_TO_CALL flags refresh on the next `swarm run lead_scoring` (or the dashboard's quick refresh).[/dim]")
+
+
+def cmd_vault(args: argparse.Namespace) -> None:
+    """JV partner & proof-of-funds vault: seed from the deed records, list, log a touch, attach a POF."""
+    from engine import jv_partner_vault as vault
+    init_db()
+    with session_scope() as s:
+        if args.seed:
+            rows = vault.seed(s, top=args.seed)
+            console.print(f"[green]seeded {len(rows)} partners[/green]")
+        if args.touch:
+            p = s.get(JVPartner, args.touch)
+            if p is None:
+                raise SystemExit(f"partner {args.touch} not found")
+            vault.log_touch(s, p, args.channel, args.notes or "")
+            console.print(f"logged {args.channel} for {p.contact_name or p.entity_name} → {p.status}")
+        if args.pof:
+            p = s.get(JVPartner, args.pof)
+            if p is None:
+                raise SystemExit(f"partner {args.pof} not found")
+            path = Path(args.file or "")
+            if not path.exists():
+                raise SystemExit("--file <pdf|png|jpg> is required with --pof")
+            dest = vault.attach_pof(s, p, path.name, path.read_bytes())
+            vault.update(s, p, pof_share_ok=bool(args.share))
+            console.print(f"[green]proof of funds on file[/green] → {dest} ({vault.active_count(s)}/{vault.partners_needed()} verified)")
+        if args.script:
+            p = s.get(JVPartner, args.script)
+            if p is None:
+                raise SystemExit(f"partner {args.script} not found")
+            c = vault.outreach(s, p)
+            console.print(f"[bold]{c.subject}[/bold]\n{c.body}\n\n[dim]SMS:[/dim] {c.sms}\n[dim]Call:[/dim] " + " ".join(c.phone_script))
+            return
+        rows = vault.partners(s)
+        t = Table(title=f"JV partner vault — {vault.active_count(s)}/{vault.partners_needed()} verified with proof of funds")
+        for col in ("id", "partner", "entity", "status", "POF", "counties", "price band", "rehab", "last touch", "velocity"):
+            t.add_column(col)
+        for p in rows[:args.top]:
+            t.add_row(str(p.id), p.contact_name or "", p.entity_name or "", p.status, "✓" if p.pof_verified else "",
+                      ", ".join(str(c) for c in (p.target_counties or [])[:3]),
+                      f"{short_money(p.min_price)}–{short_money(p.max_price)}", p.max_rehab or "",
+                      p.last_contact_at.strftime("%m/%d") if p.last_contact_at else "", f"{p.velocity_score or 0:.0f}")
+        console.print(t)
+        if vault.phase0_open(s):
+            console.print("[yellow]Phase 0 is open:[/yellow] reach the TARGET partners first (manage.py vault --script <id>).")
+
+
+def cmd_fast_skiptrace(args: argparse.Namespace) -> None:
+    """Fast Skip-Trace Mode from the terminal: the queue with lookup links, or paste a saved page for one lead."""
+    from engine import clipboard_skiptrace as cs
+    init_db()
+    with session_scope() as s:
+        if args.paste:
+            text = Path(args.paste).read_text(encoding="utf-8", errors="replace")
+            out = cs.trace(s, args.lead, text)
+            sv = out["saved"]
+            console.print(f"[green]saved[/green] best {sv['best_phone']} ({sv['best_status']}) · ready_to_call={sv['ready_to_call']} "
+                          f"· {sv['contacts_created']} new contact(s)")
+            for h in out["hits"]:
+                console.print(f"  {h['display']:16s} {h['kind']:9s} {h['last_reported'] or '':10s} {h['status']:12s} {h['reason']}")
+            for n in sv["notes"]:
+                console.print(f"  [yellow]{n}[/yellow]")
+            if out["next"]:
+                console.print(f"next: lead {out['next']['lead_id']} {out['next']['address']}")
+            return
+        rows = cs.queue(s, limit=args.top)
+        t = Table(title="⚡ Fast skip-trace queue (no phone yet, offer path, unlisted)")
+        for col in ("lead", "address", "why", "look up", "verdict · fee", "sale"):
+            t.add_column(col)
+        for r in rows:
+            t.add_row(str(r["lead_id"]), f"{r['address']}", ", ".join(r["reasons"]), f"{r['target']['name']} ({r['target']['role']})",
+                      f"{r['numbers']['verdict']} · {short_money(r['numbers']['fee'])}",
+                      f"{r['days_to_sale']}d" if r.get("days_to_sale") is not None else "")
+        console.print(t)
+        if rows and args.links:
+            r = rows[0]
+            for k, v in r["links"].items():
+                if v:
+                    console.print(f"  {k}: {v}")
+        console.print("[dim]Open the links in a browser, copy the result page, then: manage.py skiptrace-fast --lead <id> --paste page.txt[/dim]")
+
+
+def cmd_reply(args: argparse.Namespace) -> None:
+    """Paste an agent's reply: traffic light, the math and the 3-sentence answer (logged unless --dry-run)."""
+    from engine import reply_negotiator as rn
+    init_db()
+    text = Path(args.file).read_text(encoding="utf-8", errors="replace") if args.file else (args.text or "")
+    if not text.strip():
+        raise SystemExit("give --text '...' or --file reply.txt")
+    with session_scope() as s:
+        lead = _lead(s, args.id)
+        a = rn.analyze(s, lead, text) if args.dry_run else rn.analyze_and_record(s, lead, text)[0]
+        light = {"GREEN": "green", "YELLOW": "yellow", "RED": "red", "INFO": "cyan"}[a.verdict]
+        console.print(f"[{light}][bold]{a.verdict}[/bold] {a.headline}[/{light}]  intents: {', '.join(sorted(a.parsed.intents))}")
+        n = a.numbers
+        if n:
+            console.print(f"counter {money(n.get('counter'))} · our counter {money(n.get('our_counter'))} · fee at theirs "
+                          f"{money(n.get('fee_at_counter'))} · buyer max {money(n.get('buyer_max'))} · walk-away "
+                          f"{money(n.get('adjusted_walkaway', n.get('mao_walkaway')))}")
+        for x in a.actions:
+            console.print(f"  • {x}")
+        if a.reply_text:
+            console.print(f"\n[bold]{a.reply_subject}[/bold]\n{a.reply_text}\n\n[dim]SMS:[/dim] {a.sms_text}")
+        if a.followup_at:
+            console.print(f"[dim]follow-up {a.followup_at:%a %b %d %H:%M}[/dim]")
+
+
+def cmd_structure(args: argparse.Namespace) -> None:
+    """Assignment vs double close for a lead (or any two prices), and the rider / entity option."""
+    from engine import deal_structure as ds
+    if args.contract and args.buyer:
+        c = ds.compare_structures(contract_price=args.contract, buyer_price=args.buyer,
+                                  seller_refuses_assignment=args.seller_refuses, in_llc=args.llc)
+    else:
+        init_db()
+        with session_scope() as s:
+            lead = _lead(s, args.id)
+            c = ds.structure_for_lead(lead, buyer_price=args.buyer, seller_refuses_assignment=args.seller_refuses)
+    t = Table(title=f"contract {money(c.contract_price)} → buyer {money(c.buyer_price)} (spread {money(c.spread)})")
+    for col in ("", "assignment", "double close"):
+        t.add_column(col)
+    t.add_row("costs", money(c.assignment["costs"]), money(c.double_close["costs"]))
+    t.add_row("net", money(c.assignment["net"]), money(c.double_close["net"]))
+    t.add_row("out of pocket", "deposit only", money(c.double_close["out_of_pocket"]))
+    console.print(t)
+    console.print(f"[green]recommended: {c.recommended.replace('_', ' ')}[/green] — {'; '.join(c.reasons)}")
+    console.print(f"[dim]{c.double_close['condition']}[/dim]")
+
+
 def money_arg(text: str) -> float:
     t = text.strip().lower().replace("$", "").replace(",", "")
     mult = 1_000 if t.endswith("k") else 1_000_000 if t.endswith("m") else 1
@@ -1096,6 +1274,37 @@ def main(argv: list[str] | None = None) -> None:
     u.add_argument("--lead", type=int, action="append", help="underwrite this lead id (repeatable)")
     by = sub.add_parser("buyers")
     by.add_argument("--top", type=int, default=20)
+    cal = sub.add_parser("calibrate", help="measure local investor pricing (alpha) from recorded buyer purchases")
+    cal.add_argument("--top", type=int, default=25)
+    cal.add_argument("--verbose", action="store_true")
+    rc = sub.add_parser("recalibrate", help="re-price every valuation under deal.pricing_model; report striking distance")
+    rc.add_argument("--limit", type=int)
+    va = sub.add_parser("vault", help="JV partner & proof-of-funds vault (Phase 0: lock in 3 funding partners)")
+    va.add_argument("--seed", type=int, nargs="?", const=30, help="seed the top N named repeat buyers from the deed records")
+    va.add_argument("--top", type=int, default=40)
+    va.add_argument("--script", type=int, help="print the outreach e-mail / text / call script for a partner id")
+    va.add_argument("--touch", type=int, help="log an e-mail / text / call to a partner id")
+    va.add_argument("--channel", default="email", choices=["email", "sms", "phone"])
+    va.add_argument("--notes", default="")
+    va.add_argument("--pof", type=int, help="attach a proof-of-funds file to a partner id (with --file)")
+    va.add_argument("--file")
+    va.add_argument("--share", action="store_true", help="the partner lets us attach the POF to offers")
+    sk = sub.add_parser("skiptrace-fast", help="fast skip-trace queue with lookup links; --lead/--paste saves a copied page")
+    sk.add_argument("--top", type=int, default=25)
+    sk.add_argument("--links", action="store_true", help="print the lookup links for the first lead")
+    sk.add_argument("--lead", type=int)
+    sk.add_argument("--paste", help="text file with the copied people-search page")
+    rp = sub.add_parser("reply", help="analyze a listing agent's reply: traffic light, math, 3-sentence answer")
+    rp.add_argument("id", type=int)
+    rp.add_argument("--text")
+    rp.add_argument("--file")
+    rp.add_argument("--dry-run", action="store_true", help="analyze without logging it on the lead")
+    stp = sub.add_parser("structure", help="assignment vs double close net check (lead id, or --contract/--buyer)")
+    stp.add_argument("id", type=int, nargs="?")
+    stp.add_argument("--contract", type=money_arg)
+    stp.add_argument("--buyer", type=money_arg)
+    stp.add_argument("--seller-refuses", action="store_true")
+    stp.add_argument("--llc", action="store_true")
     sub.add_parser("stats")
     bs = sub.add_parser("build-site", help="static seller/buyer funnel for GitHub Pages (+ --check publish gate)")
     bs.add_argument("--out", default="site_dist")
@@ -1238,7 +1447,8 @@ def main(argv: list[str] | None = None) -> None:
      "mail-merge": cmd_mail_merge, "inspect": cmd_inspect, "stack": cmd_stack, "buyer-hotzones": cmd_buyer_hotzones,
      "walkthrough": cmd_walkthrough, "bid": cmd_bid, "fast-track": cmd_fast_track, "closing": cmd_closing,
      "finance": cmd_finance, "partners": cmd_partners, "inbound": cmd_inbound, "site": cmd_site,
-     "today": cmd_today}[args.cmd](args)
+     "today": cmd_today, "calibrate": cmd_calibrate, "recalibrate": cmd_recalibrate, "vault": cmd_vault,
+     "skiptrace-fast": cmd_fast_skiptrace, "reply": cmd_reply, "structure": cmd_structure}[args.cmd](args)
 
 
 if __name__ == "__main__":

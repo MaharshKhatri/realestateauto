@@ -16,7 +16,18 @@ condition checks, owner outreach and buyer walkthroughs are all done remotely.
 > enforces (attorney review, tax sale certificates, sheriff-sale adjournments, the Foreclosure Rescue
 > Fraud Prevention Act 82%-of-FMV floor, Consumer Fraud Act disclosures, TCPA/DNC, Daniel's Law).
 
-## What it does today (Phases 1–5)
+## What it does today (Phases 1–6)
+
+**Phase 6 (buyer-implied pricing and conversion):** every valuation now carries the price a local rehabber can actually pay
+(`buyer_max`: ≥ 15% net ROI and ≥ $45,000 after rehab, closing, six months of taxes and carry, commission and the NJ transfer
+fee on the resale, capped by what investors in that town have paid — alpha 0.68–0.80 calibrated from 1,162 recorded investor
+purchases), plus the walk-away, the target that keeps the fee, and the opening offer. A JV partner & proof-of-funds vault seeds
+the top 30 named repeat buyers and makes "Phase 0: lock in your 3 funding partners" the first card of the day. Listing agents
+get a two-line availability opener first and the priced note when they answer; paste any reply into the live negotiator for a
+GREEN / YELLOW / RED verdict, the math and a three-sentence answer. The documents include the Item 14 / Section 37
+attorney-review assignment rider and an assignment-vs-double-close net check, and ⚡ Fast Skip-Trace Mode turns a copied
+people-search page into DNC-checked, ranked contacts in one click.
+
 
 | Component | Source (all free) | Output |
 |---|---|---|
@@ -125,5 +136,5 @@ Set `WHOLESALING_DATABASE_URL` to a Postgres URL (e.g. a free Supabase project) 
 
 ## Roadmap
 
-Sprint 6 — NJ permits, paid skip-trace adapters, outcome-trained scoring, Mercer sheriff list import · Sprint 7 — buyer
-list growth, deal sheets to matched buyers, attorney-reviewed templates, proof-of-funds tracking. See `CLAUDE.md`.
+Sprint 7 — NJ permits, paid skip-trace adapters, outcome-trained scoring, Mercer sheriff list import · Sprint 8 — buyer
+list growth, deal sheets to matched buyers, attorney-reviewed templates. See `CLAUDE.md`.

@@ -259,6 +259,7 @@ class Lead(Base):
     contact_attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_contact_at: Mapped[datetime | None] = mapped_column(DateTime)
     offer_amount: Mapped[float | None] = mapped_column(Float)
+    last_counter_amount: Mapped[float | None] = mapped_column(Float)  # seller's / agent's latest counter (negotiator)
     contract_date: Mapped[date | None] = mapped_column(Date)          # fully signed contract delivered to both
     attorney_review_ends: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -602,3 +603,38 @@ class OpraRequest(Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (UniqueConstraint("county", "town", "year", name="uq_opra_request"),)
+
+
+class JVPartner(Base):
+    """A local cash buyer / rehabber the operator has (or wants) as a funding partner: their LLC signs, their proof
+    of funds and deposit back the offer, they walk the house, and the profit is split under a JV agreement
+    (both are principals; nobody is paid a referral fee, N.J.S.A. 45:15-3). engine/jv_partner_vault.py."""
+    __tablename__ = "jv_partners"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    buyer_id: Mapped[int | None] = mapped_column(ForeignKey("cash_buyers.id", ondelete="SET NULL"), index=True)
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    entity_name: Mapped[str] = mapped_column(String(200))
+    phone: Mapped[str | None] = mapped_column(String(32))
+    email: Mapped[str | None] = mapped_column(String(120))
+    target_counties: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    target_towns: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    min_price: Mapped[float | None] = mapped_column(Float)
+    max_price: Mapped[float | None] = mapped_column(Float)
+    max_rehab: Mapped[str | None] = mapped_column(String(8))             # LIGHT / MEDIUM / HEAVY
+    pof_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    pof_verified_at: Mapped[datetime | None] = mapped_column(DateTime)
+    pof_document_path: Mapped[str | None] = mapped_column(String(400))   # data/partners/<id>/... (git-ignored)
+    pof_share_ok: Mapped[bool] = mapped_column(Boolean, default=False)   # partner agreed we may show it to agents
+    provides_emd: Mapped[bool] = mapped_column(Boolean, default=False)
+    will_walk_properties: Mapped[bool] = mapped_column(Boolean, default=False)
+    default_split_pct: Mapped[float] = mapped_column(Float, default=50.0)  # partner's share of net profit
+    status: Mapped[str] = mapped_column(String(16), default="TARGET", index=True)  # TARGET / CONTACTED / ACTIVE_PARTNER / DECLINED
+    velocity_score: Mapped[float] = mapped_column(Float, default=0)      # why they were seeded (purchases, flips, recency)
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    buyer: Mapped[CashBuyer | None] = relationship()
+

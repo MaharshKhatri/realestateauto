@@ -35,7 +35,7 @@ from db.models import CashBuyer, ContactType, GeneratedDocument, Lead, SignalTyp
 from engine.scripts import buyer_display_name, lead_facts, marketable, money, speaking_name
 
 DEALS_DIR = Path(os.environ.get("WHOLESALING_DEALS_DIR") or ROOT / "deals")
-DOC_TYPES = ("loi", "psa", "assignment", "jv", "deal_sheet")
+DOC_TYPES = ("loi", "psa", "assignment", "jv", "deal_sheet", "rider")
 NO_OFFER_VERDICTS = {"FRFPA_BLOCKED", "EQUITY_RESCUE_REFERRAL"}
 DEAL_VERDICTS = {"STRONG", "WORKABLE", "WORKABLE_82_PCT_FLOOR", "TIGHT"}
 LEAD_PAINT_YEAR = 1978
@@ -124,7 +124,9 @@ def end_buyer_price(lead: Lead) -> float | None:
     if v is None:
         return None
     a = v.assumptions_json or {}
-    return a.get("track_buyer_price") if v.verdict == "WORKABLE_82_PCT_FLOOR" else v.mao_aggressive
+    if v.verdict == "WORKABLE_82_PCT_FLOOR":
+        return a.get("track_buyer_price")
+    return (a.get("quant") or {}).get("buyer_max") or v.mao_aggressive    # quant: the end buyer's max; else the 75% ceiling
 
 
 def in_foreclosure(lead: Lead) -> bool:
@@ -375,6 +377,7 @@ def build_psa(lead: Lead, price: float, today: date | None = None) -> Doc:
 
 def build_assignment(lead: Lead, buyer: CashBuyer | None, assignee_price: float | None,
                      today: date | None = None) -> Doc:
+    from engine.deal_structure import correa_acknowledgment
     today = today or date.today()
     cfg = _cfg()
     legal = property_legal(lead)
@@ -406,6 +409,7 @@ def build_assignment(lead: Lead, buyer: CashBuyer | None, assignee_price: float 
                                      "provided are estimates."),
             ("Disclosure", "Assignor is a real estate investor acting as a principal, not a licensed real estate broker, and "
                            "is assigning its contractual interest — not brokering the Property."),
+            correa_acknowledgment(lead),
             ("Attorney Review", " ".join(ATTORNEY_REVIEW[:3])),
         ]),
         ("sig", [settings().operator.get("company_name"), assignee]),
@@ -652,11 +656,17 @@ def generate(session: Session, lead: Lead, doc_type: str, *, price: float | None
     if doc_type not in DOC_TYPES:
         raise ValueError(f"unknown document type {doc_type!r}; choose from {', '.join(DOC_TYPES)}")
     explicit = price is not None
-    if doc_type in ("loi", "psa"):
+    if doc_type in ("loi", "psa", "rider"):
         price = price if explicit else default_price(lead)
-    gate = contract_gate(lead, doc_type, price, explicit_price=explicit)
+    # The rider travels with the offer, so it is gated exactly like the LOI (FRFPA floor, verdicts, occupancy).
+    gate = contract_gate(lead, "loi" if doc_type == "rider" else doc_type, price, explicit_price=explicit)
     if not gate.allowed:
         raise ContractBlocked(doc_type, gate.reasons)
+    if doc_type == "rider":
+        from engine.deal_structure import build_rider
+        doc = build_rider(lead, buyer=buyer, today=today, price=float(price) if price else None)
+        doc.warnings = doc.warnings + gate.warnings
+        return write_doc(session, lead, doc, out_root)
     if doc_type == "loi":
         doc = build_loi(lead, float(price), today)
     elif doc_type == "psa":

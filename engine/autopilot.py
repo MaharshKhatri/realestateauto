@@ -7,6 +7,11 @@ The deck (up to 20 cards a day) is built from live records:
   2. follow-ups that are due now (offers / inquiries sent two days ago, voicemails, "send me the offer" calls);
   3. ready-to-call stale MLS fixers within striking distance of the ask (engine/agent_outreach.py).
 
+Two-step funnel (autopilot.first_touch = opener): an agent we have never written to gets Touch 1, the two-line
+availability question with no price; an answer (logged by engine/reply_negotiator.py) brings the lead back as a
+"They replied" card with the priced note (Touch 2); silence brings a one-line nudge after 48 hours. Listed
+foreclosures inside `urgent_days_to_sale` skip the opener and get the auction-date packet straight away.
+
 Each card says what the property is, why the numbers work (ARV, repairs, our walk-away and opening offer, the fee),
 and the exact action: the plain-text e-mail (engine/human_copy.py), a short text, a 3-sentence phone script, and
 outcome buttons. Sending or logging an outcome writes the same interactions / stages / 48-hour follow-ups as the
@@ -32,7 +37,8 @@ from engine import agent_outreach as ao
 from engine import human_copy as hc
 from engine.scripts import lead_facts
 
-CONTACT_OUTCOMES = ("OFFER_SENT_TO_AGENT", "AGENT_INQUIRY_SENT", "AGENT_FOLLOWUP_SENT", "LEFT_VM", "NO_ANSWER",
+CONTACT_OUTCOMES = ("OFFER_SENT_TO_AGENT", "AGENT_INQUIRY_SENT", "AGENT_OPENER_SENT", "AGENT_FOLLOWUP_SENT",
+                    "LEFT_VM", "NO_ANSWER",
                     "SPOKE_NEEDS_OFFER", "SPOKE_WARM_FOLLOWUP", "SPOKE_NOT_INTERESTED", "AGENT_WILL_PRESENT_LOI",
                     "OFFER_ACCEPTED", "DEAD", "WRONG_NUMBER")
 OUTCOMES = {          # dashboard button -> CRM call outcome
@@ -87,12 +93,19 @@ def why_it_works(lead: Lead, f: dict[str, Any], anchor: float | None, best: floa
     out = [f"Fixed-up value (ARV) about {hc.money(v.arv_estimate)}"
            + (f" from {v.comp_count} nearby sales" if v.comp_count else "") + f"; repairs about "
            f"{hc.money(v.est_repair_cost)} ({(v.rehab_tier or '').lower() or 'estimated'})."]
-    if v.mao_conservative:
+    q = (v.assumptions_json or {}).get("quant") or {}
+    if q.get("buyer_max"):
+        out.append(f"Buyer math: a local rehabber can pay up to {hc.money(q['buyer_max'])} "
+                   f"({q.get('alpha_effective', 0):.0%} of ARV all-in) and still clear "
+                   f"{hc.money((q.get('buyer') or {}).get('profit'))} ({(q.get('buyer') or {}).get('roi', 0):.0%} on cash). "
+                   f"Our target {hc.money(q['mao_target'])} keeps a {hc.money(q['fee_target'])} fee; walk away at "
+                   f"{hc.money(q['mao_walkaway'])}" + (f"; we open at {hc.money(anchor)}" if anchor else "") + ".")
+    elif v.mao_conservative:
         out.append(f"Investor math: 70% of ARV minus repairs and our fee = {hc.money(v.mao_conservative)} walk-away"
                    + (f"; we open at {hc.money(anchor)}" if anchor else "") + ".")
     gap = ao.listing_gap(lead)
     if gap.get("list_price") and gap.get("list_to_mao_75"):
-        out.append(f"The ask is reachable: our 75% ceiling ({hc.money(v.mao_aggressive)}) is "
+        out.append(f"The ask is reachable: our ceiling ({hc.money(v.mao_aggressive)}) is "
                    f"{gap['list_to_mao_75']:.0%} of the {hc.money(gap['list_price'])} ask.")
     if f.get("upset") and v.as_is_value:
         equity = v.as_is_value - f["upset"]
@@ -116,8 +129,18 @@ def _action(kind: str, packet: ao.AgentPacket, agent: dict[str, Any] | None) -> 
     firm = f" ({agent['company']})" if agent and agent.get("company") else ""
     phone = (agent or {}).get("phone_display")
     if kind == "followup":
+        nudge = packet.kind == "opener"
         return (f"Follow up with {who}{firm}: call {phone} first" if phone else f"Follow up with {who}{firm}") + \
-            ", then send the short follow-up e-mail if you get voicemail."
+            (", then send the one-line nudge below if you get voicemail." if nudge else
+             ", then send the short follow-up e-mail if you get voicemail.")
+    if kind == "touch2":
+        return (f"{who}{firm} answered your opener. Send the priced note below today"
+                + (f", then text {phone} that it's in their inbox" if phone else "") + ".")
+    if packet.kind == "opener":
+        return (f"E-mail {who}{firm} the two-line opener below" if (agent or {}).get("email") else
+                f"Text {who}{firm} the opener at {phone}" if phone else f"Contact {who}{firm}") + \
+            ". No price yet: when they answer, the offer (Touch 2) comes up here. If nothing comes back in 48 hours " \
+            "the nudge is scheduled automatically."
     first = (f"E-mail {who}{firm} the note below" if (agent or {}).get("email") else
              f"Call {who}{firm} at {phone} using the 3-sentence script" if phone else f"Contact {who}{firm}")
     then = f", then text the short message to {phone}" if phone and (agent or {}).get("email") else ""
@@ -133,7 +156,8 @@ def _card(session: Session, lead: Lead, packet: ao.AgentPacket, kind: str, lf: A
     return {
         "lead_id": lead.id, "kind": kind, "track": packet.track, "packet_kind": packet.kind,
         "label": {"listed_foreclosure": "Urgent: listed foreclosure", "followup": "Follow-up due",
-                  "mls_fixer": "Stale MLS fixer"}[kind],
+                  "mls_fixer": "Stale MLS fixer", "touch2": "They replied: send the offer"}[kind],
+        "touch": 1 if packet.kind == "opener" else 2,
         "address": f["address"], "town": f.get("town"), "county": f.get("county"),
         "what": what_it_is(f, lf), "why": why_it_works(lead, f, packet.anchor, packet.best),
         "action": _action(kind, packet, agent), "agent": agent,
@@ -152,12 +176,27 @@ def followup_packet(lead: Lead, packet: ao.AgentPacket) -> ao.AgentPacket:
     st = hc.street(packet.address)
     first = packet.agent_first or "there"
     priced = packet.kind == "offer" and packet.anchor
+    me = " ".join(x for x in (op["first"], "with " + op["company"] if op["company"] else "") if x) or "an investor"
+    if packet.kind == "opener":
+        # The nudge: one line, still no price. Touch 2 waits for an answer.
+        note = hc.pick([f"Just making sure this didn't get buried: is {st} still available?",
+                        f"Checking back on {st}: still available, or already in attorney review?",
+                        f"Quick follow-up on {st}: is it still available?"], lead.id)
+        _, tail = hc.split_signature(packet.email_body)
+        body = f"Hi {first},\n\n{note}\n\n{tail}"
+        sms = f"Hi {first}, it's {me}. Is {st} still available? Reply STOP to opt out."
+        script = [f"Hi {first}, it's {me}; I e-mailed you about {st} a couple of days ago.",
+                  "Is it still available, or already in attorney review?",
+                  "Great, I can e-mail you a written offer today."]
+        subject = f"re: {packet.subject}"
+        mailto = (f"mailto:{packet.agent_email}?subject={quote(subject)}&body={quote(body)}"
+                  if packet.agent_email else None)
+        return replace(packet, subject=subject, email_body=body, sms_text=sms, phone_script=script, mailto=mailto)
     note = (f"Following up on my note about {st}. Is the seller still open to a clean, as-is cash offer"
             + (f" around {ao.price_range(packet.anchor, packet.best)}" if priced else "")
             + "? If it helps, I can send the written offer over today.")
     _, tail = hc.split_signature(packet.email_body)
     body = f"Hi {first},\n\n{note}\n\n{tail}"
-    me = " ".join(x for x in (op["first"], "with " + op["company"] if op["company"] else "") if x) or "an investor"
     sms = f"Hi {first}, it's {me} following up on {st}. Is the seller open to a cash offer? Reply STOP to opt out."
     script = [f"Hi {first}, it's {me}, following up on what I sent over for {st}.",
               "Did the seller get a chance to look at it, and is there a number that would work for them?",
@@ -176,23 +215,27 @@ def build_card(session: Session, lead: Lead, now: datetime | None = None) -> dic
     """The card this lead gets right now (None when it has no agent / no offer path)."""
     from engine import fast_track as ft
     due = lead.next_followup_at is not None and lead.next_followup_at <= _now(now)
+    last = ao.last_touch(session, lead)
+    lf = None
     try:
         if ft.is_listed_foreclosure(lead.property):
             lf = ft.listed_foreclosure(session, lead)
             if lf.agent is None:
                 return None
-            packet = ft.build_packet(session, lead, generate_loi=False)
-            if due and lead.last_contact_at:
-                return _card(session, lead, followup_packet(lead, packet), "followup", lf)
-            return _card(session, lead, packet, "listed_foreclosure", lf)
-        if ao.agent_contact(lead) is None:
-            return None
-        packet = ao.build_packet(lead, generate_loi=False, session=session)
+            kind = "listed_foreclosure"
+        else:
+            if ao.agent_contact(lead) is None:
+                return None
+            kind = "mls_fixer"
+        packet = ao.first_touch(lead, session, generate_loi=False)   # opener for a cold agent, else the priced note
     except ValueError:
         return None
+    if last == "reply" and packet.kind != "opener":
+        return _card(session, lead, packet, "touch2", lf)             # they answered the opener: Touch 2
     if due and lead.last_contact_at:
-        return _card(session, lead, followup_packet(lead, packet), "followup")
-    return _card(session, lead, packet, "mls_fixer")
+        base = ao.build_opener(lead) if last == "opener" else packet   # unanswered opener: the one-line nudge
+        return _card(session, lead, followup_packet(lead, base), "followup", lf)
+    return _card(session, lead, packet, kind, lf)
 
 
 def deck(session: Session, limit: int | None = None, now: datetime | None = None) -> dict[str, Any]:
@@ -222,12 +265,18 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
     for lead in ao.candidates(session, limit * 3):
         if not _recently_contacted(lead, now_e, days=7) and lead.status_stage != "OFFER_SENT_TO_AGENT":
             add(lead)
+    from engine import jv_partner_vault as vault
     from engine import operator_setup
     setup = operator_setup.status()
     return {"goal": daily_goal(), "done": contacted_today(session, now), "cards": cards,
             "setup_complete": setup["live"], "auto_email": setup["auto_email"],
             "sent_24h": ao.sent_last_24h(session, now),
-            "daily_email_limit": int(settings().get("outreach", {}).get("daily_email_limit", 25))}
+            "daily_email_limit": int(settings().get("outreach", {}).get("daily_email_limit", 25)),
+            "first_touch": "opener" if ao.opener_enabled() else "offer",
+            # Phase 0: until `partners_needed` rehabbers are active with proof of funds, the deck opens with them.
+            "partners": {"active": vault.active_count(session), "needed": vault.partners_needed(),
+                         "open": vault.phase0_open(session),
+                         "cards": vault.phase0_cards(session, limit=3) if vault.phase0_open(session) else []}}
 
 
 # -- actions -----------------------------------------------------------------------------------------
@@ -236,12 +285,13 @@ class AutopilotError(ValueError):
 
 
 def _packet_for(session: Session, lead: Lead, kind: str, generate_loi: bool) -> ao.AgentPacket:
-    from engine import fast_track as ft
-    if ft.is_listed_foreclosure(lead.property):
-        packet = ft.build_packet(session, lead, generate_loi=generate_loi)
-    else:
-        packet = ao.build_packet(lead, generate_loi=generate_loi, session=session)
-    return followup_packet(lead, packet) if kind == "followup" else packet
+    if kind == "offer":            # the Interested button: always the priced note
+        return ao.build_packet(lead, generate_loi=generate_loi, session=session)
+    packet = ao.first_touch(lead, session, generate_loi=generate_loi)
+    if kind == "followup":
+        base = ao.build_opener(lead) if ao.last_touch(session, lead) == "opener" else packet
+        return followup_packet(lead, base)
+    return packet
 
 
 def send(session: Session, lead_id: int, channel: str, *, subject: str | None = None, body: str | None = None,
@@ -255,7 +305,8 @@ def send(session: Session, lead_id: int, channel: str, *, subject: str | None = 
     card = build_card(session, lead, now)
     if card is None:
         raise AutopilotError("this lead has no listing-agent contact or offer path any more")
-    packet = _packet_for(session, lead, card["kind"], generate_loi=(channel == "smtp" and card["kind"] != "followup"))
+    packet = _packet_for(session, lead, card["kind"],
+                         generate_loi=(channel == "smtp" and card["kind"] != "followup" and card["touch"] == 2))
     op = hc.operator()
     if body is not None and body.strip():
         if channel in ("smtp", "mailto"):

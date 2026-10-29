@@ -168,3 +168,26 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   border: 1px solid var(--line); color: var(--text); }
 .kcard:hover { border-color: var(--accent); text-decoration: none; }
 .kcard b { display: block; } .kcard span { color: var(--muted); font-size: 12px; }
+
+/* Phase 6: two-step funnel, negotiator, vault, skip trace, pricing */
+.light { display: inline-block; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 13px; }
+.light.GREEN { background: #16422d; color: #7ee2ad; } .light.YELLOW { background: #4a3d10; color: #ffd37a; }
+.light.RED { background: #4a1d1d; color: #ff9c9c; } .light.INFO { background: #24476f; color: #8cc0ff; }
+.replybox { margin-top: 12px; padding: 12px; border: 1px dashed var(--border, #2b3440); border-radius: 10px; }
+.replybox textarea { width: 100%; min-height: 90px; }
+.reply-out { margin-top: 10px; }
+.reply-out .nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 8px 0; }
+.reply-out .nums div { background: var(--panel2); padding: 6px 8px; border-radius: 8px; font-size: 13px; }
+.reply-out .nums b { display: block; font-size: 15px; }
+.touch { font-size: 11px; opacity: .85; }
+.phase0 { border: 1px solid #4b3c7a; background: #1b1731; }
+.pt-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; } @media (max-width: 900px) { .pt-grid { grid-template-columns: 1fr; } }
+.pt-table td, .pt-table th { font-size: 13px; vertical-align: top; }
+.pt-table input, .pt-table select { font-size: 12px; max-width: 110px; }
+.st-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; } @media (max-width: 900px) { .st-grid { grid-template-columns: 1fr; } }
+.st-list .kcard.on { border-color: var(--accent); }
+.links .btn { margin: 2px 4px 2px 0; }
+.quant { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 8px; }
+.quant div { background: var(--panel2); padding: 6px 8px; border-radius: 8px; font-size: 13px; }
+.quant b { display: block; font-size: 15px; }
+.structure td { font-size: 13px; padding: 3px 6px; }

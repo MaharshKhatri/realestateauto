@@ -172,7 +172,8 @@ def listed_foreclosure(session: Session, lead: Lead, today: date | None = None) 
         anchor = best = floor = None
     agent = agent_contact(lead)
     sent = session.scalar(select(Interaction).where(
-        Interaction.lead_id == lead.id, Interaction.outcome.in_(("OFFER_SENT_TO_AGENT", "AGENT_INQUIRY_SENT")))
+        Interaction.lead_id == lead.id,
+        Interaction.outcome.in_(("OFFER_SENT_TO_AGENT", "AGENT_INQUIRY_SENT", "AGENT_OPENER_SENT")))
         .order_by(Interaction.occurred_at.desc()).limit(1))
     sale = sheriff.scheduled_auction_date if sheriff else None
     return ListedForeclosure(

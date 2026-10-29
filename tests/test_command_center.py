@@ -97,18 +97,29 @@ def test_deck_cards_explain_the_deal_and_send_logs_progress(db, setup_paths, tmp
     d = ap.deck(db)
     assert d["goal"] == 15 and d["done"] == 0 and d["setup_complete"] and not d["auto_email"]
     c = next(x for x in d["cards"] if x["lead_id"] == lead.id)
-    assert c["kind"] == "mls_fixer" and c["packet_kind"] == "offer" and c["style"] == []
+    # A cold agent gets Touch 1: the two-line availability question, no price, no summary block.
+    assert c["kind"] == "mls_fixer" and c["packet_kind"] == "opener" and c["touch"] == 1 and c["style"] == []
     assert "Newark" in c["what"] and "140 days" in c["what"]
     assert any("$260,000 walk-away" in w for w in c["why"]) and "E-mail Pat Agent (Garden Realty)" in c["action"]
-    assert len(c["phone_script"]) == 3 and c["subject"] and "--- Offer Summary ---" in c["body"]
+    assert len(c["phone_script"]) == 3 and c["subject"] and "--- Offer Summary ---" not in c["body"]
+    assert "available" in c["body"] and "PO Box 10" in c["body"]
     with pytest.raises(ap.AutopilotError, match="mailing address"):
         ap.send(db, lead.id, "mailto", body="Hi Pat, short note with no footer.")
-    edited = c["body"].replace("Quick question", "Quick one")
+    edited = c["body"].replace("still available", "still on the market")
     r = ap.send(db, lead.id, "mailto", subject="question on your listing", body=edited)
-    assert r["stage"] == "OFFER_SENT_TO_AGENT" and r["done"] == 1 and r["followup_at"]
-    inter = db.query(Interaction).filter_by(lead_id=lead.id, outcome="OFFER_SENT_TO_AGENT").one()
+    assert r["stage"] == "NEW" and r["done"] == 1 and r["followup_at"]
+    inter = db.query(Interaction).filter_by(lead_id=lead.id, outcome="AGENT_OPENER_SENT").one()
     assert inter.channel == "email"
     assert all(x["lead_id"] != lead.id for x in ap.deck(db)["cards"])       # contacted: off today's deck
+    # The agent answers: Touch 2 is the priced note with the full summary block.
+    db.add(Interaction(lead_id=lead.id, channel="email_in", outcome="AGENT_REPLIED", notes="yes, still available",
+                       occurred_at=datetime.now()))
+    db.flush()
+    t2 = ap.build_card(db, lead)
+    assert t2["kind"] == "touch2" and t2["packet_kind"] == "offer" and "--- Offer Summary ---" in t2["body"]
+    r2 = ap.send(db, lead.id, "mailto", subject="offer on your listing", body=t2["body"])
+    assert r2["stage"] == "OFFER_SENT_TO_AGENT"
+    assert db.query(Interaction).filter_by(lead_id=lead.id, outcome="OFFER_SENT_TO_AGENT").count() == 1
 
 
 def test_smtp_send_from_autopilot_attaches_offer(db, setup_paths, tmp_path, monkeypatch):
@@ -117,12 +128,20 @@ def test_smtp_send_from_autopilot_attaches_offer(db, setup_paths, tmp_path, monk
     operator_setup.save({**GOOD, "app_password": "abcdefghijklmnop"})
     lead = deal(db)
     FakeSMTP.sent = []
-    r = ap.send(db, lead.id, "smtp", smtp_factory=FakeSMTP)
+    r = ap.send(db, lead.id, "smtp", smtp_factory=FakeSMTP)             # Touch 1 over SMTP: plain, no attachment
     msg = FakeSMTP.sent[0]
-    assert r["stage"] == "OFFER_SENT_TO_AGENT" and msg["To"] == "pat@broker.test"
+    assert r["stage"] == "NEW" and msg["To"] == "pat@broker.test"
     text = msg.get_body(preferencelist=("plain",)).get_content()
-    assert "--- Offer Summary ---" in text and "PO Box 10, Edison" in text
-    assert any(p.get_filename() for p in msg.iter_attachments())
+    assert "attorney review" in text and "PO Box 10, Edison" in text and "--- Offer Summary ---" not in text
+    assert not list(msg.iter_attachments())
+    db.add(Interaction(lead_id=lead.id, channel="email_in", outcome="AGENT_REPLIED", notes="still available",
+                       occurred_at=datetime.now()))
+    db.flush()
+    r2 = ap.send(db, lead.id, "smtp", smtp_factory=FakeSMTP)            # Touch 2: the offer with the 1-page LOI
+    msg2 = FakeSMTP.sent[1]
+    text2 = msg2.get_body(preferencelist=("plain",)).get_content()
+    assert r2["stage"] == "OFFER_SENT_TO_AGENT" and "--- Offer Summary ---" in text2
+    assert any(p.get_filename() for p in msg2.iter_attachments())
 
 
 def test_outcomes_interested_generates_offer_and_sold_kills(db, setup_paths, tmp_path, monkeypatch):
@@ -308,3 +327,70 @@ def test_tax_list_import_falls_back_when_njgin_is_down(db, tmp_path, monkeypatch
     r = import_tax_list(db, TAX_CSV.encode(), "list.csv", county="Essex", town="Newark", gis=DownGIS())
     assert r.matched_local == 1 and r.matched_njgin == 0 and any("didn't answer" in n for n in r.notes)
     assert db.query(DistressSignal).filter_by(property_id=a.property_id, signal_type=SignalType.TAX_DELINQUENT).count() == 1
+
+
+def test_two_step_funnel_cards_opener_nudge_then_touch2(db, setup_paths):
+    from engine import agent_outreach as ao
+    from engine import human_copy as hc
+    operator_setup.save(GOOD)
+    lead = deal(db)
+    card = ap.build_card(db, lead)
+    assert card["kind"] == "mls_fixer" and card["packet_kind"] == "opener" and card["touch"] == 1
+    assert "two-line opener" in card["action"] and "$" not in card["body"] and card["style"] == []
+    assert any("Buyer math" in w or "walk-away" in w for w in card["why"])
+    with pytest.raises(ap.AutopilotError, match="mailing address"):
+        ap.send(db, lead.id, "mailto", body="Hi Pat, is it still available?")
+    r = ap.send(db, lead.id, "mailto", now=datetime(2026, 10, 20, 9, 0))
+    assert r["stage"] != "OFFER_SENT_TO_AGENT" and r["done"] == 1
+    assert db.query(Interaction).filter_by(lead_id=lead.id, outcome="AGENT_OPENER_SENT").count() == 1
+    # 48 hours of silence: the one-line nudge, still no price
+    nudge = ap.build_card(db, lead, now=datetime(2026, 10, 23, 15, 0))
+    assert nudge["kind"] == "followup" and nudge["packet_kind"] == "opener" and nudge["touch"] == 1
+    assert "$" not in nudge["body"] and "nudge" in nudge["action"] and hc.lint(nudge["body"]) == []
+    assert nudge["subject"].startswith("re: ")
+    # the agent answers: Touch 2 is the priced note
+    db.add(Interaction(lead_id=lead.id, channel="email_in", outcome="AGENT_REPLIED", notes="still available",
+                       occurred_at=datetime(2026, 10, 23, 16, 0)))
+    db.flush()
+    t2 = ap.build_card(db, lead, now=datetime(2026, 10, 23, 17, 0))
+    assert t2["kind"] == "touch2" and t2["packet_kind"] == "offer" and t2["touch"] == 2
+    assert "--- Offer Summary ---" in t2["body"] and "answered your opener" in t2["action"]
+    r2 = ap.send(db, lead.id, "mailto", now=datetime(2026, 10, 23, 17, 5))
+    assert r2["stage"] == "OFFER_SENT_TO_AGENT"
+
+
+def test_phase6_endpoints_reply_structure_skiptrace_and_first_touch(db, client, setup_paths):
+    from pathlib import Path as _P
+    operator_setup.save(GOOD)
+    lead = deal(db)
+    db.commit()
+    r = client.post("/api/autopilot/first-touch", json={"mode": "offer"}).json()
+    assert r["first_touch"] == "offer"
+    assert yaml.safe_load((setup_paths / "settings.local.yaml").read_text())["autopilot"]["first_touch"] == "offer"
+    assert client.get("/api/autopilot").json()["first_touch"] == "offer"
+    assert client.post("/api/autopilot/first-touch", json={"mode": "shout"}).status_code == 422
+    client.post("/api/autopilot/first-touch", json={"mode": "opener"})
+    preview = client.post(f"/api/leads/{lead.id}/analyze-reply", json={"text": "Seller would take 250k", "save": False}).json()
+    assert preview["verdict"] == "GREEN" and "interaction_id" not in preview and preview["numbers"]["counter"] == 250000
+    saved = client.post(f"/api/leads/{lead.id}/analyze-reply", json={"text": "Seller would take 250k"}).json()
+    assert saved["interaction_id"] and saved["stage"] == "NEGOTIATING" and saved["last_counter_amount"] == 250000
+    assert saved["reply_text"].startswith("Hi Pat,") and saved["headline"].startswith("ACCEPT")
+    d = client.get(f"/api/leads/{lead.id}").json()
+    assert d["funnel"]["last_touch"] == "reply" and d["funnel"]["first_touch"] == "opener"
+    assert d["partner"]["partners_needed"] == 3 and d["structure"]["recommended"] in ("assignment", "double_close")
+    assert "rider" in d["gates"] and d["property"]["mun_code"] == "0714" and d["deal_cfg"]["pricing_model"] == "quant"
+    s = client.get(f"/api/leads/{lead.id}/structure?seller_refuses=true").json()
+    assert s["recommended"] == "double_close" and s["entity_option"]["conditions"] and s["rider_gate"]["allowed"]
+    c = client.post("/api/structure/compare", json={"contract_price": 250000, "buyer_price": 270000}).json()
+    assert c["recommended"] == "assignment" and c["assignment"]["net"] == 20000 - 150
+    owner = make_lead(db, sheriff_days=20, upset=150000, vacant=True, verdict="STRONG")
+    owner.property.owner_name = "QUINN Q SAMPLE"
+    db.commit()
+    q = client.get("/api/skiptrace/queue").json()
+    row = next(x for x in q["rows"] if x["lead_id"] == owner.id)
+    assert row["tags"] == ["VACANT_SHERIFF"] and row["links"]["truepeoplesearch"].startswith("https://www.truepeoplesearch.com")
+    text = _P("tests/fixtures/skiptrace/truepeoplesearch_detail.txt").read_text()
+    t = client.post(f"/api/leads/{owner.id}/skiptrace-paste", json={"text": text}).json()
+    assert t["saved"]["best_phone"] == "(973) 555-0101" and t["ready_to_call"] and t["stage"] == "SKIP_TRACE"
+    assert client.post("/api/leads/999999/skiptrace-paste", json={"text": text}).status_code == 404
+    assert all(x["lead_id"] != owner.id for x in client.get("/api/skiptrace/queue").json()["rows"])

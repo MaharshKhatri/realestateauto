@@ -110,3 +110,53 @@ def test_candidates_and_batch_page(db, tmp_path, postal):
     index, packets = ao.write_batch(db, 10, tmp_path / "blast")
     html = index.read_text()
     assert index.exists() and "Listing-agent offers" in html and packets[0].lead_id == good.id
+
+
+# -- two-step funnel: Touch 1 opener, nudge, Touch 2 --------------------------------------------------------
+def test_opener_is_two_lines_with_only_the_required_footer(db, postal):
+    from engine import human_copy as hc
+    lead, agent = listed(db)
+    p = ao.build_opener(lead)
+    assert p.kind == "opener" and p.anchor is None and p.best is None and p.loi_files == {}
+    body = p.email_body
+    question, _, footer = body.partition("Thanks,")
+    assert question.startswith("Hi Pat,") and "attorney review" in question and "available" in question
+    assert "$" not in body and "http" not in body and "--- " not in body and "*" not in body
+    assert len(question.split()) <= 32                     # the question itself stays short
+    assert "PO Box 10" in footer and '"no more"' in footer and "Jordan" in footer
+    assert hc.lint(body) == []
+    assert "STOP" in p.sms_text and "available" in p.sms_text and len(p.sms_text) <= 160
+    assert len(p.phone_script) == 3 and p.mailto.startswith("mailto:pat@broker.test?subject=")
+    # structure varies per lead, subject too
+    others = {ao.build_opener(listed(db)[0]).email_body.split("\n")[2] for _ in range(6)}
+    assert len(others) >= 2
+
+
+def test_first_touch_opener_then_offer_and_nudge_logging(db, postal):
+    lead, agent = listed(db)
+    assert ao.opener_enabled() and ao.prior_touches(db, lead) == 0 and ao.last_touch(db, lead) is None
+    p1 = ao.first_touch(lead, db, generate_loi=False)
+    assert p1.kind == "opener"
+    stage = ao.record_sent(db, lead, p1, "email", now=datetime(2026, 10, 20, 9, 0))
+    assert stage == lead.status_stage != "OFFER_SENT_TO_AGENT"          # an opener is not an offer
+    assert ao.last_touch(db, lead) == "opener" and ao.prior_touches(db, lead) == 1
+    assert lead.next_followup_at.date() == datetime(2026, 10, 22).date() and lead.next_followup_at.hour == 10
+    p2 = ao.first_touch(lead, db, generate_loi=False)                    # already touched: the priced note
+    assert p2.kind == "offer" and p2.anchor and "--- Offer Summary ---" in p2.email_body
+
+
+def test_urgent_listed_foreclosure_skips_the_opener(db, postal):
+    lead = make_lead(db, sheriff_days=9, upset=150_000, vacant=True, stale_listing=True, list_price=360_000)
+    add_contact(db, lead, contact_type="LISTING_AGENT", name="Pat Agent", phone="9735550100", email="pat@broker.test")
+    assert not ao.opener_applies(db, lead, days_to_sale=9)
+    p = ao.first_touch(lead, db, generate_loi=False)
+    assert p.kind in ("offer", "inquiry") and p.sale_date is not None
+    later = make_lead(db, sheriff_days=40, upset=150_000, vacant=True, stale_listing=True, list_price=360_000)
+    add_contact(db, later, contact_type="LISTING_AGENT", name="Sam Agent", phone="9735550101", email="sam@broker.test")
+    assert ao.first_touch(later, db, generate_loi=False).kind == "opener"
+
+
+def test_first_touch_setting_can_send_the_offer_first(db, postal, monkeypatch):
+    monkeypatch.setitem(settings(), "autopilot", {**dict(settings().get("autopilot", {})), "first_touch": "offer"})
+    lead, _ = listed(db)
+    assert not ao.opener_enabled() and ao.first_touch(lead, db, generate_loi=False).kind == "offer"
