@@ -496,6 +496,13 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   commission and closing costs: ask the agent what the seller must net.
 - **Partner copy** (`engine/jv_partner_vault.py`) says "distressed NJ deals", never "off-market": most deals the desk
   finds are listed (stale MLS fixers, listed foreclosures).
+- **Sheriff payoff** (learned 2026-11-01, `agents/scrapers/sheriff_sale_agent.py::parse_detail_page`): CivilView's
+  "Approx. Upset" field is often the old amount due (Bergen's sheriff prints "the approximate upset price listed below is
+  not accurate"). The notice's own figure wins as `upset_amount` ("the upset price … is $530,000.00", "ESTIMATED UPSET …
+  BID AMOUNT", "estimated upset price is … which includes interest, costs"); `payoff_estimate` = the highest of that,
+  the field and the amount due (a plaintiff may also bid below its debt) and is stored as `amount_owed`;
+  "subject to approximately $X … taxes, water" is `prior_liens`. `known_debt` = payoff + prior liens, and the outlier
+  guard re-prices any valuation whose known debt moved, offline, on the next pass (quick or full refresh).
 
 ### Cloud-to-laptop database snapshot (learned 2026-10-29) — enforced in code
 - `db/snapshot.py` carries the database between the cloud session and the operator's laptop as one encrypted file:

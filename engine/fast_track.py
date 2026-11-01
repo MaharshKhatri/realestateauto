@@ -149,8 +149,8 @@ def offer_numbers(lead: Lead) -> tuple[float | None, float | None, float | None]
         if ask:
             best = min(best, ask) if best else best
             anchor = min(anchor, round(ask * 0.90, -2)) if anchor else anchor
-    sheriff = _sheriff(lead.property)
-    payoff = sheriff.amount_owed if sheriff else None
+    from engine.underwriter import known_debt
+    payoff = known_debt(lead.property)            # payoff estimate + liens the sale is subject to
     walk = v.mao_aggressive if v is not None else None
     if payoff and anchor and walk and anchor < payoff <= walk and v.verdict != "SHORT_SALE_ONLY":
         # Below the payoff the seller can't close without the lender's short-sale approval, which won't come before a

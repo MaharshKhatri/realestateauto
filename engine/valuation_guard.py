@@ -213,6 +213,14 @@ class OutlierGuardAgent(BaseAgent):
             except Exception as exc:  # noqa: BLE001
                 ctx.error(f"{lead.property.parcel_id}: {type(exc).__name__}: {exc}")
                 continue
+            if status == "unchanged":
+                # The payoff moved (a re-scraped sale notice, liens): re-price offline with the stored comps so the
+                # verdict and offers follow it now, not at the next live re-underwrite.
+                cur = lead.property.current_valuation
+                if cur is not None and (known_debt(lead.property) or 0) != (cur.debt_estimate or 0):
+                    from engine.underwriter import reprice
+                    if reprice(s, lead.property) is not None:
+                        status = "debt_repriced"
             ctx.records_processed += 1
             ctx.bump(status)
             if status != "unchanged":

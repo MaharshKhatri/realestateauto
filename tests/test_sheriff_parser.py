@@ -37,8 +37,20 @@ def test_bergen_detail_fka_block_lot_and_municipality():
     d = parse_detail_page((CV / "detail_bergen.html").read_text())
     assert d["block_lot"] == ("152.01", "95.08")
     assert d["municipality_hint"] == "MAHWAH"
-    assert d["upset_amount"] == pytest.approx(1873395.84)
+    # The sheriff: "the approximate upset price listed below is not accurate"; the notice's own figure wins.
+    assert d["upset_amount"] == pytest.approx(2071000.00) and d["judgment_amount"] == pytest.approx(1873395.84)
+    assert d["payoff_estimate"] == pytest.approx(2071000.00)
     assert d["occupancy"] == "OCCUPIED"
+
+
+def test_notice_upset_and_liens_beat_the_approx_field_and_five_adjournments_are_counted():
+    """Live Bergen page (names, address and parcel replaced): CivilView's field says $500,748.77, the March amount
+    due; the notice says the upset is $530,000.00 and the sale is subject to ~$9,239.33 of taxes and water."""
+    d = parse_detail_page((CV / "detail_bergen_upset_notice.html").read_text())
+    assert d["fields"]["approx. upset"] == "$500,748.77"
+    assert d["upset_amount"] == 530000.00 and d["stated_upset"] == 530000.00 and d["judgment_amount"] == 500748.77
+    assert d["payoff_estimate"] == 530000.00 and d["prior_liens"] == 9239.33
+    assert d["adjournments_total"] == 5 and d["defendant_adjournments"] == 2 and d["plaintiff_adjournments"] == 2
 
 
 def test_camden_and_passaic_detail_formats():

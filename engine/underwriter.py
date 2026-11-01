@@ -596,8 +596,11 @@ def reprice(session: Session, prop: Property) -> Valuation | None:
 
 
 def known_debt(prop: Property) -> float | None:
+    """The foreclosure payoff plus the taxes / water liens the sale notice says it is subject to."""
     sheriff = next((s for s in prop.active_signals if s.signal_type == SignalType.SHERIFF_SALE), None)
-    return sheriff.amount_owed if sheriff and sheriff.amount_owed else None
+    if not (sheriff and sheriff.amount_owed):
+        return None
+    return sheriff.amount_owed + float((sheriff.raw_metadata_json or {}).get("prior_liens") or 0)
 
 
 def inputs_changed(prop: Property, val: Valuation) -> bool:

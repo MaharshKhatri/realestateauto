@@ -1,0 +1,327 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <title>Sales Listing Detail</title>
+
+    <link href="/Content/bootstrap.min.css" rel="stylesheet"/>
+<link href="/Content/site.css" rel="stylesheet"/>
+
+
+<link href="/Content/County/00815.css" rel="stylesheet"/>
+
+
+    <script src="/Scripts/jquery-1.10.2.js"></script>
+
+
+    <script src="/Scripts/modernizr-2.6.2.js"></script>
+
+</head>
+<body>
+    
+    <div>
+        
+
+<script>
+    window.onload = function () {
+        var elem1 = document.getElementById("shortTable");
+        if (elem1 != null) {
+            var elem = document.getElementById("longTable");
+            elem.style.display = "none";
+            var elemCollapse = document.getElementById("collapse");
+            elemCollapse.style.display = "none";
+
+        }
+        else {
+            var elemCollapse = document.getElementById("collapse");
+            elemCollapse.style.display = "none";
+
+            var elemExpand = document.getElementById("expand");
+            elemExpand.style.display = "none";
+        }
+    }
+    function toggleTable() {
+        var elem = document.getElementById("longTable");
+        var elem1 = document.getElementById("shortTable");
+        var hide = elem.style.display == "none";
+        if (hide) {
+            elem.style.display = "table";
+            elem1.style.display = "none";
+
+            var elemCollapse = document.getElementById("collapse");
+            elemCollapse.style.display = "table";
+
+            var elemExpand = document.getElementById("expand");
+            elemExpand.style.display = "none";
+        }
+        else {
+            elem.style.display = "none";
+            elem1.style.display = "table";
+            var elemCollapse = document.getElementById("collapse");
+            elemCollapse.style.display = "none";
+
+            var elemExpand = document.getElementById("expand");
+            elemExpand.style.display = "table";
+        }
+    }
+    function openTab(url) {
+        window.open(url, "_blank");
+    }
+    function handleKeyDown(event, callback) {
+        if (event.key === 'Enter') {
+            callback();
+        }
+    }
+</script>
+<style>
+    .sale-detail-item:last-child {
+        border-bottom: 1px solid #ccc;
+    }
+    .sale-detail-item:nth-child(odd) {
+            background-color: #f9f9f9;
+        }
+    .sale-detail-item{
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 10px;
+        border-top: 1px solid #ccc;
+    }
+    .sale-detail-label{
+        font-weight: bold;
+        width: 200px;
+    }
+</style>
+<main>
+    <div class="container-fluid">
+
+    </div>
+
+    <div class="container">
+
+        <h1>Sales Listing Detail (Bergen County, NJ)</h1>
+
+        
+
+        <div class="row">
+            <p class="text-center"><a href="javascript:history.go(-1)" class="btn btn-primary" role="button">Back</a></p>
+        </div>
+
+        <br />
+
+        <div class="table-responsive">
+
+            <div class="sale-details-list">
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Sheriff #&colon;</div>
+                        <div class="sale-detail-value">
+26009999                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Court Case #&colon;</div>
+                        <div class="sale-detail-value">
+F00999925                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Sales Date&colon;</div>
+                        <div class="sale-detail-value">
+11/6/2026                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Plaintiff&colon;</div>
+                        <div class="sale-detail-value">
+SAMPLE MORTGAGE TRUST                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Defendant&colon;</div>
+                        <div class="sale-detail-value">
+SAMPLE HOLDINGS LLC, QUINN Q SAMPLE, RILEY R SAMPLE, JORDAN J EXAMPLE, AVERY A EXAMPLE, ET AL                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Address&colon;</div>
+                        <div class="sale-detail-value">
+12 SAMPLE AVENUE<br/>GARFIELD NJ 07026                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Description&colon;</div>
+                        <div class="sale-detail-value">
+SUPERIOR COURT OF NEW JERSEY
+SHERIFF'S SALE NO. 26009999
+DOCKET NO.   F00999925
+
+PLAINTIFF: SAMPLE MORTGAGE TRUST
+DEFENDANT(S): SAMPLE HOLDINGS LLC, QUINN Q SAMPLE, RILEY R SAMPLE, JORDAN J EXAMPLE, AVERY A EXAMPLE, ET AL
+ATTORNEY:
+SAMPLE LAW GROUP LLC
+1 SAMPLE PLAZA 
+SUITE 201
+HACKENSACK, NJ 07601 
+201-555-0100
+
+By virtue of the above stated Writ of Execution to me directed and delivered, I have levied upon and will expose for sale at public vendue on 1st DAY of May 2026 between the hours of twelve and four o'clock in the afternoon of said day, that is to say, at 12:00 P.M. prevailing time at the Large Conference Room, 2 Bergen County Plaza, Hackensack, New Jersey to wit:
+All that certain lot, piece or parcel of land, with the buildings and improvements thereon erected, situate, lying and being in GARFIELD, County of Bergen and State of New Jersey:
+Being known as: LOT 7, BLOCK 999.01
+PREMISES COMMONLY KNOWN AS:
+12 SAMPLE AVENUE GARFIELD, NJ 07026 
+The short form description provided herein does not constitute a full legal description. A full legal description is annexed to the Writ of Execution on file with the Sheriff of Bergen County. 
+Lien(s)/Taxes/CWPP: PLEASE TAKE NOTICE that the upset price for the sale of the property being sold is $530,000.00. The property is currently occupied. Dimensions: 251.46' X 37.50' X 251.185' X 37.50'; Nearest Street: Sample Street; Property sold subject to approximately $9,239.33 plus interest and penalties due for taxes, water, etc. 
+Together with all and singular the rights, liberties, privileges, hereditaments and appurtenances thereunto belonging or in anywise appertaining and the reversion and remainders, rents, issues and profits thereof, and also all the estate, right, title, interest, use, property, claim and demand of the said defendants of, in, to and out of the same, be sold to pay and satisfy in the first place unto the said plaintiff plus interest thereon. The property shall be sold subject to all liens and encumbrances of record and the Sheriff makes no representations, express or implied, as to the existence, amount, or validity of any liens and encumbrances on the property which is the subject matter of this sale. This notice is further subject to the Conditions of Sale as set forth by the Sheriff of Bergen County and is subject to the terms and conditions of the Foreclosure Fairness Act. The Sheriff hereby reserves the right to adjourn this sale without further notice through publication.
+Surplus Money: If after the sale and satisfaction of the mortgage debt, including costs and expenses, there remains any surplus money, the money will be deposited into the Superior Court Trust Fund and any person claiming the surplus, or any part thereof, may file a motion pursuant to Court Rules 4:64-3 and 4:57-2 stating the nature and extent of that person's claim and asking for an order directing payment of the surplus money. The Sheriff or other person conducting the sale will have information regarding the surplus, if any.
+The approximate amount due on this execution is $500,748.77 plus interest, costs and fees of the sale, and the Sheriff's fees and commission. Any prior liens, as per the affidavit of consideration, are not a representation of fact on the part of the Sheriff. 
+
+ANTHONY CURETON, SHERIFF 
+DATED: March 24, 2026                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Approx. Upset*&colon;</div>
+                        <div class="sale-detail-value">
+$500,748.77                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Attorney&colon;</div>
+                        <div class="sale-detail-value">
+SAMPLE LAW GROUP LLC                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Parcel #&colon;</div>
+                        <div class="sale-detail-value">
+LOT 7, BLOCK 999.01                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+                    <div class="sale-detail-item">
+                        <div class="sale-detail-label">Property Note&colon;</div>
+                        <div class="sale-detail-value">
+PLEASE TAKE NOTICE that the upset price for the sale of the property being sold is $530,000.00. The property is currently occupied. Dimensions: 251.46' X 37.50' X 251.185' X 37.50'; Nearest Street: Sample Street; Property sold subject to approximately $9,239.33 plus interest and penalties due for taxes, water, etc.                        </div>
+                        <div class="sale-detail-image DetailImageAlign">
+                        </div>
+                    </div>
+            </div>
+
+
+            <br />
+
+            <h2>
+                Status History
+
+
+            </h2>
+
+
+            <table class="table table-striped " id="longTable" style="display:table">
+                <thead style="word-wrap: break-word;">
+                    <tr>
+                        <th>Status </th>
+                        <th>Date  </th>
+                                                <th id="collapse">
+                            <a href="javascript:;" class="margin-left-18" onclick="toggleTable();" onkeydown="handleKeyDown(event, toggleTable);">
+                                <div class="col-sm-1 control-label text-nowrap" id="collapseLabel">[Collapse All]</div>
+                                <br />
+                                <span class="glyphicon glyphicon-chevron-up" id="collapseArrow"></span>
+                            </a>
+                        </th>
+
+                    </tr>
+                </thead>
+
+                    <tr>
+
+                        <td>Scheduled</td>
+
+                            <td>5/1/2026</td>
+
+
+
+
+                    </tr>
+                    <tr>
+
+                        <td>Adjourned - Defendant</td>
+
+                            <td>6/12/2026</td>
+
+
+
+
+                    </tr>
+                    <tr>
+
+                        <td>Adjourned - Defendant</td>
+
+                            <td>7/17/2026</td>
+
+
+
+
+                    </tr>
+                    <tr>
+
+                        <td>Adjourned - Plaintiff</td>
+
+                            <td>8/21/2026</td>
+
+
+
+
+                    </tr>
+                    <tr>
+
+                        <td>Adjourned - Plaintiff</td>
+
+                            <td>9/25/2026</td>
+
+
+
+
+                    </tr>
+                    <tr>
+
+                        <td>Adjourned - Joint</td>
+
+                            <td>11/6/2026</td>
+
+
+
+
+                    </tr>
+            </table>
+
+
+        </div>
+        
+
+            <h3><span style="color:#595959; font-size: small;"> *Excludes Judgment Interest and Sheriff Fees. </span></h3>
+
+    </div>
+</main>
+
+    </div>
+
+    <script src="/Scripts/bootstrap.min.js"></script>
+<script src="/Scripts/respond.js"></script>
+
+    
+</body>
+</html>

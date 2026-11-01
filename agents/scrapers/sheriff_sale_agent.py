@@ -65,6 +65,9 @@ LOT_BLOCK_PATTERNS = [
 UPSET_IN_TEXT = re.compile(
     r"UPSET[^$]{0,90}\$\s*(?P<amt>\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?)", re.I)
 DUE_IN_TEXT = re.compile(r"AMOUNT DUE[^$]{0,60}\$\s*(?P<amt>\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?)", re.I)
+# "Property sold subject to approximately $9,239.33 plus interest and penalties due for taxes, water, etc."
+LIENS_IN_TEXT = re.compile(r"SUBJECT TO (?:APPROXIMATELY\s+)?\$\s*(?P<amt>\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?)"
+                           r"[^.]{0,80}?\b(?:TAXES|WATER|SEWER)", re.I)
 MUNI_IN_TEXT = re.compile(
     r"(?:LYING AND BEING IN|SITUATE (?:IN|AT))\s+(?:THE\s+)?(?:(?:TOWNSHIP|CITY|BOROUGH|TOWN|VILLAGE)\s+)?(?:OF\s+)?"
     r"(?P<muni>[A-Z][A-Z .'\-]+?)\s*,\s*(?:IN THE\s+)?COUNTY", re.I)
@@ -176,18 +179,25 @@ def parse_detail_page(html: str) -> dict[str, Any]:
     note = fields.get("property note", "")
     all_text = "\n".join([description, note, fields.get("parcel #", "")])
 
-    upset = None
+    field_upset = None
     for key in ("approx. upset", "good faith upset", "upset", "minimum bid"):
-        upset = upset or parse_money(fields.get(key))
-    if upset is None:
-        m = UPSET_IN_TEXT.search(all_text.replace("\n", " "))
-        if m:
-            upset = parse_money(m.group("amt"))
+        field_upset = field_upset or parse_money(fields.get(key))
+    # The notice's own upset wins over CivilView's "Approx. Upset" field: Bergen's sheriff prints "the approximate upset
+    # price listed below is not accurate", and notices state the figure with interest and costs ("the upset price ...
+    # is $530,000.00", "ESTIMATED UPSET ... BID AMOUNT: $2,071,000.00", "estimated upset price is $585,004.93").
+    m = UPSET_IN_TEXT.search(" ".join([note, description]).replace("\n", " "))
+    stated_upset = parse_money(m.group("amt")) if m else None
+    upset = stated_upset or field_upset
     judgment = parse_money(fields.get("judgment")) or parse_money(fields.get("approx. judgment"))
     if judgment is None:
         m = DUE_IN_TEXT.search(all_text.replace("\n", " "))
         if m:
             judgment = parse_money(m.group("amt"))
+    # What a sale before the auction has to pay off: the highest figure the notice gives (the upset includes interest
+    # and costs; a plaintiff can also set its opening bid below the debt), plus liens the sale is "subject to".
+    payoff = max([x for x in (field_upset, stated_upset, judgment) if x] or [0]) or None
+    m = LIENS_IN_TEXT.search(all_text.replace("\n", " "))
+    prior_liens = parse_money(m.group("amt")) if m else None
 
     occ_text = all_text.upper()
     occupancy = None
@@ -210,6 +220,9 @@ def parse_detail_page(html: str) -> dict[str, Any]:
         "address": clean((fields.get("address") or fields.get("property address") or "").replace("\n", " ")),
         "upset_amount": upset,
         "judgment_amount": judgment,
+        "stated_upset": stated_upset,
+        "payoff_estimate": payoff,
+        "prior_liens": prior_liens,
         "block_lot": extract_block_lot(fields.get("parcel #"), description, note),
         "occupancy": occupancy,
         "municipality_hint": muni,
@@ -451,6 +464,7 @@ class SheriffSaleAgent(BaseAgent):
         meta = {
             "county": listing.county, "sheriff_number": listing.sheriff_number, "address": address,
             "upset_amount": d.get("upset_amount"), "judgment_amount": d.get("judgment_amount"),
+            "payoff_estimate": d.get("payoff_estimate"), "prior_liens": d.get("prior_liens"),
             "occupancy": d.get("occupancy"), "status_history": d.get("status_history"),
             "adjournments_total": d.get("adjournments_total", 0),
             "defendant_adjournments": d.get("defendant_adjournments", 0),
@@ -464,7 +478,7 @@ class SheriffSaleAgent(BaseAgent):
             ctx.session, prop, signal_type=SignalType.SHERIFF_SALE, source=SOURCE,
             source_ref=f"{listing.county}:{listing.sheriff_number}",
             severity_weight=severity_for(sale_date), scheduled_auction_date=sale_date,
-            amount_owed=d.get("upset_amount") or d.get("judgment_amount"),
+            amount_owed=d.get("payoff_estimate") or d.get("upset_amount") or d.get("judgment_amount"),
             plaintiff_or_lienholder=listing.plaintiff[:300], defendant=listing.defendant[:300],
             case_number=d.get("court_case"), status=status,
             source_url=f"{BASE}/Sales/SalesSearch?countyId={NJ_COUNTY_IDS[listing.county]}",

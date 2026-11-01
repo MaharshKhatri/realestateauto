@@ -111,3 +111,21 @@ def test_guard_agent_runs_offline(db):
     cur = lead.property.current_valuation
     assert cur.verdict == "PASS" and cur.assumptions_json["outlier_guard"]["non_residential"]
     assert OutlierGuardAgent(offline=True).execute().metrics_json.get("unchanged") == 1
+
+
+def test_guard_reprices_offline_when_the_payoff_moves(db):
+    """A re-scraped sale notice raises the payoff above our walk-away: the next (offline) guard pass re-prices the
+    valuation from its stored comps, so the deck stops offering the old numbers right away."""
+    from db.models import SignalType
+    lead = make_lead(db, upset=150_000, absentee=True)          # FRFPA-exempt owner: the debt alone decides
+    db.commit()
+    assert OutlierGuardAgent(offline=True).execute().metrics_json.get("debt_repriced") is None
+    sig = next(s for s in lead.property.active_signals if s.signal_type == SignalType.SHERIFF_SALE)
+    sig.amount_owed = 400_000
+    sig.raw_metadata_json = {**sig.raw_metadata_json, "prior_liens": 9_239.33}
+    db.commit()
+    run = OutlierGuardAgent(offline=True).execute()
+    assert run.metrics_json.get("debt_repriced") == 1
+    db.expire_all()
+    cur = lead.property.current_valuation
+    assert cur.debt_estimate == 409_239.33 and cur.verdict == "SHORT_SALE_ONLY"
