@@ -46,10 +46,27 @@ def _step(i: int, **kw: Any) -> None:
         _state["steps"][i].update(kw)
 
 
+_stop = threading.Event()
+
+
+def stop() -> dict[str, Any]:
+    """⏹ Stop refresh: the step that is running finishes (each agent commits in short checkpoints, so it releases
+    the database quickly); no further step starts."""
+    if _state["running"]:
+        _stop.set()
+        _set(stopping=True)
+    return status()
+
+
 def _work(mode: str, steps: list[str], runner: Callable[..., Any]) -> None:
     from swarm.orchestrator import REGISTRY
     try:
         for i, name in enumerate(steps):
+            if _stop.is_set():
+                for j in range(i, len(steps)):
+                    _step(j, status="skipped", note="stopped by you")
+                _set(error="stopped by you before " + name)
+                break
             _set(current=name)
             if name not in REGISTRY:
                 _step(i, status="skipped", note="agent not installed")
@@ -64,7 +81,8 @@ def _work(mode: str, steps: list[str], runner: Callable[..., Any]) -> None:
     except Exception as exc:  # noqa: BLE001  — report, never crash the web server
         _set(error=f"{type(exc).__name__}: {exc}")
     finally:
-        _set(running=False, current=None, finished_at=datetime.now().isoformat(timespec="seconds"))
+        _stop.clear()
+        _set(running=False, current=None, stopping=False, finished_at=datetime.now().isoformat(timespec="seconds"))
 
 
 def trigger(mode: str = "quick", *, runner: Callable[..., Any] | None = None, wait: bool = False) -> dict[str, Any]:

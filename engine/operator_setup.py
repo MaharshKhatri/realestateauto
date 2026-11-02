@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 
 from core.config import ENV_FILE, LOCAL_SETTINGS, ROOT, Section, settings, write_env
+from core.mail import clean_app_password
 
 FIELDS = ("name", "company_name", "phone", "email", "mailing_address")
 PLACEHOLDERS = {"name": {"", "operator"}, "company_name": {"", "your company llc"}}
@@ -69,6 +70,53 @@ def status() -> dict[str, Any]:
             else str(LOCAL_SETTINGS)}
 
 
+_seen_mtimes: dict[str, float] = {}
+SMTP_KEYS = ("SMTP_USER", "SMTP_APP_PASSWORD")
+
+
+def _changed(path: Path) -> bool:
+    """True when the file changed since the last look (the first look only records it: what the process loaded
+    at start-up is already current)."""
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = 0.0                        # missing: creating it later counts as a change
+    key = str(path)
+    before = _seen_mtimes.get(key)
+    _seen_mtimes[key] = mtime
+    return before is not None and mtime != before and mtime > 0
+
+
+def _env_values(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            out[k.strip()] = v.strip().strip('"').strip("'")
+    return out
+
+
+def sync_from_disk() -> None:
+    """Pick up settings.local.yaml / .env edits made outside this process (another terminal, a text editor, a
+    second dashboard) without a restart. My Setup inside this process already updates everything in place."""
+    try:
+        if _changed(ENV_FILE):
+            env = _env_values(ENV_FILE)
+            os.environ.update({k: env[k] for k in SMTP_KEYS if env.get(k)})
+        if _changed(LOCAL_SETTINGS):
+            local = yaml.safe_load(LOCAL_SETTINGS.read_text()) or {}
+            cached = settings()
+            for section, values in local.items():
+                if isinstance(values, dict):
+                    if not isinstance(cached.get(section), dict):
+                        cached[section] = Section()
+                    cached[section].update(Section.wrap(values))
+    except (OSError, yaml.YAMLError, ValueError) as exc:     # a half-written file: keep what is loaded
+        import logging
+        logging.getLogger(__name__).warning("settings reload skipped: %s", exc)
+
+
 def save_preference(section: str, key: str, value: Any, *, local_path: Path | None = None) -> Any:
     """Persist one dashboard preference (e.g. autopilot.first_touch) in settings.local.yaml and the live settings."""
     local_path = local_path or LOCAL_SETTINGS
@@ -90,7 +138,7 @@ def save(data: dict[str, Any], *, local_path: Path | None = None, env_path: Path
     op = {k: re.sub(r"\s+", " ", str(data.get(k) if data.get(k) is not None else "")).strip() for k in FIELDS}
     errors = problems(op)
     smtp_user = str(data.get("smtp_user") or "").strip()
-    password = re.sub(r"\s+", "", str(data.get("app_password") or ""))
+    password = clean_app_password(str(data.get("app_password") or ""))   # "abcd efgh ijkl mnop" / "abcd-efgh-..."
     if password and not smtp_user:
         smtp_user = op["email"]
     if smtp_user and not EMAIL_RE.fullmatch(smtp_user):

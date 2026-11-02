@@ -39,7 +39,6 @@ import os
 import random
 import re
 import smtplib
-import ssl
 import threading
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta
@@ -53,6 +52,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import settings
+from core.mail import clean_app_password, explain, ssl_context
 from core.text import format_phone
 from agents.base import AgentContext, BaseAgent
 from db.database import session_scope
@@ -97,7 +97,9 @@ def _cfg() -> dict[str, Any]:
 
 
 def credentials() -> tuple[str, str] | None:
-    user, pw = os.environ.get("SMTP_USER", "").strip(), re.sub(r"\s+", "", os.environ.get("SMTP_APP_PASSWORD", ""))
+    from engine import operator_setup
+    operator_setup.sync_from_disk()        # a password fixed in My Setup / .env counts without a restart
+    user, pw = os.environ.get("SMTP_USER", "").strip(), clean_app_password(os.environ.get("SMTP_APP_PASSWORD", ""))
     return (user, pw) if user and pw else None
 
 
@@ -261,7 +263,7 @@ def _default_imap() -> Any:
     # WHOLESALING_IMAP_HOST / _PORT: tests point these at a closed local port so no test can reach a real inbox.
     host = os.environ.get("WHOLESALING_IMAP_HOST") or _cfg().get("imap_host", "imap.gmail.com")
     port = int(os.environ.get("WHOLESALING_IMAP_PORT") or _cfg().get("imap_port", 993))
-    return imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=30)
+    return imaplib.IMAP4_SSL(host, port, ssl_context=ssl_context(), timeout=30)
 
 
 def _uid_of(meta: bytes) -> int | None:
@@ -280,8 +282,9 @@ class Mailbox:
     def __enter__(self) -> "Mailbox":
         try:
             self.imap = (_imap_factory or _default_imap)()
-        except OSError as exc:
-            raise GmailError(f"can't reach Gmail ({exc}); the next check will try again") from exc
+        except OSError as exc:              # includes ssl.SSLCertVerificationError (macOS without certificates)
+            why = explain(exc, self.user, "imap.gmail.com")
+            raise GmailError(f"can't reach Gmail: {why}" if "CERTIFICATE" not in str(exc).upper() else why) from exc
         try:
             self.imap.login(self.user, self.password)
         except imaplib.IMAP4.error as exc:
@@ -909,6 +912,10 @@ def run_daily_outbound_autopilot(limit: int | None = None, *, now: datetime | No
             if "limit" in str(exc):
                 campaign.message = f"Gmail daily limit reached ({exc})."
                 break
+            if getattr(exc.__cause__, "fatal", False):
+                # Sign-in, certificates or network: every other e-mail would fail the same way.
+                campaign.message = f"Stopped: {exc} Nothing else was sent; fix it and click again."
+                break
         except Exception as exc:                          # noqa: BLE001 - one failed card must not stop the batch
             log.exception("gmail autopilot: send failed for lead %s", item["lead_id"])
             campaign.failed += 1
@@ -967,6 +974,42 @@ def start_campaign(limit: int | None = None, *, now: datetime | None = None, smt
 def stop_campaign() -> dict[str, Any]:
     _stop.set()
     return campaign.to_json()
+
+
+# -- connection test ----------------------------------------------------------------------------------------------
+def test_connection(*, send_to_self: bool = False, smtp_factory: Any = None) -> dict[str, Any]:
+    """Sign in to smtp.gmail.com and imap.gmail.com with the saved credentials (My Setup / .env); nothing is sent
+    unless send_to_self (a two-line note to your own address). Each side reports ok + the plain reason."""
+    from email.message import EmailMessage
+    creds = credentials()
+    if creds is None:
+        msg = "No Gmail address / app password saved yet: open ⚙️ My Setup."
+        return {"ok": False, "account": "", "smtp": {"ok": False, "detail": msg}, "imap": {"ok": False, "detail": msg}}
+    user, pw = creds
+    out: dict[str, Any] = {"account": user}
+    try:
+        with (smtp_factory or ao.smtp_connection)() as smtp:
+            smtp.login(user, pw)
+            detail = "signed in to smtp.gmail.com"
+            if send_to_self:
+                note = EmailMessage()
+                note["From"], note["To"], note["Subject"] = user, user, "Wholesale Cockpit: Gmail test"
+                note["Message-ID"] = ao.new_message_id()
+                note.set_content("This is the dashboard checking that it can send from your Gmail. Nothing to do.")
+                smtp.send_message(note)
+                detail += f" and sent a test note to {user}"
+        out["smtp"] = {"ok": True, "detail": detail}
+    except Exception as exc:                              # noqa: BLE001 - report every failure in plain words
+        out["smtp"] = {"ok": False, "detail": explain(exc, user)}
+    try:
+        with Mailbox(user, pw) as mb:
+            out["imap"] = {"ok": True, "detail": f"inbox opened read-only (UIDVALIDITY {mb.uidvalidity})"}
+    except GmailError as exc:
+        out["imap"] = {"ok": False, "detail": str(exc)}
+    except Exception as exc:                              # noqa: BLE001
+        out["imap"] = {"ok": False, "detail": explain(exc, user, "imap.gmail.com")}
+    out["ok"] = out["smtp"]["ok"] and out["imap"]["ok"]
+    return out
 
 
 # -- background poller --------------------------------------------------------------------------------------------

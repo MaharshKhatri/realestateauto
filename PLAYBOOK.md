@@ -371,6 +371,22 @@ under the card; it needs your attorney and a cash end buyer.
 - **Before every `git push`:** `python manage.py pii-scan` must print 0.
 - **Read `logs/swarm_intelligence.md`.** It tells you which data is thin and which towns have the best spreads.
 
+## When something goes wrong
+
+- **A red message after ✉️ Send or 🚀:** it now says what happened in one sentence. Nothing was sent.
+  - *"Gmail refused the sign-in"*: you need a 16-letter **app password** made on the same Google account as the
+    "Gmail address to send from" (Google Account > Security > 2-Step Verification > App passwords). Paste it into
+    ⚙️ My Setup; spaces are fine.
+  - *"couldn't verify Gmail's security certificate"*: run `cd ~/realestateauto && .venv/bin/pip install -U certifi`,
+    then restart the dashboard.
+  - *"database is busy"*: a data refresh is writing. Wait a minute, or open 🤖 Run Autopilot Data Refresh and press
+    **⏹ Stop refresh**.
+- **Check Gmail before a big batch:** click **🔌 Test Gmail** on the home page, or run
+  `.venv/bin/python manage.py gmail --test`. It signs in to sending (SMTP) and reading (IMAP) without sending
+  anything, and shows ✅ / ❌ for each with the reason. Add `--send-test` to send yourself a two-line note.
+- **Anything else:** the full error is in `logs/server.log` in the project folder. Send the last 30 lines when you
+  ask for help (`tail -30 ~/realestateauto/logs/server.log`).
+
 ## The rules that keep you in business
 
 1. You're an investor and principal, not an agent. Say you may assign the contract. Recommend an attorney.

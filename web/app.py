@@ -7,6 +7,7 @@ rebinding / cross-site form posts) from reading or writing the lead data through
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterator
 from datetime import date, datetime
 from pathlib import Path
@@ -17,6 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import exists, func, or_, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
 from agents.enrichment.skiptrace_pipeline import import_text, lookup_links, skiptrace_target
@@ -44,6 +46,30 @@ TABS = {
 }
 
 app = FastAPI(title="NJ Wholesale Cockpit", docs_url="/api/docs", redoc_url=None)
+log = logging.getLogger("cockpit")
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+    """Never a bare "Internal Server Error": the full traceback goes to logs/server.log and the dashboard gets one
+    sentence it can show (a locked database while a data refresh writes is the common one)."""
+    log.exception("unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=503 if _is_locked(exc) else 500, content={"detail": friendly_error(exc)})
+
+
+def _is_locked(exc: BaseException) -> bool:
+    return isinstance(exc, OperationalError) and "locked" in str(exc).lower()
+
+
+def friendly_error(exc: BaseException) -> str:
+    if _is_locked(exc):
+        from swarm import runner
+        st = runner.status()
+        busy = f" (the {st['mode']} data refresh is on '{st['current']}')" if st.get("running") else ""
+        return (f"The database is busy{busy}, so nothing was saved or sent. Try again in a minute, or stop the "
+                "refresh from 🤖 Run Autopilot Data Refresh.")
+    return (f"Something went wrong ({type(exc).__name__}: {str(exc)[:200]}). Nothing was sent. The details are in "
+            "logs/server.log.")
 # Every commit that changes a follow-up, contract, milestone or sale date queues its Google Calendar events
 # (engine/gcal_sync.py); `manage.py server` also starts the periodic re-sync.
 gcal_sync.install_hooks()
@@ -958,6 +984,19 @@ def swarm_trigger(body: SwarmIn) -> dict[str, Any]:
         raise HTTPException(409, str(exc)) from exc
 
 
+@app.post("/api/swarm/stop")
+def swarm_stop() -> dict[str, Any]:
+    from swarm import runner
+    return runner.stop()
+
+
+@app.post("/api/setup/test-gmail")
+def setup_test_gmail(send_to_self: bool = False) -> dict[str, Any]:
+    """🔌 Test Gmail: sign in to SMTP and IMAP with the saved app password (optionally a note to yourself)."""
+    from engine import gmail_autopilot as gm
+    return gm.test_connection(send_to_self=send_to_self)
+
+
 @app.get("/api/swarm/status")
 def swarm_status(session: Session = Depends(db)) -> dict[str, Any]:
     from db.models import AgentRun
@@ -982,11 +1021,22 @@ class AutoSendIn(BaseModel):
 
 @app.post("/api/autopilot/{lead_id}/send")
 def autopilot_send(lead_id: int, body: AutoSendIn, session: Session = Depends(db)) -> dict[str, Any]:
+    """✉️ Send Email & Log. Gmail refusing the sign-in, a certificate problem, a bad agent address or a busy database
+    come back as one plain sentence (409 / 503), never a bare 500."""
     from engine.autopilot import AutopilotError, send
     try:
-        return send(session, lead_id, body.channel, subject=body.subject, body=body.body)
+        result = send(session, lead_id, body.channel, subject=body.subject, body=body.body)
+        session.commit()                   # a lock surfaces here (inside the handler), not after the response
+        return result
     except AutopilotError as exc:
+        session.rollback()
         raise HTTPException(409, str(exc)) from exc
+    except OperationalError as exc:
+        session.rollback()
+        log.exception("send for lead %s hit the database", lead_id)
+        sent = "The e-mail may already have gone out; check Gmail's Sent folder before sending again. " \
+            if body.channel == "smtp" else ""
+        raise HTTPException(503, sent + friendly_error(exc)) from exc
 
 
 class AutoOutcomeIn(BaseModel):

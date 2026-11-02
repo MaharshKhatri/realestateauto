@@ -81,7 +81,8 @@ config/credentials.json / token.json ← the operator's Google OAuth Desktop cli
                                 token chmod 600); tests point both at paths that never exist
 config/market_calibration.yaml ← `manage.py calibrate`: per-town / county / statewide lower-quartile of investor purchase
                                 price ÷ equalized value + investor share of sales (aggregates only, no parcels or names)
-core/                         ← config loader, polite HTTP client (per-host rate limit, retries, disk cache,
+core/                         ← mail.py (Gmail TLS context from certifi, app-password cleanup, plain-English SMTP / IMAP
+                                errors), config loader, polite HTTP client (per-host rate limit, retries, disk cache,
                                 host stats), text/address utils (postal_title), NJ business days, geo, ZIP (ZCTA)
                                 resolver; pii_scan.py (DB names in git-tracked files → `manage.py pii-scan`)
 db/database.py                ← engine/session factory, create + additive migrations, init lock (thread-safe)
@@ -630,6 +631,28 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   auto-check), Action Needed and the optional card player. The 12 tabs and the lead search sit under "Advanced
   Tools ▾" (`#/autopilot` is the full step-by-step deck with the kanban). The UI copy says "AI" (operator branding).
   The reply reader and negotiator are rule-based: no model is called and nothing leaves the laptop but Gmail.
+- **Send failures are sentences, not 500s** (learned 2026-11-02: the Send button showed a bare "Internal Server Error"
+  because `autopilot.send` only converted RuntimeError, so smtplib / ssl exceptions escaped):
+  - `core/mail.py`:
+    - certifi certificates for SMTP (465 SSL / 587 STARTTLS) and IMAP (the python.org macOS build has no CA store
+      until "Install Certificates.command");
+    - `clean_app_password()` drops spaces / hyphens;
+    - `explain()` turns sign-in, certificate, bad-recipient, network and limit errors into one actionable
+      sentence, never containing the password;
+    - `GmailSendError(fatal=…)`: sign-in / certificate / network failures stop a batch after the first card.
+  - `operator_setup.sync_from_disk()` (called by `smtp_ready()` and `gmail_autopilot.credentials()`) picks up
+    settings.local.yaml / .env edits made outside the running server by mtime.
+  - The send endpoint returns:
+    - 409 for Gmail failures;
+    - 503 for "database is locked", naming the refresh step and warning that a sent e-mail may already be in Sent;
+    - for anything else, the app-wide handler answers JSON and writes the traceback to `logs/server.log`
+      (`manage.py server`, rotated, git-ignored).
+  - A failing offer PDF becomes a warning (the e-mail no longer claims "attached"). The calendar commit hooks log
+    and never break a save.
+  - ⏹ Stop refresh (`swarm/runner.stop()`, `POST /api/swarm/stop`) skips the remaining steps.
+  - 🔌 Test Gmail (`POST /api/setup/test-gmail`, `manage.py gmail --test [--send-test]`) signs in to both servers
+    and says which side fails and why.
+  - SQLite runs WAL with busy_timeout 120 s (agents checkpoint per lead, so locks are short).
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 
@@ -727,6 +750,7 @@ python manage.py setup-calendar            # once: config/credentials.json → b
 python manage.py sync-calendar             # two-way Google Calendar sync (--dry-run lists the events, --status shows the queue)
 python manage.py gmail --dry-run            # Phase 8: today's paced batch (no send); --run [N] sends it; --check reads agent replies
 python manage.py gmail --status             # today's counts, 🔥 Action Needed, queued Touch 2; --approve <id> / --dismiss <id>
+python manage.py gmail --test               # sign in to smtp.gmail.com + imap.gmail.com with the saved app password (--send-test: note to yourself)
 python -m swarm.orchestrator run gmail_replies  # one inbox check (the dashboard also checks every 5 minutes)
 pytest                                      # tests
 ```

@@ -23,9 +23,9 @@ with no number in it.
 from __future__ import annotations
 
 import html
+import logging
 import os
 import smtplib
-import ssl
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, time, timedelta
 from email.message import EmailMessage
@@ -38,6 +38,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.config import settings
+from core.mail import GmailSendError, clean_app_password, explain, is_fatal, ssl_context
 from core.text import format_phone
 from db.models import Contact, ContactType, DistressSignal, Interaction, Lead, Property, SignalType, Valuation
 from engine.contracts import DEALS_DIR
@@ -60,6 +61,7 @@ OPENER_BODIES = (
 OPENER_SUBJECTS = ("{st}", "question on {st}", "{st} - still available?", "{place}")
 OPENER_OPT_OUT = 'If you\'d rather not hear from me, reply "no more".'
 OUTREACH_DIR = DEALS_DIR / "agent_blast"
+log = logging.getLogger(__name__)
 
 
 def _cfg() -> dict[str, Any]:
@@ -303,6 +305,12 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
             packet.loi_files = {p.suffix.lstrip("."): str(p) for p in g.paths}
         except ContractBlocked as exc:
             packet.warnings.extend(exc.reasons)
+        except Exception as exc:           # noqa: BLE001 - a PDF problem must never break the send
+            log.exception("LOI for lead %s could not be built", lead.id)
+            packet.warnings.append(f"The 1-page written offer couldn't be built ({type(exc).__name__}); "
+                                   "the e-mail goes without it.")
+        if not packet.loi_files.get("pdf"):
+            packet.email_body = packet.email_body.replace(" A 1-page written offer is attached.", "")
     return packet
 
 
@@ -415,6 +423,8 @@ def sent_last_24h(session: Session, now: datetime | None = None) -> int:
 
 
 def smtp_ready() -> tuple[bool, str]:
+    from engine import operator_setup
+    operator_setup.sync_from_disk()        # My Setup / .env edits made since the server started count right away
     if not (os.environ.get("SMTP_USER") and os.environ.get("SMTP_APP_PASSWORD")):
         return False, "SMTP_USER / SMTP_APP_PASSWORD are not set in .env"
     if not _operator()["postal"]:
@@ -494,15 +504,32 @@ def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = Non
         msg["References"] = " ".join(dict.fromkeys([*(references or []), in_reply_to]))
     msg.set_content(packet.email_body)
     pdf = packet.loi_files.get("pdf")
-    if pdf and Path(pdf).exists():
-        msg.add_attachment(Path(pdf).read_bytes(), maintype="application", subtype="pdf",
-                           filename=f"Offer - {packet.address}.pdf")
-    host, port = _cfg().get("smtp_host", "smtp.gmail.com"), int(_cfg().get("smtp_port", 465))
-    factory = smtp_factory or (lambda: smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=30))
-    with factory() as smtp:
-        smtp.login(os.environ["SMTP_USER"], os.environ["SMTP_APP_PASSWORD"])
-        smtp.send_message(msg)
+    try:
+        if pdf and Path(pdf).exists():
+            msg.add_attachment(Path(pdf).read_bytes(), maintype="application", subtype="pdf",
+                               filename=f"Offer - {packet.address}.pdf")
+    except OSError as exc:                 # an unreadable PDF must not stop the e-mail (the text stands on its own)
+        log.warning("offer PDF not attached for lead %s: %s", packet.lead_id, exc)
+    user = os.environ["SMTP_USER"].strip()
+    try:
+        with (smtp_factory or smtp_connection)() as smtp:
+            smtp.login(user, clean_app_password(os.environ["SMTP_APP_PASSWORD"]))
+            smtp.send_message(msg)
+    except Exception as exc:               # noqa: BLE001 - every Gmail / network failure becomes a plain sentence
+        log.warning("SMTP send to %s failed: %s: %s", packet.agent_email, type(exc).__name__, exc)
+        raise GmailSendError(explain(exc, user, str(_cfg().get("smtp_host", "smtp.gmail.com"))),
+                             fatal=is_fatal(exc)) from exc
     return message_id
+
+
+def smtp_connection() -> smtplib.SMTP:
+    """An open, encrypted connection to Gmail (465 = SSL, 587 = STARTTLS), certificates from certifi."""
+    host, port = str(_cfg().get("smtp_host", "smtp.gmail.com")), int(_cfg().get("smtp_port", 465))
+    if port == 587:
+        smtp = smtplib.SMTP(host, port, timeout=30)
+        smtp.starttls(context=ssl_context())
+        return smtp
+    return smtplib.SMTP_SSL(host, port, context=ssl_context(), timeout=30)
 
 
 def send_smtp(session: Session, lead: Lead, packet: AgentPacket, now: datetime | None = None,

@@ -1116,6 +1116,14 @@ def _changed(obj: Any, *attrs: str) -> bool:
 
 
 def _after_flush(session: Session, _ctx: Any) -> None:
+    """Note which leads a commit touches. It must never break the commit (or the click) it rides on."""
+    try:
+        _collect(session)
+    except Exception:                      # noqa: BLE001 - a calendar problem is logged, the save goes through
+        log.exception("calendar hook skipped")
+
+
+def _collect(session: Session) -> None:
     if session.info.get(WORKER_FLAG) or not configured():
         return
     leads: set[int] = session.info.setdefault("gcal_leads", set())
@@ -1139,7 +1147,10 @@ def _after_flush(session: Session, _ctx: Any) -> None:
 def _after_commit(session: Session) -> None:
     leads, props = session.info.pop("gcal_leads", None), session.info.pop("gcal_props", None)
     if leads or props:
-        worker.kick(leads or (), props or ())
+        try:
+            worker.kick(leads or (), props or ())
+        except Exception:                  # noqa: BLE001
+            log.exception("calendar sync could not be queued")
 
 
 def _after_rollback(session: Session) -> None:

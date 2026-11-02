@@ -15,7 +15,7 @@
     python manage.py buyers [--top 20]        active cash buyers
     python manage.py stats                    database and pipeline stats
     python manage.py server [--port 8000]     local CRM cockpit at http://127.0.0.1:8000
-    python manage.py gmail [--run [N] | --dry-run | --check | --status | --approve ID | --dismiss ID]
+    python manage.py gmail [--test [--send-test] | --run [N] | --dry-run | --check | --status | --approve ID | --dismiss ID]
                                               Gmail autopilot: paced daily batch, read agent replies, Action Needed
     python manage.py queue [--top 25]         today's call queue (follow-ups first)
     python manage.py script <lead> [--contact ID] [--buyer ID]   pre-call battle card (playbooks A–E)
@@ -397,6 +397,23 @@ def _lead(s, lead_id: int) -> Lead:
     return lead
 
 
+def _server_log() -> Path:
+    """logs/server.log (git-ignored, rotated at 1 MB): every unhandled error with its traceback, Gmail / calendar
+    warnings. Passwords never reach it (Gmail errors are logged as Google's reply text)."""
+    import logging
+    from logging.handlers import RotatingFileHandler
+    path = Path(__file__).resolve().parent / "logs" / "server.log"
+    path.parent.mkdir(exist_ok=True)
+    handler = RotatingFileHandler(path, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    handler.setLevel(logging.WARNING)
+    root = logging.getLogger()
+    root.setLevel(min(root.level or logging.WARNING, logging.WARNING))
+    root.addHandler(handler)
+    logging.getLogger("uvicorn.error").addHandler(handler)
+    return path
+
+
 def cmd_server(args: argparse.Namespace) -> None:
     import uvicorn
 
@@ -409,6 +426,7 @@ def cmd_server(args: argparse.Namespace) -> None:
     if restored:
         console.print(f"[green]Database unlocked from the snapshot of {restored['created_at']}[/green]")
     init_db()
+    log_file = _server_log()
     from engine import gcal_sync
     gcal_sync.start_background()      # no-op until `setup-calendar` has run
     from engine import gmail_autopilot
@@ -417,6 +435,7 @@ def cmd_server(args: argparse.Namespace) -> None:
                   + ("  · 📅 Google Calendar sync on" if gcal_sync.configured() else "")
                   + ("  · 📥 Gmail inbox check every "
                      f"{gmail_autopilot.poller.minutes():.0f} min" if gmail_autopilot.configured()[0] else ""))
+    console.print(f"[dim]errors and tracebacks: {log_file}[/dim]")
     uvicorn.run("web.app:app", host="127.0.0.1", port=args.port, log_level="warning")
 
 
@@ -510,6 +529,15 @@ def cmd_gmail(args: argparse.Namespace) -> None:
     """Phase 8 Gmail autopilot from the terminal: check the inbox, send today's batch, list / approve replies."""
     from engine import gmail_autopilot as gm
     init_db()
+    if args.test:
+        r = gm.test_connection(send_to_self=args.send_test)
+        console.print(f"Gmail account: {r['account'] or '—'}")
+        for side in ("smtp", "imap"):
+            ok = r[side]["ok"]
+            console.print(f"  {'[green]✓' if ok else '[red]✗'} {side.upper()}[/]: {r[side]['detail']}")
+        if not r["ok"]:
+            raise SystemExit(1)
+        return
     if args.check:
         r = gm.poll_gmail_replies()
         if not r.get("ok"):
@@ -549,7 +577,8 @@ def cmd_gmail(args: argparse.Namespace) -> None:
                 console.print(f"[yellow]{exc}[/yellow]")
                 raise SystemExit(1) from None
             console.print(gm.campaign.message)
-    if not (args.check or args.approve or args.dismiss or args.run is not None or args.dry_run) or args.status:
+    if not (args.check or args.approve or args.dismiss or args.run is not None or args.dry_run or args.test) \
+            or args.status:
         with session_scope() as s:
             st = gm.status(s)
             s.rollback()
@@ -1602,6 +1631,9 @@ def main(argv: list[str] | None = None) -> None:
     ycal.add_argument("--dry-run", action="store_true", help="list the events without writing anything")
     ycal.add_argument("--status", action="store_true", help="connection, queue and the next events")
     gm = sub.add_parser("gmail", help="Gmail autopilot: inbox check, today's paced batch, approve agent replies")
+    gm.add_argument("--test", action="store_true", help="sign in to smtp.gmail.com and imap.gmail.com with the saved "
+                                                         "app password (nothing is sent)")
+    gm.add_argument("--send-test", action="store_true", help="with --test: also send a short note to your own address")
     gm.add_argument("--check", action="store_true", help="read new agent replies now (inbox opened read-only)")
     gm.add_argument("--run", nargs="?", type=int, const=0, metavar="N",
                     help="send today's batch now (N e-mails, default the daily goal), 25-60 s apart")

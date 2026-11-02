@@ -16,7 +16,10 @@ let STATE = { tab: "all", dash: null, lead: null, outcome: null };
 async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok && res.status !== 409) throw new Error(data.detail ? JSON.stringify(data.detail) : res.statusText);
+  if (!res.ok && res.status !== 409) {
+    const d = data.detail;
+    throw new Error(typeof d === "string" ? d : d ? JSON.stringify(d) : `${res.status} ${res.statusText}: the details are in logs/server.log`);
+  }
   return { status: res.status, data };
 }
 const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) });
@@ -1115,9 +1118,15 @@ async function openSwarm() {
       (10-30 minutes; every source keeps its polite rate limit).</p>
     <div class="row"><button class="btn good" data-mode="quick" ${st.running ? "disabled" : ""}>Quick refresh</button>
       <button class="btn" data-mode="full" ${st.running ? "disabled" : ""}>Full refresh (new sheriff sales + listings)</button>
+      ${st.running ? '<button class="btn bad" id="sw-stop">⏹ Stop refresh</button>' : ""}
       <button class="btn" id="sw-close">Close</button></div>
     <div id="sw-steps">${st.steps && st.steps.length ? stepsHtml(st) : ""}</div>`);
   $("#sw-close").onclick = closeModal;
+  if ($("#sw-stop")) $("#sw-stop").onclick = async () => {
+    await post("/api/swarm/stop", {});
+    toast("Stopping: the step that is running finishes (it saves in short steps), nothing after it starts.");
+    $("#sw-stop").disabled = true;
+  };
   document.querySelectorAll("#dlg [data-mode]").forEach((b) => (b.onclick = async () => {
     document.querySelectorAll("#dlg [data-mode]").forEach((x) => (x.disabled = true));
     try {
@@ -1209,6 +1218,7 @@ function heroHtml(st) {
     <div class="sm-stats">${smStat("📤", t.emails_sent, "Emails Sent Today")}${smStat("📥", t.replies_found, "Inbox Replies Found")}
       ${smStat("💵", t.offers_delivered, "Offers Delivered")}${smStat("⏱️", check, "Next Auto-Check")}</div>
     <div class="row sm-foot"><button class="btn" id="sm-check" ${st.configured ? "" : "disabled"}>📥 Check inbox now</button>
+      <button class="btn" id="sm-test" ${st.configured ? "" : "disabled"}>🔌 Test Gmail</button>
       <span class="muted">Gmail: ${esc(st.account || "not set")} · ${st.sent_24h}/${st.daily_email_limit} e-mails in the last 24 hours
         · last check ${esc(p.last_poll ? fmtDate(p.last_poll) : "not yet")}</span>
       ${p.last && p.last.error ? `<span class="bad">${esc(p.last.error)}</span>` : ""}</div>`;
@@ -1259,6 +1269,7 @@ async function refreshSimple() {
   $("#sm-run").onclick = runAutopilot;
   if ($("#sm-stop")) $("#sm-stop").onclick = async () => { await post("/api/simple/stop", {}); toast("Stopping after the current e-mail."); };
   if ($("#sm-setup")) $("#sm-setup").onclick = openSetup;
+  $("#sm-test").onclick = testGmail;
   $("#sm-check").onclick = async () => {
     const { status, data } = await post("/api/simple/check-inbox", {});
     toast(status === 409 ? data.detail : "Checking your inbox now…", status === 409);
@@ -1272,6 +1283,16 @@ async function refreshSimple() {
     $("#sm-action").innerHTML = actionHtml(st);
     wireReplies();
   }
+}
+async function testGmail() {
+  toast("Signing in to Gmail…");
+  const { data: r } = await post("/api/setup/test-gmail", {});
+  const line = (k) => `<li>${r[k].ok ? "✅" : "❌"} <b>${k === "smtp" ? "Sending (SMTP)" : "Reading replies (IMAP)"}</b>: ${esc(r[k].detail)}</li>`;
+  modal(`<h2>🔌 Gmail connection ${r.ok ? '<span class="pill good">working</span>' : '<span class="pill bad">needs a fix</span>'}</h2>
+    <p class="muted">Account: ${esc(r.account || "not set")}. Nothing was sent.</p><ul>${line("smtp")}${line("imap")}</ul>
+    <div class="row">${r.ok ? "" : '<button class="btn" id="tg-setup">⚙️ Open My Setup</button>'}<button class="btn" id="tg-close">Close</button></div>`);
+  $("#tg-close").onclick = closeModal;
+  if ($("#tg-setup")) $("#tg-setup").onclick = () => { closeModal(); openSetup(); };
 }
 async function runAutopilot() {
   SM.busy = true;
