@@ -15,6 +15,8 @@
     python manage.py buyers [--top 20]        active cash buyers
     python manage.py stats                    database and pipeline stats
     python manage.py server [--port 8000]     local CRM cockpit at http://127.0.0.1:8000
+    python manage.py gmail [--run [N] | --dry-run | --check | --status | --approve ID | --dismiss ID]
+                                              Gmail autopilot: paced daily batch, read agent replies, Action Needed
     python manage.py queue [--top 25]         today's call queue (follow-ups first)
     python manage.py script <lead> [--contact ID] [--buyer ID]   pre-call battle card (playbooks A–E)
     python manage.py call <lead> --outcome SPOKE_NEEDS_OFFER [--notes ..] [--occupancy VACANT] [--ask 350k] [--ai]
@@ -409,8 +411,12 @@ def cmd_server(args: argparse.Namespace) -> None:
     init_db()
     from engine import gcal_sync
     gcal_sync.start_background()      # no-op until `setup-calendar` has run
+    from engine import gmail_autopilot
+    gmail_autopilot.start_background()   # idles until My Setup has the Gmail app password
     console.print(f"[green]Cockpit:[/green] http://127.0.0.1:{args.port}  (local only — Ctrl+C to stop)"
-                  + ("  · 📅 Google Calendar sync on" if gcal_sync.configured() else ""))
+                  + ("  · 📅 Google Calendar sync on" if gcal_sync.configured() else "")
+                  + ("  · 📥 Gmail inbox check every "
+                     f"{gmail_autopilot.poller.minutes():.0f} min" if gmail_autopilot.configured()[0] else ""))
     uvicorn.run("web.app:app", host="127.0.0.1", port=args.port, log_level="warning")
 
 
@@ -498,6 +504,63 @@ def _print_calendar_sync(r) -> None:
                   f"{r.queued} queued")
     if r.error:
         console.print(f"[yellow]{r.error}[/yellow]")
+
+
+def cmd_gmail(args: argparse.Namespace) -> None:
+    """Phase 8 Gmail autopilot from the terminal: check the inbox, send today's batch, list / approve replies."""
+    from engine import gmail_autopilot as gm
+    init_db()
+    if args.check:
+        r = gm.poll_gmail_replies()
+        if not r.get("ok"):
+            console.print(f"[yellow]{r.get('error')}[/yellow]")
+            raise SystemExit(1)
+        console.print(f"checked {r['checked']} new message(s): {r['matched']} agent repl{'y' if r['matched'] == 1 else 'ies'}"
+                      f" · {r.get('auto_queued', 0)} offer(s) queued · {r.get('needs_approval', 0)} need you · "
+                      f"{r.get('sent', 0)} sent · {r.get('opted_out', 0)} opted out · {r.get('bounce', 0)} bounced")
+    if args.approve:
+        with session_scope() as s:
+            try:
+                out = gm.approve(s, args.approve)
+            except (gm.ApprovalError, RuntimeError) as exc:
+                console.print(f"[red]{exc}[/red]")
+                raise SystemExit(1) from None
+        console.print(f"[green]sent to {out['to']}[/green]" + (f" at {out['price']:,.0f}" if out["price"] else "")
+                      + (" with the written offer" if out["loi_attached"] else ""))
+    if args.dismiss:
+        with session_scope() as s:
+            gm.dismiss(s, args.dismiss)
+        console.print(f"reply #{args.dismiss} dismissed")
+    if args.run is not None or args.dry_run:
+        with session_scope() as s:
+            from engine import autopilot
+            picked, skipped = gm.pick_cards(s, args.run or autopilot.daily_goal())
+            s.rollback()
+        for i, c in enumerate(picked, 1):
+            console.print(f"  {i:>2}. {c['address']}  ({c['kind'].replace('_', ' ')}, touch {c['touch']}, {c['agent'] or 'agent'})")
+        for c in skipped[:10]:
+            console.print(f"  [dim]skip {c['address']}: {c['reason']}[/dim]")
+        if args.dry_run:
+            console.print(f"{len(picked)} e-mail(s) would go out, 25-60 s apart (dry run: nothing sent)")
+        else:
+            try:
+                gm.start_campaign(args.run or None, background=False)
+            except gm.CampaignError as exc:
+                console.print(f"[yellow]{exc}[/yellow]")
+                raise SystemExit(1) from None
+            console.print(gm.campaign.message)
+    if not (args.check or args.approve or args.dismiss or args.run is not None or args.dry_run) or args.status:
+        with session_scope() as s:
+            st = gm.status(s)
+            s.rollback()
+        t = st["today"]
+        console.print(f"Gmail: {st['account'] or '—'} ({'ready' if st['configured'] else st['why']}) · today: "
+                      f"{t['emails_sent']} sent, {t['replies_found']} replies, {t['offers_delivered']} offers · "
+                      f"{st['sent_24h']}/{st['daily_email_limit']} in 24 h · last check {st['poll']['last_poll'] or 'never'}")
+        for r in st["action_needed"]:
+            console.print(f"  [bold]#{r['id']}[/bold] {r['address']}: {r['light']['text']}  ({r['note']})")
+        for r in st["queued"]:
+            console.print(f"  queued #{r['id']} {r['address']}: offer goes out after {r['send_after']}")
 
 
 def cmd_sync_calendar(args: argparse.Namespace) -> None:
@@ -1538,6 +1601,14 @@ def main(argv: list[str] | None = None) -> None:
     ycal = sub.add_parser("sync-calendar", help="two-way Google Calendar sync (follow-ups, deadlines, sales, goal)")
     ycal.add_argument("--dry-run", action="store_true", help="list the events without writing anything")
     ycal.add_argument("--status", action="store_true", help="connection, queue and the next events")
+    gm = sub.add_parser("gmail", help="Gmail autopilot: inbox check, today's paced batch, approve agent replies")
+    gm.add_argument("--check", action="store_true", help="read new agent replies now (inbox opened read-only)")
+    gm.add_argument("--run", nargs="?", type=int, const=0, metavar="N",
+                    help="send today's batch now (N e-mails, default the daily goal), 25-60 s apart")
+    gm.add_argument("--dry-run", action="store_true", help="list today's batch without sending")
+    gm.add_argument("--approve", type=int, metavar="REPLY_ID", help="send the drafted answer to this agent reply")
+    gm.add_argument("--dismiss", type=int, metavar="REPLY_ID", help="drop a reply from Action Needed")
+    gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
     ds = sub.add_parser("db-sync", help="encrypted database snapshot for another machine (pack here, unpack there)")
     dsm = ds.add_mutually_exclusive_group()
     dsm.add_argument("--pack", action="store_true", help="VACUUM INTO -> xz -> AES-256-GCM -> data/snapshots/")
@@ -1676,7 +1747,7 @@ def main(argv: list[str] | None = None) -> None:
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
      "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "db-sync": cmd_db_sync, "setup-calendar": cmd_setup_calendar,
-     "sync-calendar": cmd_sync_calendar, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
+     "sync-calendar": cmd_sync_calendar, "gmail": cmd_gmail, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
      "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,
      "mail-merge": cmd_mail_merge, "inspect": cmd_inspect, "stack": cmd_stack, "buyer-hotzones": cmd_buyer_hotzones,

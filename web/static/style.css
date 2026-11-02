@@ -192,3 +192,52 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .quant b { display: block; font-size: 15px; }
 .structure td { font-size: 13px; padding: 3px 6px; }
 pre.cal-steps { white-space: pre-wrap; background: var(--panel2); padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+
+/* -- Phase 8: simple home + Advanced Tools menu ---------------------------------------------------------- */
+.homelink { color: var(--text); padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); white-space: nowrap; }
+.homelink.on { background: var(--panel2); }
+.topbar .status { margin-left: auto; }
+.adv { position: relative; }
+.adv > summary { list-style: none; cursor: pointer; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel2); white-space: nowrap; user-select: none; }
+.adv > summary::-webkit-details-marker { display: none; }
+.adv[open] > summary { border-color: var(--accent); }
+.adv-menu { position: absolute; right: 0; top: calc(100% + 6px); width: min(360px, 92vw); padding: 10px; z-index: 20;
+  background: #0b0e12; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 12px 30px rgba(0,0,0,.5); }
+.adv-menu .search { max-width: none; margin-bottom: 8px; }
+.adv-menu .nav { flex-direction: column; }
+.adv-menu .nav a { display: block; }
+body.simple-mode .kpills, body.simple-mode #btn-opra { display: none; }
+body.simple-mode .cmdbar { justify-content: flex-end; }
+.simple { max-width: 1100px; margin: 0 auto; }
+.hero { text-align: center; padding: 28px 22px 18px; }
+.giant { display: block; width: min(720px, 100%); margin: 0 auto 12px; padding: 26px 20px; border: 0; border-radius: 16px;
+  font: inherit; font-size: 26px; font-weight: 800; letter-spacing: .02em; color: #06140c; cursor: pointer;
+  background: linear-gradient(180deg, #4ee08f, #26a862); box-shadow: 0 10px 28px rgba(52,194,122,.28); }
+.giant:hover { filter: brightness(1.06); } .giant:disabled { opacity: .55; cursor: not-allowed; filter: grayscale(.3); }
+.hero .sub { max-width: 760px; margin: 0 auto 14px; color: #cfd6df; font-size: 15px; }
+.sm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0 6px; }
+@media (max-width: 800px) { .sm-stats { grid-template-columns: repeat(2, 1fr); } .giant { font-size: 20px; } }
+.sm-stat { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.sm-stat b { display: block; font-size: 24px; } .sm-stat span { color: var(--muted); font-size: 12px; }
+.sm-progress { max-width: 720px; margin: 8px auto 4px; text-align: left; }
+.sm-foot { justify-content: center; margin-top: 10px; }
+.sm-log { margin: 6px 0 0 18px; padding: 0; color: var(--muted); }
+.calm { padding: 18px; border-radius: 12px; background: #121c15; border: 1px solid #23593e; font-size: 15px; }
+.replycard { border: 2px solid var(--line); border-radius: 12px; padding: 14px; margin: 12px 0; background: var(--panel2); }
+.replycard.rc-good { border-color: #34c27a; box-shadow: 0 0 0 3px rgba(52,194,122,.12); }
+.replycard.rc-warn { border-color: #f0b429; } .replycard.rc-bad { border-color: #ef5d5d; }
+.replycard.rc-info { border-color: #4f9cf7; }
+.replycard.rc-good .light { color: var(--good); } .replycard.rc-warn .light { color: var(--warn); }
+.replycard.rc-bad .light { color: var(--bad); }
+.rc-head { font-weight: 800; letter-spacing: .03em; color: var(--good); margin-bottom: 6px; }
+.replycard .light { font-size: 18px; font-weight: 700; margin: 6px 0 10px; }
+.agent-msg { margin: 8px 0; padding: 10px 12px; border-left: 3px solid var(--accent); background: #10151b; border-radius: 6px;
+  white-space: normal; }
+.replycard textarea { width: 100%; min-height: 220px; font: 13px/1.45 var(--mono); }
+.btn.big { padding: 10px 16px; font-size: 15px; font-weight: 700; }
+.btn.good { border-color: #23593e; }
+.handled { margin-top: 12px; color: var(--muted); }
+#sm-player > summary { cursor: pointer; list-style: none; }
+#sm-player > summary::-webkit-details-marker { display: none; }
+#sm-player > summary h2 { display: inline; }

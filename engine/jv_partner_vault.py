@@ -269,14 +269,66 @@ def outreach(session: Session, p: JVPartner) -> PartnerCard:
                        mailto=email.mailto(p.email), reasons=reasons, style=hc.lint(email.text))
 
 
-def phase0_cards(session: Session, limit: int = 5, today: date | None = None) -> list[dict[str, Any]]:
-    """Partners to reach today, until `partners_needed` are active with proof of funds."""
+EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
+
+
+def pair_contacts(session: Session) -> int:
+    """Copy a phone / e-mail that reached the linked cash-buyer record later (web registration, deed export) onto
+    the partner. Idempotent; never overwrites what the operator typed."""
+    n = 0
+    for p in session.scalars(select(JVPartner).where(JVPartner.buyer_id.is_not(None))):
+        b = p.buyer
+        if b is None:
+            continue
+        if not p.phone and b.phone:
+            p.phone, n = b.phone, n + 1
+        if not p.email and b.email:
+            p.email, n = b.email, n + 1
+    if n:
+        session.flush()
+    return n
+
+
+def reachable(session: Session, p: JVPartner) -> str | None:
+    """'email' or 'phone' when the operator can reach this partner today, else None.
+
+    A JV pitch to a person's phone is still a sales call: the number counts only when it is clear of every do-not-call
+    list (fresh FTC data covering its area code) or the person consented on our web form."""
+    from engine import compliance
+    if p.email and EMAIL_RE.fullmatch(p.email.strip()):
+        return "email"
+    if p.phone and compliance.classify_number(session, p.phone, consent=bool(p.buyer and p.buyer.registered_at)) in (
+            "clear", "consented"):
+        return "phone"
+    return None
+
+
+def _due(session: Session, today: date | None) -> list[JVPartner]:
+    cutoff = datetime.combine((today or date.today()) - timedelta(days=7), datetime.min.time())
+    return [p for p in partners(session) if p.status in ("TARGET", "CONTACTED")
+            and (p.last_contact_at is None or p.last_contact_at < cutoff)]
+
+
+def phase0_cards(session: Session, limit: int = 5, today: date | None = None, *,
+                 reachable_only: bool = False) -> list[dict[str, Any]]:
+    """Partners to reach today, until `partners_needed` are active with proof of funds.
+
+    reachable_only (the daily deck): only partners with an e-mail or a DNC-clear phone. The rest wait in the background
+    skip-trace / mail queue (needs_lookup) instead of opening the operator's day with a dead end."""
     if not phase0_open(session):
         return []
-    cutoff = datetime.combine((today or date.today()) - timedelta(days=7), datetime.min.time())
-    rows = [p for p in partners(session) if p.status in ("TARGET", "CONTACTED")
-            and (p.last_contact_at is None or p.last_contact_at < cutoff)]
+    pair_contacts(session)
+    rows = _due(session, today)
+    if reachable_only:
+        rows = [p for p in rows if reachable(session, p)]
     return [outreach(session, p).to_dict() for p in rows[:limit]]
+
+
+def needs_lookup(session: Session, today: date | None = None) -> int:
+    """Partners due a touch that have no e-mail and no callable phone yet (they live in Skip Trace, not the deck)."""
+    if not phase0_open(session):
+        return 0
+    return sum(1 for p in _due(session, today) if not reachable(session, p))
 
 
 # -- updates -----------------------------------------------------------------------------------------

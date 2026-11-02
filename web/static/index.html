@@ -10,24 +10,30 @@
 <body>
   <header class="topbar">
     <a href="#/" class="brand">NJ Wholesale Cockpit</a>
-    <nav class="nav" aria-label="Sections">
-      <a href="#/" data-nav="autopilot">🎯 Autopilot</a>
-      <a href="#/partners" data-nav="partners">🤝 Partners &amp; POF</a>
-      <a href="#/skiptrace" data-nav="skiptrace">⚡ Skip Trace</a>
-      <a href="#/today" data-nav="today">Today</a>
-      <a href="#/dashboard" data-nav="dash">Dashboard</a>
-      <a href="#/fast" data-nav="fast">Fast Track</a>
-      <a href="#/ready" data-nav="ready">Ready to Call</a>
-      <a href="#/agents" data-nav="agents">Agent LOI Blast</a>
-      <a href="#/inspect" data-nav="inspect">Inspector &amp; Mail</a>
-      <a href="#/dispo" data-nav="dispo">Walkthroughs &amp; Bids</a>
-      <a href="#/closing" data-nav="closing">Closing &amp; Money</a>
-      <a href="#/records" data-nav="records">🏛️ Records</a>
-    </nav>
-    <form id="search" class="search" autocomplete="off">
-      <input id="q" type="search" placeholder="Search address, town, owner, parcel…" aria-label="Search leads">
-    </form>
+    <a href="#/" class="homelink" data-nav="home">🏠 Home</a>
     <div id="status" class="status"></div>
+    <details class="adv" id="adv">
+      <summary>Advanced Tools ▾</summary>
+      <div class="adv-menu">
+        <form id="search" class="search" autocomplete="off">
+          <input id="q" type="search" placeholder="Search address, town, owner, parcel…" aria-label="Search leads">
+        </form>
+        <nav class="nav" aria-label="Sections">
+          <a href="#/autopilot" data-nav="autopilot">🎯 Step-by-Step Deck</a>
+          <a href="#/partners" data-nav="partners">🤝 Partners &amp; POF</a>
+          <a href="#/skiptrace" data-nav="skiptrace">⚡ Skip Trace</a>
+          <a href="#/today" data-nav="today">Today</a>
+          <a href="#/dashboard" data-nav="dash">Dashboard</a>
+          <a href="#/fast" data-nav="fast">Fast Track</a>
+          <a href="#/ready" data-nav="ready">Ready to Call</a>
+          <a href="#/agents" data-nav="agents">Agent LOI Blast</a>
+          <a href="#/inspect" data-nav="inspect">Inspector &amp; Mail</a>
+          <a href="#/dispo" data-nav="dispo">Walkthroughs &amp; Bids</a>
+          <a href="#/closing" data-nav="closing">Closing &amp; Money</a>
+          <a href="#/records" data-nav="records">🏛️ Records</a>
+        </nav>
+      </div>
+    </details>
   </header>
   <section id="cmdbar" class="cmdbar" aria-label="Command bar"></section>
   <main id="app" aria-live="polite"><p class="muted pad">Loading…</p></main>

@@ -144,7 +144,15 @@ def test_partner_endpoints_and_deck_phase0(db, client, operator, tmp_path, monke
     lst = client.get("/api/partners").json()
     assert lst["active"] == 0 and lst["phase0_open"] and lst["cards"][0]["partner_id"] == pid
     deck = client.get("/api/autopilot").json()
-    assert deck["partners"]["open"] and deck["partners"]["cards"][0]["partner_id"] == pid and deck["first_touch"] == "opener"
+    # No e-mail and no callable phone yet: the partner waits in Skip Trace, not on the daily deck.
+    assert deck["partners"]["open"] and deck["partners"]["cards"] == [] and deck["partners"]["needs_lookup"] == 1
+    assert deck["first_touch"] == "opener"
+    # The web form / deed export later carries an e-mail: it pairs onto the partner and the card comes back.
+    db.get(CashBuyer, db.get(JVPartner, pid).buyer_id).email = "sam@riverhomes.example"
+    db.commit()
+    deck = client.get("/api/autopilot").json()
+    assert deck["partners"]["cards"][0]["partner_id"] == pid and deck["partners"]["needs_lookup"] == 0
+    assert db.get(JVPartner, pid).email == "sam@riverhomes.example"
     assert client.patch(f"/api/partners/{pid}", json={"status": "FRIEND"}).status_code == 400
     upd = client.patch(f"/api/partners/{pid}", json={"target_counties": ["Essex", "Union"], "max_price": 500000,
                                                      "provides_emd": True}).json()

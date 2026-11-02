@@ -96,6 +96,11 @@ def _calendar_sync(**opts: Any) -> BaseAgent:
     return CalendarSyncAgent(**opts)
 
 
+def _gmail_replies(**opts: Any) -> BaseAgent:
+    from engine.gmail_autopilot import GmailRepliesAgent
+    return GmailRepliesAgent(**opts)
+
+
 def _lis_pendens(**opts: Any) -> BaseAgent:
     from agents.scrapers.lis_pendens_agent import LisPendensAgent
     return LisPendensAgent(**opts)
@@ -138,6 +143,8 @@ REGISTRY: dict[str, AgentSpec] = {spec.name: spec for spec in [
               "improve"),
     AgentSpec("calendar_sync", _calendar_sync, "Google Calendar two-way sync: agent follow-ups, attorney review, "
               "closing steps, priority sheriff sales, daily goal (skipped until setup-calendar).", "improve"),
+    AgentSpec("gmail_replies", _gmail_replies, "Gmail inbox (read-only): agent replies -> negotiator -> automatic "
+              "Touch 2 / Action Needed (skipped until My Setup has the Gmail app password).", "improve"),
     AgentSpec("buyer_matcher", _buyer_matcher, "Top-5 recorded cash buyers for each top underwritten deal.", "analyze", {"top": 50}),
     AgentSpec("self_improvement", PipelineSelfImprovementAgent, PipelineSelfImprovementAgent.description, "improve"),
 ]}

@@ -29,6 +29,7 @@ import ssl
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, time, timedelta
 from email.message import EmailMessage
+from email.utils import make_msgid
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -47,6 +48,7 @@ SENT_OUTCOME = "OFFER_SENT_TO_AGENT"
 OPENER_OUTCOME = "AGENT_OPENER_SENT"            # Touch 1: the two-line availability check
 TOUCH_OUTCOMES = (SENT_OUTCOME, "AGENT_INQUIRY_SENT", OPENER_OUTCOME, "AGENT_FOLLOWUP_SENT")
 REPLY_OUTCOME = "AGENT_REPLIED"                 # engine/reply_negotiator.py logs the agent's answer
+PHONE_YES_OUTCOME = "SPOKE_NEEDS_OFFER"         # the agent said "send the offer" on a call (✅ Interested)
 # Touch 1 bodies: a question a person would type, nothing else. Structure varies per lead so no two agents at
 # the same brokerage see the same template; the priced note (Touch 2) goes out when they answer.
 OPENER_BODIES = (
@@ -316,10 +318,17 @@ def prior_touches(session: Session, lead: Lead) -> int:
 
 def last_touch(session: Session, lead: Lead) -> str | None:
     """Kind of the most recent exchange with the listing agent: opener / offer / inquiry / followup / reply / None."""
-    inter = session.scalar(select(Interaction).where(
-        Interaction.lead_id == lead.id, Interaction.outcome.in_(TOUCH_OUTCOMES + (REPLY_OUTCOME,)))
-        .order_by(Interaction.occurred_at.desc(), Interaction.id.desc()).limit(1))
-    if inter is None:
+    for inter in session.scalars(select(Interaction).where(
+            Interaction.lead_id == lead.id, Interaction.outcome.in_(TOUCH_OUTCOMES + (REPLY_OUTCOME, PHONE_YES_OUTCOME)))
+            .order_by(Interaction.occurred_at.desc(), Interaction.id.desc()).limit(5)):
+        if inter.outcome == PHONE_YES_OUTCOME:
+            # "Interested" on a call counts as the agent's answer only when it was the listing agent on the phone.
+            c = session.get(Contact, inter.contact_id) if inter.contact_id else None
+            if c is not None and c.contact_type == ContactType.LISTING_AGENT:
+                return "reply"
+            continue
+        break
+    else:
         return None
     if inter.outcome == REPLY_OUTCOME:
         return "reply"
@@ -374,8 +383,8 @@ def build_opener(lead: Lead, agent: Contact | None = None) -> AgentPacket:
 
 def opener_applies(session: Session, lead: Lead, days_to_sale: int | None = None) -> bool:
     """Touch 1 goes to a listing we have never written to, unless the sheriff sale is inside the urgent window."""
-    if not opener_enabled() or prior_touches(session, lead) > 0:
-        return False
+    if not opener_enabled() or prior_touches(session, lead) > 0 or last_touch(session, lead) == "reply":
+        return False                       # an agent who already answered (e-mail or phone) gets the offer
     urgent_days = int((settings().get("autopilot", {}) or {}).get("urgent_days_to_sale", 14))
     return not (days_to_sale is not None and 0 <= days_to_sale <= urgent_days)
 
@@ -421,8 +430,11 @@ def followup_time(now: datetime | None = None) -> datetime:
     return datetime.combine(day, time(10))
 
 
-def record_sent(session: Session, lead: Lead, packet: AgentPacket, channel: str, now: datetime | None = None) -> str:
-    """Log the outreach, move the lead to OFFER_SENT_TO_AGENT and schedule the 48-hour follow-up call."""
+def record_sent(session: Session, lead: Lead, packet: AgentPacket, channel: str, now: datetime | None = None,
+                message_id: str | None = None) -> str:
+    """Log the outreach, move the lead to OFFER_SENT_TO_AGENT and schedule the 48-hour follow-up call.
+
+    message_id: the sent e-mail's Message-ID, kept on the interaction so the agent's reply finds its lead."""
     from engine import crm
 
     contact = session.get(Contact, packet.agent_contact_id)
@@ -431,7 +443,7 @@ def record_sent(session: Session, lead: Lead, packet: AgentPacket, channel: str,
         # An opener or inquiry is not an offer: keep the stage where it is, but schedule the same follow-up.
         inter = Interaction(lead_id=lead.id, contact_id=contact.id if contact else None, channel=channel,
                             outcome=OPENER_OUTCOME if packet.kind == "opener" else "AGENT_INQUIRY_SENT",
-                            notes=packet.subject,
+                            notes=packet.subject, email_message_id=message_id,
                             debrief_json={"packet": {"kind": packet.kind}}, next_followup_at=followup_time(now),
                             occurred_at=_eastern(now))
         session.add(inter)
@@ -444,11 +456,25 @@ def record_sent(session: Session, lead: Lead, packet: AgentPacket, channel: str,
     r = crm.log_call(session, lead, outcome, notes=f"{packet.subject} — {money(packet.anchor)} / {money(packet.best)}",
                      contact=contact, channel=channel, followup_at=followup_time(now), now=now,
                      debrief={"packet": {"kind": packet.kind, "anchor": packet.anchor, "best": packet.best}})
+    if message_id:
+        inter = session.get(Interaction, r.interaction_id)
+        if inter is not None:
+            inter.email_message_id = message_id
+            session.flush()
     return r.stage
 
 
-def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = None, smtp_factory: Any = None) -> None:
-    """Send one personalized e-mail over SMTP (Gmail app password), inside the rolling 24-hour limit."""
+def new_message_id() -> str:
+    """A Message-ID on the sender's own domain (Gmail keeps the one the client sets)."""
+    user = os.environ.get("SMTP_USER") or ""
+    return make_msgid(domain=user.rsplit("@", 1)[-1] if "@" in user else None)
+
+
+def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = None, smtp_factory: Any = None,
+            in_reply_to: str | None = None, references: list[str] | None = None) -> str:
+    """Send one personalized e-mail over SMTP (Gmail app password), inside the rolling 24-hour limit.
+
+    Returns the Message-ID. in_reply_to / references answer an agent's e-mail inside its own Gmail thread."""
     ok, why = smtp_ready()
     if not ok:
         raise RuntimeError(why)
@@ -457,10 +483,15 @@ def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = Non
         raise RuntimeError(f"daily limit reached ({limit} e-mails in 24 hours)")
     if not packet.agent_email:
         raise RuntimeError("agent has no e-mail address")
+    message_id = new_message_id()
     msg = EmailMessage()
     msg["From"] = os.environ["SMTP_USER"]
     msg["To"] = packet.agent_email
     msg["Subject"] = packet.subject
+    msg["Message-ID"] = message_id
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+        msg["References"] = " ".join(dict.fromkeys([*(references or []), in_reply_to]))
     msg.set_content(packet.email_body)
     pdf = packet.loi_files.get("pdf")
     if pdf and Path(pdf).exists():
@@ -471,12 +502,14 @@ def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = Non
     with factory() as smtp:
         smtp.login(os.environ["SMTP_USER"], os.environ["SMTP_APP_PASSWORD"])
         smtp.send_message(msg)
+    return message_id
 
 
 def send_smtp(session: Session, lead: Lead, packet: AgentPacket, now: datetime | None = None,
-              smtp_factory: Any = None) -> str:
-    deliver(packet, session=session, now=now, smtp_factory=smtp_factory)
-    return record_sent(session, lead, packet, "email_smtp", now)
+              smtp_factory: Any = None, in_reply_to: str | None = None, references: list[str] | None = None) -> str:
+    message_id = deliver(packet, session=session, now=now, smtp_factory=smtp_factory, in_reply_to=in_reply_to,
+                         references=references)
+    return record_sent(session, lead, packet, "email_smtp", now, message_id=message_id)
 
 
 def opt_out(session: Session, contact: Contact, notes: str = "agent asked to stop") -> None:

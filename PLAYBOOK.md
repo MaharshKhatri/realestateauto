@@ -159,27 +159,71 @@ The dashboard's 🎯 Autopilot opens with **Phase 0** until three partners are "
 4. From then on offers in that buy box say "acquiring with our verified local capital partner", the negotiator can answer a
    proof-of-funds request, and the JV agreement is pre-filled with that partner.
 
-## Part 2 — every day: two focused hours
+## Part 2 — every day: one button, then your replies
 
-Double-click the Desktop icon. The home page is **🎯 Step-by-Step Mode**:
+Double-click the Desktop icon. The home page has three parts, top to bottom:
 
-- **Today's Goal: 0 / 15 Deals Contacted**: the bar fills as you e-mail, text or call.
-- **One deal card at a time** (Action 1 of 20), in money order: urgent listed foreclosures first, then follow-ups
-  that are due, then stale MLS fixers within reach of the ask. Each card says what the property is, **why the
-  numbers work** (ARV, repairs, our walk-away, the fee), and the **exact action to take now**.
-- The e-mail is already written: a short plain note on top, the offer terms and required disclosures under the
-  `--- Offer Summary ---` line. Edit anything, then **✉️ Send Email & Log**. It logs the send, schedules the
-  48-hour follow-up call and moves to the next deal.
-- **📋 Copy Short Text Message** copies the text for Google Voice (you always send texts yourself).
-- Calling instead? Use the 3-sentence script, then log what happened: **Interested - Send Offer** (the written
-  offer is generated for you), **Left Voicemail**, **Not Interested**, or **Sold / Dead - Skip**.
+1. **🚀 RUN TODAY'S AI AUTOPILOT.** Click it once between 8 AM and 8 PM. It e-mails today's top 15 deals from your
+   Gmail: urgent listed foreclosures first, then follow-ups that are due, then stale MLS fixers that have an agent
+   e-mail. The e-mails go out one at a time, 25-60 seconds apart, so a batch of 15 takes about 10 minutes. You can
+   leave the page open and do something else. Each send is logged with its 48-hour follow-up, and the follow-up
+   lands on your Google Calendar. Gmail's safe pace is 25 e-mails in 24 hours, and the button won't go past it.
+   **⏹ Stop** finishes the current e-mail and stops.
+2. **🔥 Action Needed From You.** The dashboard reads your Gmail inbox every 5 minutes. It opens the inbox
+   read-only, so nothing gets marked as read. It looks only at replies from agents you wrote to.
+   - **"Still available"** with nothing else in it: your priced note and the one-page offer go back by themselves
+     in the agent's own thread, a few minutes later. You'll see it under "Handled automatically".
+   - **Anything else** waits here for you: a number, a question, proof of funds, an oil tank, tenants, a bidding
+     war, "under contract". You get:
+     - the agent's message;
+     - the traffic light, for example 🟢 **DEAL WORKS AT $470K — Your Est. Profit: $15,900**;
+     - a drafted answer.
 
-Below the player, the four queues (Urgent Listed Foreclosures, Ready-to-Call MLS Fixers, Cash Buyers to Call,
-Follow-Ups Due Today) and links to the Virtual Inspector and Closing Coordinator. Once a week, work the cash-buyer
-column: call 5 buyers who bought in your towns and get their buy box and proof of funds *before* you have a deal.
+     Read the draft, then click **✅ Approve & Send AI Reply + LOI**. It answers in their thread with the written
+     offer at that price. Or call them with the 📞 button.
+   - **"Remove me"** puts the agent on your stop list. A **bounced** e-mail takes the dead address off the card.
+   - A Google Calendar alert (🔥 Agent replied) goes up about 10 minutes after a reply that needs you.
+3. **📋 Manual Step-by-Step Card Player (optional).** The same one-card-at-a-time deck as before, for phone calls,
+   texts or sending by hand. It only shows deals you can reach today: an agent e-mail or a phone that isn't on a
+   stop list. Funding partners with no phone or e-mail yet wait in **⚡ Skip Trace** and don't open your day.
+   - The e-mail is already written: a short plain note on top, the terms and disclosures under
+     `--- Offer Summary ---`. **✉️ Send Email & Log** sends it and moves to the next deal. **📋 Copy Short Text
+     Message** copies the text for Google Voice; you always send texts yourself.
+   - Calling? Use the 3-sentence script, then log the outcome. **✅ Interested - Send Offer** turns the card into the
+     priced note (Touch 2) on the spot: press Send and the one-page offer is attached.
 
-The old checklist is still there (**Today** tab, or `python manage.py today` in a terminal): deadlines first,
-then the same four blocks with skip-trace links for estates and vacant sheriff-sale houses.
+What the button never does:
+- negotiate a counter by itself;
+- send a price on a deal whose pre-flight shows a condo unit, an ARV above every comp, low confidence, an
+  owner-occupied foreclosure (FRFPA) or a payoff problem;
+- text anyone;
+- send outside 8 AM to 8 PM.
+
+The same from a terminal:
+- `python manage.py gmail --dry-run` shows today's batch;
+- `--run` sends it;
+- `--check` reads the inbox now;
+- `--status` shows the counts;
+- `--approve <id>` sends an approved reply.
+
+Everything else lives under **Advanced Tools ▾** (top right):
+- the full step-by-step deck with the four queues (Urgent Listed Foreclosures, Ready-to-Call MLS Fixers, Cash
+  Buyers to Call, Follow-Ups Due Today);
+- Partners & POF;
+- Skip Trace;
+- Today;
+- Dashboard;
+- Fast Track;
+- Ready to Call;
+- Agent LOI Blast;
+- Inspector & Mail;
+- Walkthroughs & Bids;
+- Closing & Money;
+- Records;
+- the lead search.
+
+Once a week, call 5 cash buyers who bought in your towns and get their buy box and proof of funds *before* you have
+a deal.
 
 ---
 
@@ -239,6 +283,9 @@ value. The engine refuses to generate that contract. Send the LOI and the deal s
 ---
 
 ## Part 4½ — when the agent writes back: the live negotiator
+
+With Gmail connected (My Setup), agent e-mails reach **🔥 Action Needed** on the home page by themselves, already analyzed;
+the paste box below is for texts, voicemails you typed up, or replies that went to another address.
 
 Every deal card and lead page has **"💬 Agent replied or countered? Paste their message here."** Paste the whole e-mail or
 text and click Analyze. You get:

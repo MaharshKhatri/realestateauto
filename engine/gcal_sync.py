@@ -56,8 +56,8 @@ from agents.base import AgentContext, BaseAgent
 from core.config import ROOT, settings
 from core.dates import nj_business_days_after
 from core.text import format_phone
-from db.models import (CalendarEvent, ClosingMilestone, Contact, ContactType, DistressSignal, Interaction, Lead,
-                       LeadStage, SignalType, SwarmState, utcnow)
+from db.models import (CalendarEvent, ClosingMilestone, Contact, ContactType, DistressSignal, InboundReply, Interaction,
+                       Lead, LeadStage, SignalType, SwarmState, utcnow)
 
 log = logging.getLogger(__name__)
 
@@ -334,6 +334,34 @@ def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired
                     start)]
 
 
+def reply_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
+    """🔥 An agent answered and the deal waits on the operator's click (engine/gmail_autopilot.py Action Needed).
+
+    The alert lands ~10 minutes after the reply arrived (inside calling hours) and disappears once it's approved or
+    dismissed. It carries the street, the light and the numbers, never the agent's message (it may name the seller)."""
+    out: list[Desired] = []
+    rows = session.scalars(select(InboundReply).where(InboundReply.lead_id == lead.id,
+                                                      InboundReply.status == "needs_approval"))
+    place = _place(session, lead)
+    for row in rows:
+        start = callable_slot((row.received_at or row.created_at) + timedelta(minutes=10), 15)
+        if start < now:
+            continue
+        agent = session.get(Contact, row.contact_id) if row.contact_id else listing_agent(lead)
+        n = (row.analysis_json or {}).get("numbers") or {}
+        s, e = _timed(start, 15)
+        summary = f"🔥 Agent replied: {place.street} (approve in the dashboard)"
+        lines = [f"The listing agent answered: {row.headline or row.verdict or 'see the dashboard'}.",
+                 f"Their number: {_money(row.counter_amount)}" if row.counter_amount else None,
+                 f"Your walk-away: {_money(n.get('mao_walkaway'))}" if n.get("mao_walkaway") else None,
+                 f"Why it waits for you: {row.note}" if row.note else None, *_agent_lines(session, agent),
+                 f"Open the dashboard: {dashboard_url()}/",
+                 "One click there sends the drafted answer in their Gmail thread."]
+        out.append(Desired(f"reply:{lead.id}:r{row.id}", "reply", lead.id,
+                           _body("reply", summary, lines, s, e, reminders=[0], link=lead_link(lead.id)), start))
+    return out
+
+
 def contract_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
     from engine.closing_coordinator import LABELS, milestones
     if not lead.contract_date or lead.status_stage in {LeadStage.DEAD, LeadStage.DO_NOT_CONTACT}:
@@ -486,9 +514,11 @@ def daily_goal_event(session: Session, today: date) -> Desired:
     first = parse_start((row.body_json or {}).get("start")) if row and row.body_json else None
     start = datetime.combine(first.date() if first else today, _clock("daily_goal_time", "10:00"))
     s, e = _timed(start, 30)
-    lines = [f"Open the dashboard ({dashboard_url()}/) and work the 🎯 Autopilot deck: {goal} distinct deals "
-             "contacted today. Listed foreclosures come first, then due follow-ups, then stale MLS fixers.",
-             "Until three funding partners have proof of funds on file, the deck opens with them.",
+    lines = [f"Open the dashboard ({dashboard_url()}/) and press 🚀 RUN TODAY'S AI AUTOPILOT: {goal} distinct deals "
+             "contacted today from your Gmail, 25-60 seconds apart. Listed foreclosures come first, then due "
+             "follow-ups, then stale MLS fixers.",
+             "Agent replies show up under 🔥 Action Needed (the inbox is checked every few minutes); a plain "
+             "'still available' gets your offer by itself.",
              "Texts go from your phone; every e-mail keeps your postal address and the opt-out line."]
     return Desired("daily_goal", "daily_goal", None,
                    _body("daily_goal", f"🎯 Send {goal} Daily Wholesaling Outreach Emails (Open Dashboard)", lines,
@@ -514,9 +544,11 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
         on_calendar = select(CalendarEvent.lead_id).where(CalendarEvent.status.in_(("pending", "synced")),
                                                           CalendarEvent.starts_at >= now,
                                                           CalendarEvent.lead_id.is_not(None))
+        waiting = select(InboundReply.lead_id).where(InboundReply.status == "needs_approval",
+                                                     InboundReply.lead_id.is_not(None))
         leads = list(session.scalars(select(Lead).where(or_(Lead.next_followup_at >= now - timedelta(days=2),
                                                             Lead.contract_date.is_not(None),
-                                                            Lead.id.in_(on_calendar)))))
+                                                            Lead.id.in_(on_calendar), Lead.id.in_(waiting)))))
         sale_ids = {lead.id for lead in priority_sale_leads(session, today)}
         put([daily_goal_event(session, today), reconnect_event(session, now)])
     else:
@@ -529,6 +561,7 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
     for lead in leads:
         put(followup_events(session, lead, now))
         put(contract_events(session, lead, now))
+        put(reply_events(session, lead, now))
     for lid in sale_ids:
         lead = session.get(Lead, lid)
         if lead is not None:
@@ -1091,7 +1124,7 @@ def _after_flush(session: Session, _ctx: Any) -> None:
         if isinstance(obj, Lead):
             if obj in session.new or _changed(obj, *WATCH_LEAD):
                 leads.add(obj.id)
-        elif isinstance(obj, (Interaction, ClosingMilestone)):
+        elif isinstance(obj, (Interaction, ClosingMilestone, InboundReply)):
             if obj.lead_id:
                 leads.add(obj.lead_id)
         elif isinstance(obj, DistressSignal):

@@ -1003,6 +1003,67 @@ def autopilot_outcome(lead_id: int, body: AutoOutcomeIn, session: Session = Depe
         raise HTTPException(409, str(exc)) from exc
 
 
+# -- Phase 8: the simple home + Gmail autopilot ---------------------------------------------------------------------
+@app.get("/api/simple/status")
+def simple_status(session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import gmail_autopilot as gm
+    return gm.status(session)
+
+
+class SimpleRunIn(BaseModel):
+    limit: int | None = Field(default=None, ge=1, le=25)
+
+
+@app.post("/api/simple/run")
+def simple_run(body: SimpleRunIn) -> dict[str, Any]:
+    """The 🚀 button: today's batch goes out in a background thread, 25-60 s apart."""
+    from engine import gmail_autopilot as gm
+    try:
+        return gm.start_campaign(body.limit)
+    except gm.CampaignError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post("/api/simple/stop")
+def simple_stop() -> dict[str, Any]:
+    from engine import gmail_autopilot as gm
+    return gm.stop_campaign()
+
+
+@app.post("/api/simple/check-inbox")
+def simple_check_inbox() -> dict[str, Any]:
+    from engine import gmail_autopilot as gm
+    ok, why = gm.configured()
+    if not ok:
+        raise HTTPException(409, why)
+    gm.poller.kick()
+    return {"started": True}
+
+
+class ReplyApproveIn(BaseModel):
+    subject: str | None = None
+    body: str | None = None
+
+
+@app.post("/api/replies/{reply_id}/approve")
+def reply_approve(reply_id: int, body: ReplyApproveIn, session: Session = Depends(db)) -> dict[str, Any]:
+    """One click: the drafted answer (+ an LOI at its price) goes out in the agent's own Gmail thread."""
+    from engine import gmail_autopilot as gm
+    try:
+        return gm.approve(session, reply_id, subject=body.subject, body=body.body)
+    except gm.ApprovalError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post("/api/replies/{reply_id}/dismiss")
+def reply_dismiss(reply_id: int, session: Session = Depends(db)) -> dict[str, Any]:
+    from engine import gmail_autopilot as gm
+    try:
+        return gm.dismiss(session, reply_id)
+    except gm.ApprovalError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 # -- Phase 7: Google Calendar ---------------------------------------------------------------------------------------
 @app.get("/api/calendar/status")
 def calendar_status(session: Session = Depends(db)) -> dict[str, Any]:

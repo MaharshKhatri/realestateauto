@@ -248,6 +248,9 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
     seen: set[int] = set()
 
     held: list[dict[str, Any]] = []
+    hidden: list[int] = []
+    from engine import gmail_autopilot
+    waiting = gmail_autopilot.awaiting_approval_lead_ids(session)
 
     def add(lead: Lead | None) -> None:
         from engine import preflight
@@ -259,10 +262,16 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
             # The number on this card isn't defensible yet: it waits for a re-underwrite instead of an agent.
             held.append({"lead_id": lead.id, "address": lead_facts(lead)["address"], "issues": pf.issues[:3]})
             return
+        if lead.id in waiting:
+            return                          # an agent reply is waiting for approval: the Action Needed box owns it
         card = build_card(session, lead, now)
-        if card is not None:
-            card["preflight"] = pf.to_json()
-            cards.append(card)
+        if card is None:
+            return
+        if not actionable(session, card):
+            hidden.append(lead.id)          # no e-mail and no callable phone: nothing to do with it today
+            return
+        card["preflight"] = pf.to_json()
+        cards.append(card)
 
     short_sales: list[Lead] = []
     for lf in ft.listed_foreclosures(session):
@@ -290,10 +299,25 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
             "sent_24h": ao.sent_last_24h(session, now),
             "daily_email_limit": int(settings().get("outreach", {}).get("daily_email_limit", 25)),
             "first_touch": "opener" if ao.opener_enabled() else "offer", "held": held[:12],
-            # Phase 0: until `partners_needed` rehabbers are active with proof of funds, the deck opens with them.
+            "hidden_no_contact": len(hidden),
+            # Phase 0: until `partners_needed` rehabbers are active with proof of funds, the deck shows the ones the
+            # operator can actually reach (e-mail or DNC-clear phone); the rest wait in Skip Trace (needs_lookup).
             "partners": {"active": vault.active_count(session), "needed": vault.partners_needed(),
                          "open": vault.phase0_open(session),
-                         "cards": vault.phase0_cards(session, limit=3) if vault.phase0_open(session) else []}}
+                         "cards": vault.phase0_cards(session, limit=3, reachable_only=True)
+                         if vault.phase0_open(session) else [],
+                         "needs_lookup": vault.needs_lookup(session)}}
+
+
+def actionable(session: Session, card: dict[str, Any]) -> bool:
+    """A card reaches the deck only with a way to act on it now: the agent's e-mail, or a phone not on any stop list
+    (a listing agent's advertised number is B2B, but internal / Daniel's Law stops still win)."""
+    from engine import compliance
+    from engine.jv_partner_vault import EMAIL_RE
+    a = card.get("agent") or {}
+    if a.get("email") and EMAIL_RE.fullmatch(str(a["email"]).strip()):
+        return True
+    return bool(a.get("phone")) and compliance.classify_number(session, a["phone"], b2b=True) != "dnc"
 
 
 # -- actions -----------------------------------------------------------------------------------------
@@ -351,10 +375,12 @@ def send(session: Session, lead_id: int, channel: str, *, subject: str | None = 
             "done": contacted_today(session, now), "goal": daily_goal()}
 
 
-def _log_followup(session: Session, lead: Lead, packet: ao.AgentPacket, channel: str, now: datetime | None) -> str:
+def _log_followup(session: Session, lead: Lead, packet: ao.AgentPacket, channel: str, now: datetime | None,
+                  message_id: str | None = None) -> str:
     when = ao.followup_time(now)
     session.add(Interaction(lead_id=lead.id, contact_id=packet.agent_contact_id, channel=channel,
                             outcome="AGENT_FOLLOWUP_SENT", notes=packet.subject, next_followup_at=when,
+                            email_message_id=message_id,
                             debrief_json={"packet": {"kind": "followup"}}, occurred_at=ao._eastern(now)))
     lead.next_followup_at = when
     lead.last_contact_at = ao._eastern(now)
@@ -364,8 +390,8 @@ def _log_followup(session: Session, lead: Lead, packet: ao.AgentPacket, channel:
 def _smtp_followup(session: Session, lead: Lead, packet: ao.AgentPacket, now: datetime | None,
                    smtp_factory: Any) -> str:
     """SMTP for a follow-up: same limits and postal-address rule, logged as a follow-up (stage unchanged)."""
-    ao.deliver(packet, session=session, now=now, smtp_factory=smtp_factory)
-    return _log_followup(session, lead, packet, "email_smtp", now)
+    message_id = ao.deliver(packet, session=session, now=now, smtp_factory=smtp_factory)
+    return _log_followup(session, lead, packet, "email_smtp", now, message_id=message_id)
 
 
 def outcome(session: Session, lead_id: int, button: str, *, notes: str = "", now: datetime | None = None,
@@ -395,9 +421,16 @@ def outcome(session: Session, lead_id: int, button: str, *, notes: str = "", now
         except (ContractBlocked, ValueError) as exc:
             warnings.extend(getattr(exc, "reasons", None) or [str(exc)])
     session.flush()
+    card = None
+    if button == "interested":
+        # The agent said "send it" on the phone: the card turns into Touch 2 (the priced note) right here.
+        card = build_card(session, lead, now)
+        if card is not None:
+            from engine import preflight
+            card["preflight"] = preflight.check(lead).to_json()
     return {"lead_id": lead.id, "outcome": code, "stage": r.stage, "message": message, "files": files,
             "warnings": warnings, "followup_at": lead.next_followup_at.isoformat() if lead.next_followup_at else None,
-            "done": contacted_today(session, now), "goal": daily_goal()}
+            "done": contacted_today(session, now), "goal": daily_goal(), "card": card}
 
 
 # -- KPI pills ---------------------------------------------------------------------------------------

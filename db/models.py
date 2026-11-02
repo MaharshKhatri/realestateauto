@@ -447,6 +447,9 @@ class Interaction(Base):
     debrief_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     next_followup_at: Mapped[datetime | None] = mapped_column(DateTime)
     occurred_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    # RFC 5322 Message-ID of an e-mail we sent (or received) here: agent replies are matched to the lead through
+    # their In-Reply-To / References headers (engine/gmail_autopilot.py).
+    email_message_id: Mapped[str | None] = mapped_column(String(255), index=True)
 
     lead: Mapped[Lead] = relationship(back_populates="interactions")
 
@@ -509,6 +512,41 @@ class ClosingMilestone(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     __table_args__ = (UniqueConstraint("lead_id", "milestone", name="uq_closing_milestone"),)
+
+
+class InboundReply(Base):
+    """A listing agent's e-mail read from the operator's Gmail (engine/gmail_autopilot.py), keyed on its Message-ID.
+
+    Only messages matched to one of our leads are stored (thread headers, a known agent address, or a street we
+    e-mailed about); the rest of the inbox is never downloaded past its headers. status: auto_queued -> auto_sent
+    (Touch 2 went out by itself), needs_approval -> approved / dismissed, opted_out, bounce, auto_reply."""
+    __tablename__ = "inbound_replies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(255), unique=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="SET NULL"), index=True)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
+    from_email: Mapped[str | None] = mapped_column(String(160))
+    from_name: Mapped[str | None] = mapped_column(String(160))
+    subject: Mapped[str | None] = mapped_column(String(300))
+    received_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)   # naive America/New_York
+    in_reply_to: Mapped[str | None] = mapped_column(String(255))
+    references_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    body_text: Mapped[str | None] = mapped_column(Text)            # the agent's words, quoted history stripped
+    match_method: Mapped[str | None] = mapped_column(String(24))   # thread | agent_email | agent_latest | address
+    status: Mapped[str] = mapped_column(String(20), default="needs_approval", index=True)
+    verdict: Mapped[str | None] = mapped_column(String(8))         # GREEN / YELLOW / RED / INFO
+    headline: Mapped[str | None] = mapped_column(String(200))
+    intents_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    counter_amount: Mapped[float | None] = mapped_column(Float)
+    price: Mapped[float | None] = mapped_column(Float)             # the number our reply / LOI carries
+    analysis_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    note: Mapped[str | None] = mapped_column(Text)                 # why it was held / what was done
+    send_after: Mapped[datetime | None] = mapped_column(DateTime)  # auto Touch 2: not before (human pace)
+    interaction_id: Mapped[int | None] = mapped_column(ForeignKey("interactions.id", ondelete="SET NULL"))
+    sent_message_id: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class CalendarEvent(Base):

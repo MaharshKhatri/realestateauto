@@ -48,8 +48,9 @@ driving for dollars, door-knocking or an in-person visit by the operator.
 | **5. Command Center, Guided Autopilot, Human Copy, Clerk Filings & OPRA, Mercer/Monmouth** | `engine/human_copy.py` (plain 3-5 sentence e-mails, disclosures under `--- Offer Summary ---`, linter) across agent / fast-track / buyer / inbound / inspector messages; command center (KPI pills, My Setup → settings.local.yaml + .env, one-click swarm refresh with progress, step-by-step deal cards with send/outcome logging, kanban); desktop launchers; lis pendens agent (Union UCPA, Essex PRESS, Monmouth OPRS live + drop-in imports, Newark snapshot name lookup); OPRA requests + tax-list importer + Records page; Mercer/Monmouth harvest; GitHub Pages deploy behind `build-site --check` | **Done (Phase 5)** |
 | **6. Quant Pricing, Funding Partners, Two-Step Funnel, Reply Negotiator, Item 14 & Double Close, Fast Skip-Trace** | `engine/quant_pricing.py` (end-buyer solve: ≥15% ROI and ≥$45K after rehab + contingency, closing, 6-month taxes/carry/capital, commission + NJ RTF/graduated fee; alpha ∈ [0.68, 0.80] calibrated from 1,162 recorded investor purchases → `config/market_calibration.yaml`; buyer_max / mao_target / mao_walkaway / opening_offer on every valuation; `manage.py calibrate` / `recalibrate`); `engine/jv_partner_vault.py` (jv_partners seeded from the top 30 named repeat buyers, Phase 0 cards, buy-box matching, proof-of-funds upload → "verified local capital partner" line); two-step funnel (Touch 1 opener, 48-h nudge, Touch 2 offer on reply; urgent listed foreclosures skip it); `engine/reply_negotiator.py` (paste the agent's reply → intents, counter, risk buffers, GREEN/YELLOW/RED/INFO, 3-sentence reply, AGENT_REPLIED + follow-up); `engine/deal_structure.py` (Section 37 / "Item 14" attorney-review rider with CPEA disclosure + tank-sweep inspection, Correa acknowledgment in the assignment, disclosed single-purpose-LLC option, assignment vs double-close net check); `engine/clipboard_skiptrace.py` (queue → manual links → one-click paste → DNC scrub → best mobile → READY_TO_CALL); cockpit: first-touch toggle, paste-reply panel, 🤝 Partners & POF, ⚡ Skip Trace, quant breakdown, structure card | **Done (Phase 6)** |
 | **7. Google Calendar Auto-Connector & Real-Time Event Sync** | `engine/gcal_sync.py` (OAuth Desktop client → `setup-calendar` once → `config/token.json`; `calendar_events` outbox with natural keys = deterministic Google event ids); 🔥 agent follow-ups exactly 48 h after each e-mail (moved into calling hours), 📞 call-backs, ⚠️ attorney review 5 PM on the 3rd NJ business day (+ FRFPA cancellation end), 📋 closing milestones, 🚨 priority sheriff sales that move with adjournments, 🎯 10:00 daily goal; SQLAlchemy commit hooks → background push in the cockpit / CLI / swarm, offline queue, two-way pull (deletes respected, moved follow-ups move the CRM, legal dates restored); `sync-calendar`, `calendar_sync` swarm agent, 📅 cockpit button, `/leads/<id>` links | **Done (Phase 7)** |
-| **8. Lead Sources & Learning at Scale** | NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), Mercer sheriff list import once its format is verified, outcome-driven weight re-fits once calls are logged | Next |
-| **9. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
+| **8. True Zero-Click Autonomous Mode** | `engine/gmail_autopilot.py`: the My Setup Gmail address + app password read agent replies over IMAP (INBOX read-only, BODY.PEEK, only new UIDs, bodies downloaded only for matched mail: thread headers → known agent address → street in the subject), quoted history stripped, out-of-office / bounce handling, `inbound_replies` + `interactions.email_message_id`; a plain "still available" sends Touch 2 + LOI by itself in the agent's thread (In-Reply-To / References) after a human-paced delay inside send hours; everything else waits in 🔥 Action Needed for one click (`approve()`); 🚀 paced daily batch (25-60 s apart, 25 / 24 h); 5-minute background poller + `gmail_replies` swarm agent + `manage.py gmail`; actionable-only deck (agent e-mail or callable phone; Phase 0 partners only when reachable, the rest in Skip Trace); ✅ Interested turns the card into Touch 2; 🔥 calendar alert for replies; simple home (one button, live counts, Action Needed, optional card player) with the 12 tabs under Advanced Tools ▾ | **Done (Phase 8)** |
+| **9. Lead Sources & Learning at Scale** | NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), Mercer sheriff list import once its format is verified, outcome-driven weight re-fits once calls are logged | Next |
+| **10. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
 
 ## Directory structure
 
@@ -61,7 +62,7 @@ manage.py                     ← operator CLI (rich): briefing (A ready-to-call
                                 inspect, stack, buyer-hotzones, walkthrough, bid, today, fast-track, closing, finance,
                                 partners, inbound, site, build-site, install-shortcut, calibrate, recalibrate, vault,
                                 skiptrace-fast, reply, structure, preflight, db-sync, setup-calendar, sync-calendar,
-                                swarm passthrough
+                                gmail, swarm passthrough
 Launch_Dashboard.command / launch_dashboard.sh / Launch_Dashboard.bat ← double-click launchers (generated by
                                 scripts/install_desktop_shortcut.py; path-independent): start the server if needed,
                                 wait for /api/health, open the browser
@@ -88,7 +89,8 @@ db/models.py                  ← ORM: properties, distress_signals, valuations,
                                 fields, ready_to_call), contacts, interactions, dnc_entries, mail_suppressions,
                                 buyer_matches, buyer_bids, closing_milestones, financial_ledger, generated_documents,
                                 cash_buyers (+ web registration fields), jv_partners, deed_transfers, listings, agent_runs,
-                                scoring_weights, swarm_state, calendar_events
+                                scoring_weights, swarm_state, calendar_events, inbound_replies (agent e-mails read from
+                                Gmail); interactions.email_message_id threads replies to their lead
 db/repository.py              ← idempotent upserts keyed on natural keys; parcel_id = COUNTY-MUN-BLOCK-LOT[-QUAL]
 db/snapshot.py                ← `manage.py db-sync`: VACUUM INTO → xz → AES-256-GCM (PBKDF2-HMAC-SHA256, 600k) →
                                 data/snapshots/ (< 45 MB parts + manifest); unpack verifies tag, SHA-256, quick_check;
@@ -155,6 +157,11 @@ engine/
                                 (follow-up / call-back / attorney review / FRFPA / milestones / sheriff sale / daily
                                 goal), calendar_events outbox, pull → reconcile → push, commit hooks + background
                                 worker, CalendarSyncAgent
+  gmail_autopilot.py          ← Phase 8: read-only IMAP poller (new UIDs, headers first, bodies only for matched mail),
+                                match (thread / agent e-mail / street), strip quoted text, auto-reply + bounce handling,
+                                reply_negotiator → auto_queued Touch 2 (in-thread, LOI, human delay, send hours) or
+                                needs_approval → approve() / dismiss(); paced outbound batch (pick_cards, start_campaign,
+                                25-60 s, 25 / 24 h); background poller; status() for the simple home; GmailRepliesAgent
   clipboard_skiptrace.py      ← Fast Skip-Trace Mode: queue (exempt estates → vacant sheriff → lis pendens → absentee),
                                 parse pasted people-search pages (never fetched), rank, DNC scrub, save, READY flip
   operator_setup.py           ← My Setup: validate + write settings.local.yaml and .env (password never returned)
@@ -179,8 +186,11 @@ engine/
   crm.py                      ← log_call, follow-up cadence, confirm_occupancy (re-price), record_contract, queues
   debrief.py / ai.py          ← rule-based post-call coach; optional Claude note (redacted payload, opt-in)
   buyer_matcher.py            ← top-5 recorded cash buyers per top deal (geography, price, units, rehab, recency)
-web/app.py + web/static/      ← local cockpit (FastAPI, 127.0.0.1 only, Host/Origin guard): 🎯 Autopilot (home: command
-                                bar with KPI pills / My Setup / swarm refresh / OPRA, step-by-step player, kanban),
+web/app.py + web/static/      ← local cockpit (FastAPI, 127.0.0.1 only, Host/Origin guard): 🏠 Home (Phase 8: 🚀 one
+                                button, live counts, 🔥 Action Needed approvals, optional card player; /api/simple/*,
+                                /api/replies/<id>/approve|dismiss); everything below sits under "Advanced Tools ▾":
+                                🎯 Step-by-Step Deck (#/autopilot: command bar with KPI pills / My Setup / swarm
+                                refresh / OPRA, step-by-step player, kanban),
                                 🏛️ Records (OPRA, uploads, clerk filings), 🤝 Partners & POF (vault), ⚡ Skip Trace,
                                 Today, dashboard,
                                 battle station, Fast Track, Ready to Call, Agent LOI Blast, Inspector & Mail,
@@ -562,6 +572,67 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   Law list; an address under a Daniel's Law / stop suppression (property or owner mailing address) appears only as
   "lead #<id>", without the CivilView link.
 
+### Phase 8 operating rules — Gmail autopilot & the one-button home (learned 2026-11-02) — enforced in code
+- **Reading the inbox** (`engine/gmail_autopilot.py`): the My Setup Gmail address + app password (SMTP_USER /
+  SMTP_APP_PASSWORD in .env) on imap.gmail.com:993. INBOX is selected **read-only** and every fetch is BODY.PEEK, so
+  nothing in the operator's Gmail is marked read, moved or deleted. Each check reads only UIDs above the last one
+  seen (per account + UIDVALIDITY in swarm_state); the first check looks back `lookback_days` (14). Headers come first.
+  A body is downloaded only for a bounce or a message matched to one of our leads:
+  1. In-Reply-To / References hold a Message-ID we sent or received (`interactions.email_message_id`); else
+  2. the sender is a listing agent we wrote to (their street in the text picks the listing, else the one we wrote to
+     last); else
+  3. an unknown sender's subject names a street we e-mailed about (this one always waits for approval).
+
+  Unmatched mail is never downloaded or stored. A matched reply keeps only the agent's own words: quoted history,
+  Outlook header blocks and "Sent from my iPhone" are stripped, capped at 4,000 characters. Out-of-office and
+  automatic replies are ignored. A bounce takes the dead address off the agent's card (noted, phone kept). One
+  e-mail per Message-ID (unique `inbound_replies.message_id`), so a second poller in another process never
+  processes or sends twice (the auto-send claims its row with a conditional UPDATE).
+- **What goes out by itself** (`auto_send_touch2`, default on): only Touch 2, and only when every one of these holds:
+  - the reply says available, with no number and no other topic (tank, tenants, CO, POF, bidding war, estate,
+    short sale, under contract, stop);
+  - its only question, if any, is "what's your offer?";
+  - it matched by thread or by the agent's own address;
+  - the priced packet builds with no warning and its LOI generates;
+  - pre-flight shows no price blocker: FRFPA, payoff, condo / townhouse unit, unit count, sheriff sale inside 10
+    days, outlier / non-residential, ARV above every comp, confidence under 50;
+  - a listed foreclosure is on the CASH_OFFER track.
+
+  It goes out in the agent's own Gmail thread (In-Reply-To / References, "Re:" subject) with the one-page LOI, 4-11
+  minutes after the reply and only inside `send_hours` (8 AM to 8 PM Eastern), logged as OFFER_SENT_TO_AGENT with
+  the 48-hour follow-up. Nothing newer may have happened on the lead; otherwise it waits for approval.
+- **What waits for the operator**: every counter, accept, question, POF ask, bidding war, risk item or under-contract
+  note goes to 🔥 Action Needed with the light (🟢 DEAL WORKS AT $X — Your Est. Profit = buyer_max − their price;
+  🟡 counter; 🔥 hold) and the negotiator's drafted answer.
+  - One click (`approve()`) sends it in their thread. An edited answer must keep the postal address and the opt-out
+    line (CAN-SPAM).
+  - A priced answer attaches an LOI at that price through the normal gates (`contracts.generate`).
+  - An opted-out agent gets nothing.
+  - Nothing negotiates by itself.
+  - An opt-out reply ("no more", "remove me") suppresses the agent at once.
+  - A 🔥 calendar alert (key `reply:<lead>:r<id>`, color sage) lands ~10 minutes after a reply that waits (inside
+    calling hours). It carries the street, the light and the numbers, never the agent's message (it may name the
+    seller). It disappears when the reply is approved or dismissed.
+- **The 🚀 batch** (`start_campaign` / `run_daily_outbound_autopilot`): today's deck in money order (urgent listed
+  foreclosures, due follow-ups, MLS fixers). It picks only cards that have the agent's e-mail and pre-flight GO or
+  VERIFY. Short sales, cards with warnings and priced notes with a pre-flight blocker stay for the card player. Each
+  send goes through `autopilot.send` (same gates and logging), 25-60 s apart (`pace_seconds`), inside the rolling
+  25-per-24-hours limit and `send_hours`, one batch at a time, ⏹ Stop between e-mails. Texts are never automated.
+- **Actionable-only deck** (`autopilot.actionable`): a card appears only with the agent's e-mail or a phone that is
+  on no stop list (internal / Daniel's Law always win). Leads whose reply waits in Action Needed or the Touch 2 queue
+  are off the deck. Phase 0 partner cards show only partners with an e-mail or a DNC-clear phone (a JV pitch to a
+  person's phone is a sales call). The rest wait in ⚡ Skip Trace (`needs_lookup`). A phone / e-mail that reaches the
+  linked cash-buyer record later is paired onto the partner (`pair_contacts`).
+- **✅ Interested on a call** (`agent_outreach.last_touch`): the listing agent saying "send it" on the phone
+  (SPOKE_NEEDS_OFFER with a listing-agent contact) counts as their answer. The card turns into Touch 2 (priced
+  note, LOI on SMTP) right away, even when they were called before any e-mail.
+- **The home page** (`#/`): the giant button, live counts (e-mails sent today, replies found, offers delivered, next
+  auto-check), Action Needed and the optional card player. The 12 tabs and the lead search sit under "Advanced
+  Tools ▾" (`#/autopilot` is the full step-by-step deck with the kanban). The UI copy says "AI" (operator branding).
+  The reply reader and negotiator are rule-based: no model is called and nothing leaves the laptop but Gmail.
+- **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
+  and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
+
 ## Coding standards
 
 - **No placeholders, mock data or TODO stubs in shipped code.** Every scraper is tested live from
@@ -654,5 +725,8 @@ python manage.py db-sync --pack            # encrypted DB snapshot → data/snap
 python manage.py db-sync --unpack [KEY]    # laptop: restore wholesaling.db (--force replaces data, backed up first); --status
 python manage.py setup-calendar            # once: config/credentials.json → browser consent → config/token.json → first sync
 python manage.py sync-calendar             # two-way Google Calendar sync (--dry-run lists the events, --status shows the queue)
+python manage.py gmail --dry-run            # Phase 8: today's paced batch (no send); --run [N] sends it; --check reads agent replies
+python manage.py gmail --status             # today's counts, 🔥 Action Needed, queued Touch 2; --approve <id> / --dismiss <id>
+python -m swarm.orchestrator run gmail_replies  # one inbox check (the dashboard also checks every 5 minutes)
 pytest                                      # tests
 ```

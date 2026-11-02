@@ -54,12 +54,15 @@ async function route() {
   const [path, query] = hash.slice(1).split("?");
   const params = new URLSearchParams(query || "");
   try {
-    const section = path === "/" || path === "" ? "autopilot"
-      : (path.match(/^\/(today|ready|agents|inspect|dispo|lead|fast|closing|records|partners|skiptrace)/) || [])[1] || "dash";
+    const section = path === "/" || path === "" ? "home"
+      : (path.match(/^\/(autopilot|today|ready|agents|inspect|dispo|lead|fast|closing|records|partners|skiptrace)/) || [])[1] || "dash";
     document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === section));
+    document.body.classList.toggle("simple-mode", section === "home");
+    if ($("#adv")) $("#adv").open = false;
     const m = path.match(/^\/lead\/(\d+)/);
     if (m) return await renderLead(+m[1], params.get("contact"));
-    if (path === "/" || path === "") return await renderAutopilot();
+    if (path === "/" || path === "") return await renderSimple();
+    if (path === "/autopilot") return await renderAutopilot();
     if (path === "/partners") return await renderPartners();
     const skt = path.match(/^\/skiptrace(?:\/(p?\d+))?/);
     if (skt) return await renderSkiptrace(skt[1] || null);
@@ -1092,7 +1095,7 @@ async function openSetup() {
     closeModal();
     toast(data.live ? "✅ Setup Complete — Live Mode Active" : "Saved. A few details are still missing.");
     await loadCmdbar();
-    if (!location.hash || location.hash === "#/") renderAutopilot();
+    if (onHome()) renderSimple(); else if (location.hash === "#/autopilot") renderAutopilot();
   });
 }
 
@@ -1150,14 +1153,169 @@ async function pollSwarm(active) {
       document.querySelectorAll("#dlg [data-mode]").forEach((x) => (x.disabled = false));
       const k = await api("/api/kpis").catch(() => null);
       if (k) loadCmdbar();
-      if (!location.hash || location.hash === "#/") renderAutopilot();
+      if (onHome()) renderSimple(); else if (location.hash === "#/autopilot") renderAutopilot();
     }
   }
+}
+
+// -- Phase 8: the simple home (one button, Action Needed, optional card player) -----------------------------------
+const SM = { timer: null, key: null, deckLoaded: false, busy: false };
+function onHome() { return !location.hash || location.hash === "#/" || location.hash === "#"; }
+function refreshDeck() { return onHome() ? loadSimpleDeck() : renderAutopilot(); }
+
+async function renderSimple() {
+  SM.key = null;
+  SM.deckLoaded = false;
+  app.innerHTML = `<div class="simple">
+      <section class="card hero" id="sm-hero"><p class="muted">Loading…</p></section>
+      <section class="card" id="sm-action"></section>
+      <section class="card" id="sm-manual"><details id="sm-player">
+        <summary><h2>📋 Manual Step-by-Step Card Player (Optional)</h2>
+          <span class="muted"> · one card at a time, only deals with an e-mail or a callable phone (for calls, texts or sending by hand)</span></summary>
+        <div class="autopilot" id="ap"><p class="muted">Loading the deck…</p></div></details></section></div>`;
+  $("#sm-player").addEventListener("toggle", () => { if ($("#sm-player").open && !SM.deckLoaded) loadSimpleDeck(); });
+  await refreshSimple();
+  clearInterval(SM.timer);
+  SM.timer = setInterval(() => { if (onHome()) refreshSimple(); else clearInterval(SM.timer); }, 5000);
+}
+async function loadSimpleDeck() {
+  if (!$("#ap")) return;
+  const { data } = await api("/api/autopilot");
+  if (!onHome() || !$("#ap")) return;          // the operator moved on while the deck was being built
+  AP.deck = data;
+  AP.i = Math.min(AP.i, Math.max(0, data.cards.length - 1));
+  SM.deckLoaded = true;
+  drawCard();
+}
+function smStat(icon, n, text) {
+  return `<div class="sm-stat"><b>${icon} ${esc(n)}</b><span>${esc(text)}</span></div>`;
+}
+function heroHtml(st) {
+  const c = st.campaign, t = st.today, p = st.poll;
+  const mins = p.next_at ? Math.max(0, Math.round((new Date(p.next_at) - Date.now()) / 60000)) : null;
+  const check = !st.configured ? "off until My Setup" : p.running ? "now" : mins === null ? "starting" : `in ${mins < 1 ? "<1" : mins} min`;
+  const w = Math.min(100, Math.round((100 * c.sent) / Math.max(1, c.total)));
+  const progress = c.running || c.total ? `<div class="sm-progress">
+      <div class="row spread"><b>${esc(c.progress_text || "")}</b>${c.running ? '<button class="btn" id="sm-stop">⏹ Stop</button>' : ""}</div>
+      ${c.current ? `<span class="muted">Now: ${esc(c.current)}${c.next_send_at ? ` · next e-mail at ${esc(fmtDate(c.next_send_at))}` : ""}</span>` : ""}
+      <div class="progress" role="progressbar" aria-label="Autopilot batch" aria-valuemin="0" aria-valuemax="${c.total}" aria-valuenow="${c.sent}"><div style="width:${w}%"></div></div>
+      ${c.log.length ? `<details><summary class="muted">${c.log.length} done</summary><ul class="sm-log">${c.log.map((x) => `<li>${esc(x.status)} · ${esc(x.address)}${x.reason ? ` (${esc(x.reason)})` : ""}</li>`).join("")}</ul></details>` : ""}
+      ${!c.running && c.skipped && c.skipped.length ? `<details><summary class="muted">${c.skipped.length} left for the card player</summary><ul class="sm-log">${c.skipped.map((x) => `<li>${esc(x.address)}: ${esc(x.reason)}</li>`).join("")}</ul></details>` : ""}</div>` : "";
+  return `<button class="giant" id="sm-run" ${c.running || !st.configured || SM.busy ? "disabled" : ""}>${c.running ? "🚀 AUTOPILOT RUNNING…" : "🚀 RUN TODAY'S AI AUTOPILOT"}</button>
+    <p class="sub">Click once. The AI will automatically email today's top ${esc(st.goal)} distressed listings from your Gmail, check your inbox for agent replies every ${esc(p.minutes)} minutes, send your quantitative cash offers when agents confirm availability, and put any counter-offers right below for you to approve.</p>
+    ${st.configured ? "" : `<div class="banner">${esc(st.why)}. <button class="btn" id="sm-setup">⚙️ My Setup</button></div>`}
+    ${st.configured && !st.send_window_open ? `<p class="muted">E-mails go out ${esc(st.send_hours)} so agents read them in working hours. The inbox is still watched now.</p>` : ""}
+    ${progress}
+    <div class="sm-stats">${smStat("📤", t.emails_sent, "Emails Sent Today")}${smStat("📥", t.replies_found, "Inbox Replies Found")}
+      ${smStat("💵", t.offers_delivered, "Offers Delivered")}${smStat("⏱️", check, "Next Auto-Check")}</div>
+    <div class="row sm-foot"><button class="btn" id="sm-check" ${st.configured ? "" : "disabled"}>📥 Check inbox now</button>
+      <span class="muted">Gmail: ${esc(st.account || "not set")} · ${st.sent_24h}/${st.daily_email_limit} e-mails in the last 24 hours
+        · last check ${esc(p.last_poll ? fmtDate(p.last_poll) : "not yet")}</span>
+      ${p.last && p.last.error ? `<span class="bad">${esc(p.last.error)}</span>` : ""}</div>`;
+}
+const HANDLED = { auto_sent: "✅ offer sent by itself", approved: "✅ you approved", opted_out: "🚫 asked to stop",
+  bounce: "⚠️ e-mail bounced", dismissed: "dismissed" };
+function replyCardHtml(r) {
+  const cls = { GREEN: "rc-good", YELLOW: "rc-warn", RED: "rc-bad" }[r.light.verdict] || "rc-info";
+  const what = r.numbers.counter ? "COUNTER-OFFER" : "YOUR ANSWER";
+  const town = r.town && !String(r.address || "").toLowerCase().includes(String(r.town).toLowerCase()) ? r.town : "";
+  return `<div class="replycard ${cls}" data-rid="${r.id}">
+    <div class="rc-head">🔥 AGENT REPLIED — 1 CLICK TO APPROVE ${what}</div>
+    <div class="row spread"><h2><a href="${esc(r.lead_url || "#/")}">${esc(r.address || r.subject || "agent reply")}</a>
+      <span class="muted">${esc(town)}</span></h2><span class="muted">${esc(fmtDate(r.received_at))}</span></div>
+    <p class="light">${esc(r.light.text)}</p>
+    <blockquote class="agent-msg"><b>${esc(r.agent || r.from || "The agent")}</b> wrote:<br>${esc(r.text).replaceAll("\n", "<br>")}</blockquote>
+    ${r.note ? `<p class="muted">Why it waits for you: ${esc(r.note)}</p>` : ""}
+    ${(r.warnings || []).map((w) => `<p class="flag">${esc(w)}</p>`).join("")}
+    ${r.reply_text ? `<details><summary>Your drafted reply (read it or edit it before you approve)</summary>
+      <label>Subject<input type="text" id="rs-${r.id}" value="${esc(r.reply_subject)}"></label>
+      <textarea id="rb-${r.id}" spellcheck="true">${esc(r.reply_text)}</textarea></details>` : '<p class="muted">No drafted answer: call them or dismiss it.</p>'}
+    <div class="row">
+      ${r.reply_text ? `<button class="btn good big" data-approve="${r.id}">✅ Approve &amp; Send AI Reply${r.loi ? " + LOI" : ""}</button>` : ""}
+      ${r.phone ? `<a class="btn" href="tel:${esc(r.phone.tel)}">📞 Call ${esc(r.agent || "the agent")} ${esc(r.phone.display)}</a>` : ""}
+      <button class="btn" data-dismiss="${r.id}">Dismiss</button></div></div>`;
+}
+function actionHtml(st) {
+  const queued = st.queued.length ? `<p class="muted">⏳ Going out by themselves in the next few minutes (their reply said
+      "still available"): ${st.queued.map((q) => esc(q.address)).join(", ")}</p>` : "";
+  const handled = st.handled.length ? `<details class="handled"><summary>Handled automatically (${st.handled.length})</summary><ul class="sm-log">
+      ${st.handled.map((r) => `<li>${esc(HANDLED[r.status] || r.status)} · <a href="${esc(r.lead_url || "#/")}">${esc(r.address || "")}</a> ${esc(r.note || "")}</li>`).join("")}</ul></details>` : "";
+  const items = st.action_needed;
+  return `<h2>🔥 Action Needed From You (Agent Replies &amp; Counter-Offers)${items.length ? ` · ${items.length}` : ""}</h2>${queued}
+    ${items.length ? items.map(replyCardHtml).join("") : `<div class="calm">✅ You're all caught up! The AI is watching your Gmail inbox for agent replies and will alert you on Google Calendar the moment an agent responds.</div>`}
+    ${handled}`;
+}
+async function refreshSimple() {
+  if (!$("#sm-hero")) return;
+  let st;
+  try {
+    ({ data: st } = await api("/api/simple/status"));
+  } catch (e) {
+    $("#sm-hero").innerHTML = `<p class="bad">Status: ${esc(e.message)}</p>`;
+    return;
+  }
+  if (!$("#sm-hero")) return;
+  $("#sm-hero").innerHTML = heroHtml(st);
+  $("#sm-run").onclick = runAutopilot;
+  if ($("#sm-stop")) $("#sm-stop").onclick = async () => { await post("/api/simple/stop", {}); toast("Stopping after the current e-mail."); };
+  if ($("#sm-setup")) $("#sm-setup").onclick = openSetup;
+  $("#sm-check").onclick = async () => {
+    const { status, data } = await post("/api/simple/check-inbox", {});
+    toast(status === 409 ? data.detail : "Checking your inbox now…", status === 409);
+    setTimeout(refreshSimple, 4000);
+  };
+  // Re-draw the replies only when they change, so a reply being edited isn't wiped by the 5-second refresh.
+  const key = JSON.stringify([st.action_needed.map((r) => [r.id, r.status]), st.queued.map((r) => r.id),
+    st.handled.map((r) => [r.id, r.status])]);
+  if (key !== SM.key) {
+    SM.key = key;
+    $("#sm-action").innerHTML = actionHtml(st);
+    wireReplies();
+  }
+}
+async function runAutopilot() {
+  SM.busy = true;
+  $("#sm-run").disabled = true;
+  try {
+    const { status, data } = await post("/api/simple/run", {});
+    if (status === 409) throw new Error(data.detail);
+    toast(`Sending ${data.total} e-mails from your Gmail, 25-60 seconds apart. You can leave this page open and do something else.`);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    SM.busy = false;
+    refreshSimple();
+  }
+}
+function wireReplies() {
+  document.querySelectorAll("[data-approve]").forEach((b) => (b.onclick = async () => {
+    const id = b.dataset.approve;
+    b.disabled = true;
+    const body = $(`#rb-${id}`) ? $(`#rb-${id}`).value : null, subject = $(`#rs-${id}`) ? $(`#rs-${id}`).value : null;
+    try {
+      const { status, data } = await post(`/api/replies/${id}/approve`, { subject, body });
+      if (status === 409) throw new Error(data.detail);
+      toast(`Sent to ${data.to}${data.price ? ` at ${money(data.price)}` : ""}${data.loi_attached ? " with the written offer" : ""}.`);
+      SM.key = null;
+      refreshSimple();
+    } catch (e) {
+      b.disabled = false;
+      toast(e.message, true);
+    }
+  }));
+  document.querySelectorAll("[data-dismiss]").forEach((b) => (b.onclick = async () => {
+    if (!confirm("Remove this reply from Action Needed? (Nothing is sent.)")) return;
+    const { status, data } = await post(`/api/replies/${b.dataset.dismiss}/dismiss`, {});
+    toast(status === 409 ? data.detail : "Dismissed.", status === 409);
+    SM.key = null;
+    refreshSimple();
+  }));
 }
 
 // -- step-by-step autopilot -----------------------------------------------------------------------------
 async function renderAutopilot() {
   const { data } = await api("/api/autopilot");
+  if (location.hash !== "#/autopilot") return;  // a slow deck must not overwrite the page the operator opened since
   AP.deck = data;
   AP.i = Math.min(AP.i, Math.max(0, data.cards.length - 1));
   app.innerHTML = `<div class="card autopilot" id="ap"></div><div id="kanban" class="card"><p class="muted">Loading queues…</p></div>`;
@@ -1180,7 +1338,7 @@ function drawCard() {
   const banner = d.setup_complete ? "" : `<div class="banner">Finish <button class="btn" id="ap-setup">⚙️ My Setup</button> first:
     every e-mail signs with your name, phone and mailing address (CAN-SPAM), and letters print as PROOF until it's done.</div>`;
   const wireTouch = () => { if ($("#ap-touch")) $("#ap-touch").onchange = async (e) => {
-    await post("/api/autopilot/first-touch", { mode: e.target.value }); toast(`First touch: ${e.target.value}.`); renderAutopilot(); }; };
+    await post("/api/autopilot/first-touch", { mode: e.target.value }); toast(`First touch: ${e.target.value}.`); refreshDeck(); }; };
   if (!d.cards.length) {
     box.innerHTML = progressHtml(d) + banner + phase0Html(d.partners) + `<p class="muted">Nothing left in today's deck. Run the data refresh for new
       sheriff sales and listings, or work the queues below.</p>`;
@@ -1235,7 +1393,7 @@ function drawCard() {
     </div>`;
   if ($("#ap-setup")) $("#ap-setup").onclick = openSetup;
   wireTouch(); wirePhase0();
-  wireReplyPanel(c.lead_id, a.email || null, (r) => { if (r && ["RED", "INFO"].includes(r.verdict)) apAdvance(null); else renderAutopilot(); });
+  wireReplyPanel(c.lead_id, a.email || null, (r) => { if (r && ["RED", "INFO"].includes(r.verdict)) apAdvance(null); else refreshDeck(); });
   $("#ap-prev").onclick = () => { AP.i -= 1; drawCard(); };
   $("#ap-next").onclick = () => { AP.i += 1; drawCard(); };
   $("#ap-send").onclick = () => apSend(c, smtp);
@@ -1291,7 +1449,11 @@ async function apOutcome(c, out) {
         ${Object.keys(data.files).length ? `<p>Written offer: ${Object.entries(data.files).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(k.toUpperCase())}</a>`).join(" · ")}
           (attached automatically when you send from here)</p>` : ""}
         ${data.warnings.map((w) => `<p class="flag">${esc(w)}</p>`).join("")}</div>`;
-      toast("Logged. Send the written offer now.");
+      if (data.card) {
+        AP.deck.cards[AP.i] = data.card;          // the agent said "send it": this card is now Touch 2 (priced)
+        drawCard();
+        toast("Logged. The priced offer is in the e-mail box now: press Send (the 1-page offer is attached).");
+      } else toast("Logged. Send the written offer now.");
     } else {
       toast(data.message);
       apAdvance(data);
@@ -1537,6 +1699,11 @@ function partnerLine(p) {
 function phase0Html(ps) {
   if (!ps || !ps.open) return "";
   const c = (ps.cards || [])[0];
+  if (!c && ps.needs_lookup != null) {
+    // Nobody reachable yet: the partners wait in Skip Trace instead of opening the day with a dead end.
+    return ps.needs_lookup ? `<p class="muted">🤝 Funding partners ${ps.active} / ${ps.needed}: ${ps.needs_lookup} partner${ps.needs_lookup === 1 ? " is" : "s are"} waiting for a phone or e-mail in
+      <a href="#/skiptrace">⚡ Skip Trace</a> (in the background, not in today's deck).</p>` : "";
+  }
   return `<div class="card phase0"><div class="row spread"><h2>🤝 Phase 0: Lock In Your ${ps.needed} Funding Partners</h2>
       <span class="pill vio">${ps.active} / ${ps.needed} verified with proof of funds</span></div>
     <p class="muted">Before chasing houses, line up the rehabbers who sign and fund them. Their LLC and proof of funds lock up the contracts; you bring the deals.</p>
@@ -1560,7 +1727,7 @@ function wirePhase0() {
     if (b.dataset.ptouch === "sms") await copyText(($("#p0-sms") || {}).textContent || "");
     const { data } = await post(`/api/partners/${b.dataset.pid}/touch`, { channel: b.dataset.ptouch, notes: `Phase 0 ${b.dataset.ptouch}` });
     toast(`Logged (${data.status.toLowerCase().replace("_", " ")}). Next partner up.`);
-    if (location.hash === "#/" || location.hash === "") renderAutopilot(); else renderPartners();
+    if (onHome() || location.hash === "#/autopilot") refreshDeck(); else renderPartners();
   }));
 }
 const REHAB = ["LIGHT", "MEDIUM", "HEAVY"], PSTATUS = ["TARGET", "CONTACTED", "ACTIVE_PARTNER", "DECLINED"];
