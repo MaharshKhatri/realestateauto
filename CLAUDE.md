@@ -667,6 +667,17 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     "The 1-page written offer is attached"; if the PDF fails, it falls back to "I'll send over the written offer
     today".
   - A company name equal to the operator's own name is printed once in the signature.
+  - One sure way to send the offer (a logged "still available" with no offer out yet):
+    - The lead page's ✉️ Next e-mail to the agent box (`GET /api/autopilot/<id>/card`) and the reply panel's
+      ✉️ Send this offer from Gmail now both go through `autopilot.send`. Touch 2 goes in the agent's thread
+      (`gmail_autopilot.reply_thread`), and any queued / waiting reply for the lead is closed
+      (`resolve_open_replies`), so the queue never sends a second offer.
+    - ⏩ Send the offer now (`POST /api/replies/<id>/send-now`) skips the 4-11 minute wait with every other check.
+    - "✉️ Send my offer instead" sits on Action Needed cards with no number ("Yes. Attorney").
+    - The box defers to Action Needed when the waiting reply named a number.
+    - Nothing else goes out while a row is "sending".
+    - Every inbox check re-reads replies still waiting with the current parser (`refresh_open_replies`). A
+      counter the new reading drops is cleared on the lead.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

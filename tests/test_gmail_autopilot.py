@@ -508,3 +508,89 @@ def test_touch2_after_their_reply_thanks_them_and_signs_once(live, monkeypatch):
     assert "Jordan Operator | Jordan Operator" not in p.email_body and "Jordan Operator\n" in head
     with_loi = agent_outreach.build_packet(lead, generate_loi=True, session=db)
     assert "The 1-page written offer is attached" in with_loi.email_body and with_loi.loi_files.get("pdf")
+
+
+# -- one sure way to send the offer (2026-11-02: a logged "still available" with no offer out yet) -----------------
+def _queued_reply(db, lead):
+    ours = opener(db, lead)["Message-ID"]
+    gm.set_imap_factory(lambda: FakeIMAP({21: mail(21, "Hello, it's still available.", in_reply_to=ours,
+                                                   subject="Re: question on 1 Test St")}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
+    db.expire_all()
+    row = db.query(InboundReply).one()
+    assert row.status == "auto_queued"
+    return row, ours
+
+
+def test_sending_from_the_lead_page_threads_the_offer_and_closes_the_queue(live):
+    db = live
+    lead = listed(db)
+    row, ours = _queued_reply(db, lead)
+    import web.app as webapp
+    client = TestClient(webapp.app)
+    card = client.get(f"/api/autopilot/{lead.id}/card").json()
+    assert card["kind"] == "touch2" and card["threaded"] and card["subject"] == "Re: question on 1 Test St"
+    assert card["body"].startswith("Hi Pat,\n\nThanks for getting back to me on ")
+    n = len(FakeSMTP.sent)
+    db.commit()
+    r = ap.send(db, lead.id, "smtp", subject=card["subject"], now=T0 + timedelta(minutes=47), smtp_factory=FakeSMTP)
+    db.commit()
+    sent = FakeSMTP.sent[-1]
+    assert len(FakeSMTP.sent) == n + 1 and r["threaded"] and r["touch"] == 2
+    assert sent["In-Reply-To"] == "<agent-21@broker.test>" and ours in sent["References"]
+    assert sent["Subject"] == "Re: question on 1 Test St"
+    assert any(p.get_filename().endswith(".pdf") for p in sent.iter_attachments())
+    db.expire_all()
+    assert db.get(InboundReply, row.id).status == "approved"          # the queue won't send a second offer
+    assert gm.send_due(now=T0 + timedelta(hours=1), smtp_factory=FakeSMTP) == 0 and len(FakeSMTP.sent) == n + 1
+
+
+def test_send_now_skips_the_human_paced_wait(live):
+    db = live
+    lead = listed(db)
+    row, _ = _queued_reply(db, lead)
+    out = gm.send_now(row.id, now=T0 + timedelta(minutes=46), smtp_factory=FakeSMTP)
+    assert out["sent"] and out["status"] == "auto_sent"
+    assert FakeSMTP.sent[-1]["In-Reply-To"] == "<agent-21@broker.test>"
+    with pytest.raises(gm.ApprovalError, match="auto sent"):
+        gm.send_now(row.id, smtp_factory=FakeSMTP)
+
+
+def test_nothing_else_goes_out_while_the_autopilot_is_sending(live):
+    db = live
+    lead = listed(db)
+    row, _ = _queued_reply(db, lead)
+    db.get(InboundReply, row.id).status = "sending"
+    db.commit()
+    with pytest.raises(ap.AutopilotError, match="going out from the inbox autopilot"):
+        ap.send(db, lead.id, "smtp", smtp_factory=FakeSMTP)
+
+
+def test_a_reply_misread_by_an_older_version_is_read_again(live):
+    db = live
+    lead = listed(db)
+    lead.last_counter_amount = 20_000_000
+    row = InboundReply(message_id="<old@b.test>", lead_id=lead.id, status="needs_approval", verdict="RED",
+                       headline="HOLD FIRM AT $292,000 / SET 14-DAY DRIP", counter_amount=20_000_000,
+                       intents_json=["COUNTER", "ESTATE"], body_text=BROKER_SIGNATURE_REPLY.split("\nFrom:")[0],
+                       received_at=datetime(2026, 11, 4, 9, 41), analysis_json={"reply_text": "$20,000,000 doesn't work"})
+    db.add(row)
+    db.flush()
+    assert gm.refresh_open_replies(db) == 1
+    assert row.counter_amount is None and row.body_text == "Yes. Attorney" and lead.last_counter_amount is None
+    assert row.headline.startswith("PROBABLY IN ATTORNEY REVIEW") and "20,000,000" not in row.analysis_json["reply_text"]
+    st = gm.status(db, now=T0)
+    card = next(c for c in st["action_needed"] if c["id"] == row.id)
+    assert card["offer_ok"] and not card["loi"]                       # "✉️ Send my offer instead" is offered
+    assert gm.refresh_open_replies(db) == 0                           # idempotent
+
+
+def test_lead_page_points_a_counter_to_action_needed(live):
+    import web.app as webapp
+    db = live
+    lead = listed(db)
+    opener(db, lead)
+    gm.set_imap_factory(lambda: FakeIMAP({31: mail(31, "Seller would take $285,000.", subject="1 Test St")}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
+    card = TestClient(webapp.app).get(f"/api/autopilot/{lead.id}/card").json()
+    assert card["waiting"]["numbers"]["counter"] == 285000 and card["waiting"]["status"] == "needs_approval"

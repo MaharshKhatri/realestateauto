@@ -343,11 +343,19 @@ def send(session: Session, lead_id: int, channel: str, *, subject: str | None = 
     lead = session.get(Lead, lead_id)
     if lead is None:
         raise AutopilotError(f"lead {lead_id} not found")
+    from engine import gmail_autopilot as gm
+    if gm.sending_now(session, lead.id):
+        raise AutopilotError("The offer on this house is going out from the inbox autopilot right now; refresh in a "
+                             "minute before sending anything else.")
     card = build_card(session, lead, now)
     if card is None:
         raise AutopilotError("this lead has no listing-agent contact or offer path any more")
     packet = _packet_for(session, lead, card["kind"],
                          generate_loi=(channel == "smtp" and card["kind"] != "followup" and card["touch"] == 2))
+    # Touch 2 answers the agent's own e-mail: same Gmail thread (In-Reply-To / References, "Re:" subject).
+    thread = gm.reply_thread(session, lead.id) if card["kind"] == "touch2" else None
+    if thread and thread.get("subject") and not (subject and subject.strip() and subject.strip() != card["subject"]):
+        packet = replace(packet, subject=thread["subject"])
     op = hc.operator()
     if body is not None and body.strip():
         if channel in ("smtp", "mailto"):
@@ -361,7 +369,9 @@ def send(session: Session, lead_id: int, channel: str, *, subject: str | None = 
         packet = replace(packet, subject=subject.strip())
     if channel == "smtp":
         try:
-            stage = (ao.send_smtp(session, lead, packet, now=now, smtp_factory=smtp_factory) if card["kind"] != "followup"
+            stage = (ao.send_smtp(session, lead, packet, now=now, smtp_factory=smtp_factory,
+                                  in_reply_to=(thread or {}).get("message_id"),
+                                  references=(thread or {}).get("references")) if card["kind"] != "followup"
                      else _smtp_followup(session, lead, packet, now, smtp_factory))
         except RuntimeError as exc:
             raise AutopilotError(str(exc)) from exc
@@ -369,8 +379,11 @@ def send(session: Session, lead_id: int, channel: str, *, subject: str | None = 
         stage = _log_followup(session, lead, packet, {"mailto": "email", "sms": "sms"}[channel], now)
     else:
         stage = ao.record_sent(session, lead, packet, {"mailto": "email", "sms": "sms"}[channel], now)
+    # Sent by hand: the agent's reply that was waiting (queued Touch 2 or Action Needed) is answered now.
+    gm.resolve_open_replies(session, lead.id, f"answered from the card ({channel})")
     session.flush()
-    return {"lead_id": lead.id, "stage": stage, "channel": channel, "followup_at": lead.next_followup_at.isoformat()
+    return {"lead_id": lead.id, "stage": stage, "channel": channel, "kind": card["kind"], "touch": card["touch"],
+            "to": (card.get("agent") or {}).get("email"), "threaded": bool(thread and channel == "smtp"), "followup_at": lead.next_followup_at.isoformat()
             if lead.next_followup_at else None, "style": hc.lint(packet.email_body),
             "done": contacted_today(session, now), "goal": daily_goal()}
 

@@ -605,6 +605,7 @@ def poll_gmail_replies(*, now: datetime | None = None, smtp_factory: Any = None)
     user, pw = credentials() or ("", "")
     with _poll_lock:
         with session_scope() as s:
+            refresh_open_replies(s, now)
             known, state = load_known(s), _state(s)
         since = now_eastern(now).date() - timedelta(days=int(_cfg().get("lookback_days", 14)))
         mails: list[Mail] = []
@@ -806,6 +807,86 @@ def dismiss(session: Session, reply_id: int, note: str = "") -> dict[str, Any]:
     row.note = note or "dismissed: handled by hand"
     session.flush()
     return {"id": row.id, "status": row.status}
+
+
+def sending_now(session: Session, lead_id: int) -> bool:
+    return bool(session.scalar(select(InboundReply.id).where(InboundReply.lead_id == lead_id,
+                                                             InboundReply.status == "sending").limit(1)))
+
+
+def resolve_open_replies(session: Session, lead_id: int, note: str) -> int:
+    """The operator answered this agent another way (card player, lead page, phone): close what was waiting."""
+    rows = list(session.scalars(select(InboundReply).where(InboundReply.lead_id == lead_id,
+                                                           InboundReply.status.in_(("auto_queued", "needs_approval")))))
+    for row in rows:
+        row.status, row.resolved_at, row.note = "approved", now_eastern(), note
+    if rows:
+        session.flush()
+    return len(rows)
+
+
+def reply_thread(session: Session, lead_id: int) -> dict[str, Any] | None:
+    """Thread headers for answering the agent's latest e-mail on this lead (None when they never e-mailed us)."""
+    row = session.scalar(select(InboundReply).where(InboundReply.lead_id == lead_id,
+                                                    InboundReply.status.not_in(("bounce", "auto_reply")))
+                         .order_by(InboundReply.received_at.desc(), InboundReply.id.desc()).limit(1))
+    if row is not None:
+        return {"message_id": row.message_id, "references": list(row.references_json or []),
+                "subject": reply_subject(row.subject)}
+    inter = session.scalar(select(Interaction).where(Interaction.lead_id == lead_id,
+                                                     Interaction.outcome == ao.REPLY_OUTCOME,
+                                                     Interaction.email_message_id.is_not(None))
+                           .order_by(Interaction.occurred_at.desc()).limit(1))
+    return {"message_id": inter.email_message_id, "references": [], "subject": None} if inter else None
+
+
+def waiting_reply(session: Session, lead_id: int) -> InboundReply | None:
+    """The agent's latest reply on this lead that still waits on the operator (Action Needed or the Touch 2 queue)."""
+    return session.scalar(select(InboundReply).where(InboundReply.lead_id == lead_id,
+                                                     InboundReply.status.in_(("needs_approval", "auto_queued")))
+                          .order_by(InboundReply.received_at.desc(), InboundReply.id.desc()).limit(1))
+
+
+def send_now(rid: int, *, now: datetime | None = None, smtp_factory: Any = None) -> dict[str, Any]:
+    """⏩ Send now on a queued Touch 2: skip the human-paced wait (every other check still runs)."""
+    with session_scope() as s:
+        row = s.get(InboundReply, rid)
+        if row is None:
+            raise ApprovalError(f"reply {rid} not found")
+        if row.status != "auto_queued":
+            raise ApprovalError(f"this reply is {row.status.replace('_', ' ')}, not waiting to go out")
+        row.send_after = now_eastern(now)
+    sent = _send_auto(rid, now=now, smtp_factory=smtp_factory)
+    with session_scope() as s:
+        row = s.get(InboundReply, rid)
+        return {"id": rid, "sent": sent, "status": row.status, "note": row.note}
+
+
+def refresh_open_replies(session: Session, now: datetime | None = None) -> int:
+    """Re-read replies still waiting on the operator with today's parser (a signature once read as a counter, ...).
+    The stored analysis, light and drafted answer are replaced; a counter the new reading drops is cleared on the
+    lead too. Nothing is sent."""
+    from engine import reply_negotiator as rn
+    n = 0
+    for row in session.scalars(select(InboundReply).where(InboundReply.status == "needs_approval",
+                                                          InboundReply.lead_id.is_not(None))):
+        lead = session.get(Lead, row.lead_id)
+        if lead is None or not row.body_text:
+            continue
+        text = strip_quoted(row.body_text)
+        an = rn.analyze(session, lead, text, now=now)
+        if an.headline == row.headline and an.parsed.counter_amount == row.counter_amount and text == row.body_text:
+            continue
+        old_counter = row.counter_amount
+        row.body_text, row.verdict, row.headline = text, an.verdict, an.headline[:200]
+        row.intents_json, row.counter_amount = sorted(an.parsed.intents), an.parsed.counter_amount
+        row.analysis_json, row.price = _analysis_json(an), reply_price(an)
+        if old_counter and not an.parsed.counter_amount and lead.last_counter_amount == old_counter:
+            lead.last_counter_amount = None
+        n += 1
+    if n:
+        session.flush()
+    return n
 
 
 def awaiting_approval_lead_ids(session: Session) -> set[int]:
@@ -1127,6 +1208,9 @@ def reply_json(session: Session, row: InboundReply) -> dict[str, Any]:
                                                                      "fee_at_counter", "our_counter",
                                                                      "fee_at_our_counter", "opening_offer")},
             "price": row.price, "lead_url": f"#/lead/{row.lead_id}" if row.lead_id else None,
+            # The plain Touch 2 offer fits this reply too ("Yes. Attorney", "available, what's your number?").
+            "offer_ok": bool(lead and not row.counter_amount and set(row.intents_json or [])
+                             <= {"AVAILABLE", "UNDER_CONTRACT", "QUESTION"}),
             "loi": bool((row.price and row.verdict in ("GREEN", "YELLOW", "RED")
                          and "UNDER_CONTRACT" not in (row.intents_json or []))
                         or ("AVAILABLE" in (row.intents_json or []) and not row.counter_amount

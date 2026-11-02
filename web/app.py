@@ -1039,6 +1039,27 @@ def autopilot_send(lead_id: int, body: AutoSendIn, session: Session = Depends(db
         raise HTTPException(503, sent + friendly_error(exc)) from exc
 
 
+@app.get("/api/autopilot/{lead_id}/card")
+def autopilot_card(lead_id: int, session: Session = Depends(db)) -> dict[str, Any]:
+    """The next e-mail this lead's listing agent gets (the lead page's "✉️ Next e-mail to the agent" box)."""
+    from engine import gmail_autopilot as gm
+    from engine import preflight
+    from engine.autopilot import build_card
+    lead = get_lead(session, lead_id)
+    card = build_card(session, lead)
+    if card is None:
+        raise HTTPException(409, "No listing-agent e-mail or offer path on this lead.")
+    card["preflight"] = preflight.check(lead).to_json()
+    thread = gm.reply_thread(session, lead.id) if card["kind"] == "touch2" else None
+    card["threaded"] = bool(thread)
+    if thread and thread.get("subject"):
+        card["subject"] = thread["subject"]
+    card["sending_now"] = gm.sending_now(session, lead.id)
+    waiting = gm.waiting_reply(session, lead.id)
+    card["waiting"] = gm.reply_json(session, waiting) if waiting is not None else None
+    return card
+
+
 class AutoOutcomeIn(BaseModel):
     outcome: str
     notes: str = ""
@@ -1101,6 +1122,16 @@ def reply_approve(reply_id: int, body: ReplyApproveIn, session: Session = Depend
     from engine import gmail_autopilot as gm
     try:
         return gm.approve(session, reply_id, subject=body.subject, body=body.body)
+    except gm.ApprovalError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.post("/api/replies/{reply_id}/send-now")
+def reply_send_now(reply_id: int) -> dict[str, Any]:
+    """⏩ A queued "still available" offer goes out now instead of after the human-paced delay."""
+    from engine import gmail_autopilot as gm
+    try:
+        return gm.send_now(reply_id)
     except gm.ApprovalError as exc:
         raise HTTPException(409, str(exc)) from exc
 

@@ -384,6 +384,10 @@ under the card; it needs your attorney and a cash end buyer.
 - **Check Gmail before a big batch:** click **🔌 Test Gmail** on the home page, or run
   `.venv/bin/python manage.py gmail --test`. It signs in to sending (SMTP) and reading (IMAP) without sending
   anything, and shows ✅ / ❌ for each with the reason. Add `--send-test` to send yourself a two-line note.
+- **An agent said "still available" but no offer went out yet:** open that house (Advanced Tools ▾ → search the
+  address). The **✉️ Next e-mail to the agent** box at the top of the middle column shows the offer. Press
+  **✉️ Send the offer from Gmail now**: it goes in their thread with the 1-page offer. On the home page, a house
+  under "⏳ Going out by themselves" has a **⏩ Send the offer now** button.
 - **Anything else:** the full error is in `logs/server.log` in the project folder. Send the last 30 lines when you
   ask for help (`tail -30 ~/realestateauto/logs/server.log`).
 

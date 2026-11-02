@@ -203,12 +203,61 @@ async function renderLead(id, contactId) {
     </div>
     <div class="grid g-lead">
       <div>${leftColumn(d)}</div>
-      <div>${contactsCard(d, sel)}${replyCard(d)}${scriptCard(C)}</div>
+      <div><div class="card next-email" id="next-email"><p class="muted">Loading the next e-mail to the agent…</p></div>
+        ${contactsCard(d, sel)}${replyCard(d)}${scriptCard(C)}</div>
       <div>${loggerCard(d)}${docsCard(d)}${historyCard(d)}</div>
     </div>`;
   wireLead(d);
   wireReplyPanel(d.lead.id, (d.contacts.find((c) => c.type === "LISTING_AGENT") || {}).email || null, () => route());
   wireStructure(d);
+  loadNextEmail(d.lead.id);
+}
+
+// -- the lead page's "✉️ Next e-mail to the agent": what goes next (opener, Touch 2 offer, follow-up), sent from Gmail
+async function loadNextEmail(leadId) {
+  const box = $("#next-email");
+  if (!box) return;
+  const { status, data: c } = await api(`/api/autopilot/${leadId}/card`).catch((e) => ({ status: 0, data: { detail: e.message } }));
+  if (!$("#next-email")) return;
+  if (status !== 200) {
+    box.innerHTML = `<h2>✉️ Next e-mail to the agent</h2><p class="muted">${esc(c.detail || "Nothing to send on this lead.")}</p>`;
+    return;
+  }
+  const a = c.agent || {}, w = c.waiting;
+  if (w && w.numbers && w.numbers.counter) {
+    // They named a number: the answer is the negotiator's, not the opening offer.
+    box.innerHTML = `<h2>✉️ Next e-mail to the agent</h2><p class="flag">${esc(w.agent || "The agent")} answered with a number:
+      ${esc(w.light.text)}</p><p>Their reply and your drafted answer are waiting in <a href="#/">🔥 Action Needed on the home page</a>:
+      one click sends it in their thread.</p>`;
+    return;
+  }
+  const what = c.kind === "touch2" ? "Your offer (they replied)" : c.kind === "followup" ? "Follow-up" : c.touch === 2 ? "Priced offer" : "Opener (no price)";
+  box.innerHTML = `<div class="row spread"><h2>✉️ Next e-mail to the agent</h2><span class="pill ${c.touch === 2 ? "good" : "acc"}">${esc(what)}</span></div>
+    <p class="muted">To ${esc(a.name || "the listing agent")} &lt;${esc(a.email || "no e-mail on file")}&gt;${c.threaded ? " · as a reply in their Gmail thread" : ""}
+      ${c.touch === 2 && c.kind !== "followup" ? " · the 1-page written offer is attached" : ""}</p>
+    ${c.sending_now ? '<p class="flag">The inbox autopilot is sending this offer right now: refresh in a minute.</p>' : ""}
+    ${w ? `<p class="muted">This answers their reply (${esc(w.text.slice(0, 80))}…).${w.status === "auto_queued" ? " It was going to go out by itself in a few minutes; sending now replaces that." : ""}</p>` : ""}
+    ${(c.warnings || []).map((w) => `<p class="flag">${esc(w)}</p>`).join("")}
+    <label>Subject<input type="text" id="ne-subject" value="${esc(c.subject)}"></label>
+    <textarea id="ne-body" rows="14" spellcheck="true">${esc(c.body)}</textarea>
+    <button class="bigbtn" id="ne-send" ${a.email && c.can_smtp && !c.sending_now ? "" : "disabled"}>✉️ Send ${c.touch === 2 && c.kind !== "followup" ? "the offer" : "it"} from Gmail now</button>
+    ${c.can_smtp ? "" : `<p class="muted">${esc(c.smtp_note || "Add your Gmail app password in My Setup to send from here.")}</p>`}`;
+  $("#ne-send").onclick = () => sendFromCard(leadId, $("#ne-subject").value, $("#ne-body").value);
+}
+async function sendFromCard(leadId, subject, body) {
+  const btn = $("#ne-send") || {};
+  btn.disabled = true;
+  toast("Sending from your Gmail…");
+  try {
+    const { status, data } = await post(`/api/autopilot/${leadId}/send`, { channel: "smtp", subject, body });
+    if (status === 409) throw new Error(data.detail);
+    toast(`Sent to ${data.to || "the agent"}${data.threaded ? " in their thread" : ""}${data.touch === 2 ? " with the 1-page offer" : ""}. Follow-up in 48 hours.`);
+    loadCmdbar();
+    if (location.hash.startsWith("#/lead/")) route(); else if (onHome()) { SM.key = null; refreshSimple(); }
+  } catch (e) {
+    btn.disabled = false;
+    toast(e.message, true);
+  }
 }
 
 function leftColumn(d) {
@@ -1242,12 +1291,14 @@ function replyCardHtml(r) {
       <textarea id="rb-${r.id}" spellcheck="true">${esc(r.reply_text)}</textarea></details>` : '<p class="muted">No drafted answer: call them or dismiss it.</p>'}
     <div class="row">
       ${r.reply_text ? `<button class="btn good big" data-approve="${r.id}">✅ Approve &amp; Send AI Reply${r.loi ? " + LOI" : ""}</button>` : ""}
+      ${r.offer_ok && !r.loi ? `<button class="btn good" data-offer="${r.lead_id}">✉️ Send my offer instead (+ 1-page offer)</button>` : ""}
       ${r.phone ? `<a class="btn" href="tel:${esc(r.phone.tel)}">📞 Call ${esc(r.agent || "the agent")} ${esc(r.phone.display)}</a>` : ""}
       <button class="btn" data-dismiss="${r.id}">Dismiss</button></div></div>`;
 }
 function actionHtml(st) {
-  const queued = st.queued.length ? `<p class="muted">⏳ Going out by themselves in the next few minutes (their reply said
-      "still available"): ${st.queued.map((q) => esc(q.address)).join(", ")}</p>` : "";
+  const queued = st.queued.length ? `<div class="whybox"><b>⏳ Going out by themselves in the next few minutes</b> (their reply said "still available"):
+      ${st.queued.map((q) => `<div class="row"><span>${esc(q.address)}</span>
+        <button class="btn good" data-sendnow="${q.id}">⏩ Send the offer now</button></div>`).join("")}</div>` : "";
   const handled = st.handled.length ? `<details class="handled"><summary>Handled automatically (${st.handled.length})</summary><ul class="sm-log">
       ${st.handled.map((r) => `<li>${esc(HANDLED[r.status] || r.status)} · <a href="${esc(r.lead_url || "#/")}">${esc(r.address || "")}</a> ${esc(r.note || "")}</li>`).join("")}</ul></details>` : "";
   const items = st.action_needed;
@@ -1324,6 +1375,15 @@ function wireReplies() {
       toast(e.message, true);
     }
   }));
+  document.querySelectorAll("[data-sendnow]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    const { status, data } = await post(`/api/replies/${b.dataset.sendnow}/send-now`, {});
+    if (status === 409) { b.disabled = false; return toast(data.detail, true); }
+    toast(data.sent ? "Offer sent in their Gmail thread with the 1-page offer." : `Not sent: ${data.note || data.status}. It's in Action Needed now.`, !data.sent);
+    SM.key = null;
+    refreshSimple();
+  }));
+  document.querySelectorAll("[data-offer]").forEach((b) => (b.onclick = () => sendFromCard(+b.dataset.offer)));
   document.querySelectorAll("[data-dismiss]").forEach((b) => (b.onclick = async () => {
     if (!confirm("Remove this reply from Action Needed? (Nothing is sent.)")) return;
     const { status, data } = await post(`/api/replies/${b.dataset.dismiss}/dismiss`, {});
@@ -1640,7 +1700,9 @@ function replyOutHtml(r, agentEmail) {
     ${r.partner && r.partner.call_now && r.partner.call_now.length ? `<p><b>Call now:</b> ${r.partner.call_now.map((b) => `${esc(b.name)}${b.phone ? ` <a class="phone" href="tel:${esc(b.phone)}">${esc(b.phone)}</a>` : ""}`).join(" · ")}</p>` : ""}
     ${r.reply_text ? `<label>Reply (3 sentences; edit, then copy or open in e-mail)<input type="text" id="rp-subj" value="${esc(r.reply_subject)}"><textarea id="rp-body" rows="12">${esc(r.reply_text)}</textarea></label>
       ${r.style.length ? `<p class="flag">Style check: ${esc(r.style.join("; "))}</p>` : ""}
-      <div class="row"><button class="btn" id="rp-copy">📋 Copy reply</button>${mailto ? `<a class="btn good" href="${esc(mailto)}">✉️ Open in e-mail</a>` : ""}
+      <div class="row">${r.verdict === "GREEN" && /^SEND THE OFFER NOW/.test(r.headline || "") && r.lead_id
+          ? `<button class="btn good big" id="rp-send" data-lead="${r.lead_id}">✉️ Send this offer from Gmail now (+ 1-page offer)</button>` : ""}
+        <button class="btn" id="rp-copy">📋 Copy reply</button>${mailto ? `<a class="btn" href="${esc(mailto)}">✉️ Open in e-mail</a>` : ""}
         <button class="btn" id="rp-sms">📋 Copy text message</button></div>
       <p class="muted">${esc(r.sms_text)}</p>` : ""}
     ${r.followup_at ? `<p class="muted">Follow-up scheduled: ${fmtDate(r.followup_at)}</p>` : ""}`;
@@ -1657,6 +1719,7 @@ function wireReplyPanel(leadId, agentEmail, after) {
       if (status >= 400) throw new Error(data.detail || "could not analyze");
       $(`#rp-out-${leadId}`).innerHTML = replyOutHtml(data, agentEmail);
       if ($("#rp-copy")) $("#rp-copy").onclick = () => copyText($("#rp-body").value);
+      if ($("#rp-send")) $("#rp-send").onclick = () => sendFromCard(leadId, $("#rp-subj").value, $("#rp-body").value);
       if ($("#rp-sms")) $("#rp-sms").onclick = () => copyText(data.sms_text);
       toast(`${data.verdict}: ${data.headline}`);
       if (data.interaction_id) loadCmdbar();
