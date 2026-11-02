@@ -243,3 +243,43 @@ def test_a_reply_logged_by_an_older_version_still_gets_its_tailored_first_line(l
     body = FakeSMTP.sent[-1].get_body(preferencelist=("plain",)).get_content()
     assert "backup offer in case the current contract doesn't go through" in body
     assert ao.reply_flags_for(db, lead) >= {"BACKUP"}
+
+
+class HangsUp(FakeSMTP):
+    """Gmail closing the connection at sign-in, every time (2026-11-02, the 4th offer of the first inbox run)."""
+    logins = 0
+
+    def login(self, user, pw):
+        HangsUp.logins += 1
+        import smtplib
+        raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+
+
+def test_gmail_hanging_up_stops_the_run_and_the_next_check_sends_it(live):
+    db = live
+    msgs = {}
+    for i in (1, 2):
+        lead = listed(db)
+        ours = opener(db, lead, when=T0 + timedelta(minutes=i))["Message-ID"]
+        msgs[70 + i] = mail(70 + i, "It is still available.", in_reply_to=ours, subject=f"Re: question {i}",
+                            frm=f"Pat Sample <pat{i}@broker.test>")
+    gm.set_imap_factory(lambda: FakeIMAP(msgs))
+    n = len(FakeSMTP.sent)
+    HangsUp.logins = 0
+    out = gm.run_inbox(now=T0 + timedelta(minutes=40), smtp_factory=HangsUp)
+    assert out["sent_now"] == 0 and "closed the connection" in out["send_error"]
+    assert HangsUp.logins == 3                       # one offer tried 3 times, then the run stops (no 3 x 2 sign-ins)
+    assert len(FakeSMTP.sent) == n
+    rows = {r["id"]: r for r in out["rows"]}
+    tried = [r for r in rows.values() if r["note"].startswith("not sent yet")]
+    assert len(tried) == 1 and "retries on the next inbox check" in tried[0]["you_do"]
+    assert sum(r["status"] == "auto_queued" for r in rows.values()) == 1
+    db.expire_all()
+    assert db.query(Interaction).filter_by(outcome="OFFER_SENT_TO_AGENT").count() == 0
+    # The next check (the daemon 5 minutes later, or the operator running inbox again): both offers go, once each.
+    out = gm.run_inbox(now=T0 + timedelta(minutes=46), smtp_factory=FakeSMTP)
+    assert out["sent_now"] + out["poll"]["sent"] == 2 and not out.get("send_error"), out["rows"]
+    assert len(FakeSMTP.sent) == n + 2
+    assert {r["status"] for r in out["rows"]} == {"auto_sent"}
+    out = gm.run_inbox(now=T0 + timedelta(minutes=52), smtp_factory=FakeSMTP)
+    assert out["sent_now"] + out["poll"]["sent"] == 0 and len(FakeSMTP.sent) == n + 2

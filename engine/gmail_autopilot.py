@@ -52,7 +52,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from core.mail import clean_app_password, explain, ssl_context
+from core.mail import GmailSendError, clean_app_password, explain, ssl_context
 from core.text import format_phone
 from agents.base import AgentContext, BaseAgent
 from db.database import session_scope
@@ -688,13 +688,30 @@ def send_due(*, now: datetime | None = None, smtp_factory: Any = None) -> int:
                                                            InboundReply.send_after <= now_eastern(now))))
     if not ids or not in_send_hours(now):
         return 0
-    sent = 0
+    return send_queued(ids, now=now, smtp_factory=smtp_factory)[0]
+
+
+def send_queued(ids: list[int], *, now: datetime | None = None, smtp_factory: Any = None) -> tuple[int, str | None]:
+    """Send these queued offers one after another, a few seconds apart (`reply_pace_seconds`: Gmail drops the line
+    on a burst of sign-ins). A failure every e-mail would share (sign-in, network, Gmail hanging up three times in a
+    row) stops the rest; they stay queued for the next check. Returns (sent, the stopping sentence or None)."""
+    lo, hi = (float(x) for x in _cfg().get("reply_pace_seconds", [8, 20]))
+    sent, error = 0, None
     for rid in ids:
+        if sent:
+            _sleep(random.uniform(lo, hi))
         try:
             sent += int(_send_auto(rid, now=now, smtp_factory=smtp_factory))
+        except GmailSendError as exc:                     # fatal: the next one would fail the same way
+            error = str(exc)
+            log.warning("gmail autopilot: stopped sending offers: %s", exc)
+            break
         except Exception:                                 # noqa: BLE001
             log.exception("gmail autopilot: auto Touch 2 failed for reply %s", rid)
-    return sent
+    return sent, error
+
+
+_sleep = __import__("time").sleep          # tests swap it out (no real waits)
 
 
 def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
@@ -743,7 +760,16 @@ def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
             row.status = "auto_queued" if limit else "needs_approval"
             row.note = f"not sent yet: {exc}"
             row.resolved_at = None
-            return False
+            failed = exc
+        else:
+            failed = None
+    if failed is not None:
+        if getattr(failed, "fatal", False):
+            raise failed                   # the row is saved first; the caller stops the rest of the run
+        return False
+    with session_scope() as s:
+        row = s.get(InboundReply, rid)
+        lead = s.get(Lead, row.lead_id)
         ao.record_sent(s, lead, packet, "email_smtp", now, message_id=mid, engaged=True)
         if "CALL_ME" in (row.intents_json or []):
             from engine import reply_negotiator as rn2
@@ -1197,13 +1223,11 @@ def run_inbox(*, send: bool = True, now: datetime | None = None, smtp_factory: A
     if send:
         with session_scope() as s:
             ids = list(s.scalars(select(InboundReply.id).where(InboundReply.status == "auto_queued")))
-        for rid in ids:
-            with session_scope() as s:
-                s.get(InboundReply, rid).send_after = now_eastern(now)
-            try:
-                sent += int(_send_auto(rid, now=now, smtp_factory=smtp_factory))
-            except Exception:                              # noqa: BLE001
-                log.exception("inbox: offer for reply %s failed", rid)
+            for row in s.scalars(select(InboundReply).where(InboundReply.id.in_(ids))):
+                row.send_after = now_eastern(now)
+        sent, error = send_queued(ids, now=now, smtp_factory=smtp_factory)
+        if error:
+            out["send_error"] = error
     out["sent_now"] = sent
     with session_scope() as s:
         out["rows"] = inbox_rows(s, now)
@@ -1232,6 +1256,8 @@ def inbox_rows(session: Session, now: datetime | None = None, days: int = 2) -> 
                 "bounce": "find a new e-mail or call", "dismissed": "nothing"}.get(row.status, "nothing")
         if "CALL_ME" in (row.intents_json or []) and row.status in ("auto_sent", "approved"):
             todo = "call them (it's on your calendar)"
+        if row.status in ("needs_approval", "auto_queued") and (row.note or "").startswith("not sent yet"):
+            todo = f"nothing: it retries on the next inbox check (or `gmail --approve {row.id}` now)"
         out.append({**{k: j[k] for k in ("id", "lead_id", "address", "town", "agent", "from", "status", "note")},
                     "said": (row.body_text or "").replace("\n", " ")[:140], "light": j["light"]["text"],
                     "offer_sent": offer, "you_do": todo, "received_at": j["received_at"],

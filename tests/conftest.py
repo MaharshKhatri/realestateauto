@@ -30,3 +30,12 @@ def db(tmp_path, monkeypatch):
     database.init_db()
     with database.session_scope() as session:
         yield session
+
+
+@pytest.fixture(autouse=True)
+def _no_real_waits(monkeypatch):
+    """SMTP retries and the gap between offers in one inbox run wait in real seconds on the laptop; tests don't."""
+    import engine.agent_outreach as ao
+    import engine.gmail_autopilot as gm
+    monkeypatch.setattr(ao, "_sleep", lambda s: None)
+    monkeypatch.setattr(gm, "_sleep", lambda s: None)

@@ -38,7 +38,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from core.mail import GmailSendError, clean_app_password, explain, is_fatal, ssl_context
+from core.mail import GmailSendError, clean_app_password, explain, is_fatal, is_transient, ssl_context
 from core.text import format_phone
 from db.models import Contact, ContactType, DistressSignal, Interaction, Lead, Property, SignalType, Valuation
 from engine.contracts import DEALS_DIR
@@ -577,15 +577,56 @@ def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = Non
     except OSError as exc:                 # an unreadable PDF must not stop the e-mail (the text stands on its own)
         log.warning("offer PDF not attached for lead %s: %s", packet.lead_id, exc)
     user = os.environ["SMTP_USER"].strip()
+    password = clean_app_password(os.environ["SMTP_APP_PASSWORD"])
+    waits = [float(w) for w in _cfg().get("smtp_retry_waits", [5, 20])]
+    for attempt in range(len(waits) + 1):
+        phase = "connect"
+        try:
+            with (smtp_factory or smtp_connection)() as smtp:
+                phase = "login"
+                smtp.login(user, password)
+                phase = "send"
+                smtp.send_message(msg)
+            return message_id
+        except Exception as exc:           # noqa: BLE001 - every Gmail / network failure becomes a plain sentence
+            retry = attempt < len(waits) and is_transient(exc)
+            log.warning("SMTP send to %s failed: %s: %s%s", packet.agent_email, type(exc).__name__, exc,
+                        f" (trying again in {waits[attempt]:.0f} s)" if retry else "")
+            if retry:
+                _sleep(waits[attempt])
+                if phase == "send":
+                    # The line dropped while the message itself was going out: Gmail may have taken it anyway.
+                    # Its Sent folder says; send again only when it isn't there (never two offers to one agent).
+                    there = sent_folder_has(user, password, message_id)
+                    if there:
+                        log.info("SMTP: the message to %s is in Gmail's Sent folder after all", packet.agent_email)
+                        return message_id
+                    if there is None:
+                        raise GmailSendError(
+                            "Gmail closed the connection while the message was going out and the Sent folder "
+                            "couldn't be checked. Look in Gmail's Sent folder: if it isn't there, run the same "
+                            "command again.", fatal=True) from exc
+                continue
+            raise GmailSendError(explain(exc, user, str(_cfg().get("smtp_host", "smtp.gmail.com"))),
+                                 fatal=is_fatal(exc)) from exc
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+_sleep = __import__("time").sleep          # tests swap it out (no real waits)
+
+
+def sent_folder_has(user: str, password: str, message_id: str) -> bool | None:
+    """True / False: the Message-ID is / isn't in Gmail's Sent folder (read-only IMAP). None: couldn't look."""
+    from engine import gmail_autopilot as gm
     try:
-        with (smtp_factory or smtp_connection)() as smtp:
-            smtp.login(user, clean_app_password(os.environ["SMTP_APP_PASSWORD"]))
-            smtp.send_message(msg)
-    except Exception as exc:               # noqa: BLE001 - every Gmail / network failure becomes a plain sentence
-        log.warning("SMTP send to %s failed: %s: %s", packet.agent_email, type(exc).__name__, exc)
-        raise GmailSendError(explain(exc, user, str(_cfg().get("smtp_host", "smtp.gmail.com"))),
-                             fatal=is_fatal(exc)) from exc
-    return message_id
+        with gm.Mailbox(user, password, mailbox="\\Sent") as mb:
+            typ, data = mb.imap.uid("SEARCH", None, "HEADER", "Message-ID", f'"{message_id}"')
+        if typ != "OK":
+            return None
+        return bool((data or [b""])[0].split())
+    except Exception as exc:               # noqa: BLE001 - no answer is "couldn't look", never a crash
+        log.warning("SMTP: couldn't check the Sent folder: %s", exc)
+        return None
 
 
 def smtp_connection() -> smtplib.SMTP:

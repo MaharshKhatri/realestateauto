@@ -32,6 +32,20 @@ def is_fatal(exc: BaseException) -> bool:
                             smtplib.SMTPServerDisconnected))
 
 
+def is_transient(exc: BaseException) -> bool:
+    """A failure worth one more try a few seconds later: Gmail dropped the line (it does this after a burst of
+    sign-ins, on a flaky Wi-Fi, or with a 421 "try again later"), or answered with a temporary 4xx code. A refused
+    sign-in, a certificate problem, a refused address or a blocked port is not: it fails the same way every time."""
+    if isinstance(exc, (smtplib.SMTPAuthenticationError, smtplib.SMTPRecipientsRefused, ssl.SSLError,
+                        ConnectionRefusedError, socket.gaierror)):
+        return False
+    if isinstance(exc, (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, ConnectionResetError,
+                        ConnectionAbortedError, BrokenPipeError)):
+        return True
+    code = getattr(exc, "smtp_code", None)
+    return isinstance(code, int) and 400 <= code < 500
+
+
 def ssl_context() -> ssl.SSLContext:
     try:
         import certifi
@@ -73,7 +87,8 @@ def explain(exc: BaseException, user: str = "", host: str = "smtp.gmail.com") ->
             return f"Gmail stopped this message ({text}). If it mentions a sending limit, wait a day before sending more."
         return f"Gmail rejected the message ({text})."
     if isinstance(exc, smtplib.SMTPServerDisconnected):
-        return "Gmail closed the connection before the message went out. Try again in a minute."
+        return ("Gmail closed the connection before the message went out, so nothing was sent. It goes out on "
+                "the next inbox check, or run the same command again in a minute.")
     if isinstance(exc, socket.gaierror):
         return f"Couldn't find {host}: check the internet connection and try again."
     if isinstance(exc, (TimeoutError, socket.timeout)):

@@ -245,3 +245,108 @@ def test_batch_stops_at_the_first_sign_in_failure(db, app_client):
     gm.start_campaign(3, now=datetime(2026, 11, 4, 10, 0, tzinfo=TZ), sleep=waits.append, background=False)
     assert gm.campaign.sent == 0 and len(gm.campaign.log) == 1 and waits == []     # one try, no 15 bad logins
     assert gm.campaign.message.startswith("Stopped: Gmail refused the sign-in")
+
+
+# -- Gmail hanging up (2026-11-02: "SMTPServerDisconnected: Connection unexpectedly closed" on the 4th offer) ------
+DROP = smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+
+
+class Flaky:
+    """smtplib.SMTP_SSL stand-in that hangs up at a chosen step for the first `drops` connections."""
+    drops, at, sent, tries = 0, "login", [], 0
+
+    def __init__(self, *a, **kw):
+        Flaky.tries += 1
+        if Flaky.at == "connect" and Flaky.tries <= Flaky.drops:
+            raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def login(self, user, password):
+        if Flaky.at == "login" and Flaky.tries <= Flaky.drops:
+            raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+
+    def send_message(self, msg):
+        if Flaky.at == "send" and Flaky.tries <= Flaky.drops:
+            if Flaky.taken:
+                Flaky.sent.append(msg)               # Gmail kept the message, then hung up before saying so
+            raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+        Flaky.sent.append(msg)
+
+
+def flaky(drops, at="login", taken=False):
+    Flaky.drops, Flaky.at, Flaky.sent, Flaky.tries, Flaky.taken = drops, at, [], 0, taken
+    return Flaky
+
+
+class SentIMAP(FakeIMAP):
+    """The Sent folder: answers SEARCH HEADER Message-ID with the messages Flaky really delivered."""
+
+    def uid(self, cmd, *args):
+        if cmd == "SEARCH" and args[1] == "HEADER":
+            hit = any(f'"{m["Message-ID"]}"' == args[3] for m in Flaky.sent)
+            return "OK", [b"41" if hit else b""]
+        return super().uid(cmd, *args)
+
+
+def test_transient_and_permanent_failures_are_told_apart():
+    assert mail.is_transient(DROP) and mail.is_transient(smtplib.SMTPConnectError(421, b"try again later"))
+    assert mail.is_transient(smtplib.SMTPSenderRefused(421, b"4.7.0 Try again later, closing connection", "me"))
+    assert mail.is_transient(ConnectionResetError(54, "Connection reset by peer"))
+    for permanent in (AUTH, CERT, ConnectionRefusedError(61, "refused"),
+                      smtplib.SMTPRecipientsRefused({"pat@broker.test": (550, b"no such user")}),
+                      smtplib.SMTPDataError(552, b"message too big")):
+        assert not mail.is_transient(permanent), permanent
+
+
+def test_a_dropped_line_is_tried_again_and_the_offer_goes_once(db, app_client, monkeypatch):
+    waits = []
+    monkeypatch.setattr(ao, "_sleep", waits.append)
+    lead = listed(db)
+    db.commit()
+    monkeypatch.setattr(ao.smtplib, "SMTP_SSL", flaky(1, "login"))
+    r = send(app_client, lead)
+    assert r.status_code == 200 and r.json()["done"] == 1
+    assert len(Flaky.sent) == 1 and Flaky.tries == 2 and waits == [5.0]
+
+
+def test_gmail_hanging_up_every_time_is_one_plain_sentence(db, app_client, monkeypatch):
+    lead = listed(db)
+    db.commit()
+    monkeypatch.setattr(ao.smtplib, "SMTP_SSL", flaky(9, "connect"))
+    r = send(app_client, lead)
+    assert r.status_code == 409 and Flaky.tries == 3 and Flaky.sent == []
+    assert "closed the connection" in r.json()["detail"] and "nothing was sent" in r.json()["detail"]
+    db.expire_all()
+    assert db.query(Interaction).filter_by(lead_id=lead.id).count() == 0
+
+
+@pytest.mark.parametrize("taken", [True, False])
+def test_a_line_dropped_mid_message_checks_sent_before_trying_again(db, app_client, monkeypatch, taken):
+    lead = listed(db)
+    db.commit()
+    monkeypatch.setattr(ao.smtplib, "SMTP_SSL", flaky(1, "send", taken=taken))
+    gm.set_imap_factory(lambda: SentIMAP({}))
+    try:
+        r = send(app_client, lead)
+    finally:
+        gm.set_imap_factory(None)
+    assert r.status_code == 200 and r.json()["done"] == 1
+    assert len(Flaky.sent) == 1                      # Gmail kept it: no second copy; it didn't: sent again once
+    assert Flaky.tries == (1 if taken else 2)
+
+
+def test_mid_message_drop_without_a_sent_folder_check_never_sends_twice(db, app_client, monkeypatch):
+    lead = listed(db)
+    db.commit()
+    monkeypatch.setattr(ao.smtplib, "SMTP_SSL", flaky(1, "send", taken=True))
+    gm.set_imap_factory(lambda: FakeIMAP({}, password_ok=False))
+    try:
+        r = send(app_client, lead)
+    finally:
+        gm.set_imap_factory(None)
+    assert r.status_code == 409 and "Sent folder" in r.json()["detail"] and Flaky.tries == 1

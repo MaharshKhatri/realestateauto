@@ -52,6 +52,8 @@ outreach:
   reply_daily_limit: 150             # all e-mails incl. answers to agents who wrote back (Gmail allows ~500/day)
   smtp_host: "smtp.gmail.com"
   smtp_port: 465
+  smtp_retry_waits: [5, 20]          # Gmail hung up / said "try again later": wait, try again (the Sent folder is
+                                     # checked first when the line dropped mid-message, so an offer never goes twice)
   max_offer_basis: mao_70            # "best" structure in the e-mail: mao_70 (walk-away) or mao_75 (ceiling)
   min_list_to_mao_75: 0.75           # include listings whose 75% ceiling is within 25% of ask
   fast_close_days: 21
@@ -69,6 +71,7 @@ gmail_autopilot:
   auto_send_touch2: true             # "still available" + nothing else -> the priced offer + LOI go out by themselves
   touch2_delay_minutes: [4, 11]      # ... a few minutes after the reply, like a person answering
   pace_seconds: [25, 60]             # the 🚀 batch: random gap between e-mails (never a burst)
+  reply_pace_seconds: [8, 20]        # offers to agents who replied, sent in one inbox run: a short gap between them
   send_hours: [8, 20]                # Eastern: the batch and automatic offers go out only in working hours
   max_body_chars: 4000               # the agent's own words kept per reply (quoted thread stripped)
 

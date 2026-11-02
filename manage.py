@@ -557,6 +557,8 @@ def cmd_inbox(args: argparse.Namespace) -> None:
     console.print(f"Gmail Sent: {r['sent_import'].get('imported', 0)} reply(ies) you wrote imported · inbox: "
                   f"{p.get('checked', 0)} new message(s), {p.get('matched', 0)} agent repl{'y' if p.get('matched') == 1 else 'ies'}"
                   f" · offers sent now: {r.get('sent_now', 0) + int(p.get('sent') or 0)}")
+    if r.get("send_error"):
+        console.print(f"[yellow]Stopped sending: {r['send_error']}[/yellow]")
     _print_inbox(r["rows"])
 
 

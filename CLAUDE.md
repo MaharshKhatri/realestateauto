@@ -656,6 +656,13 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - 🔌 Test Gmail (`POST /api/setup/test-gmail`, `manage.py gmail --test [--send-test]`) signs in to both servers
     and says which side fails and why.
   - SQLite runs WAL with busy_timeout 120 s (agents checkpoint per lead, so locks are short).
+  - Gmail hanging up (learned 2026-11-02: "SMTPServerDisconnected: Connection unexpectedly closed" on the 4th offer
+    of the first `inbox` run): `deliver` tries again after 5 s and 20 s (`outreach.smtp_retry_waits`) on a transient
+    failure only (`core/mail.is_transient`: hang-up, 421 / 4xx, connection reset; never a refused sign-in,
+    certificate, refused address or blocked port). When the line dropped while the message itself was going out, the
+    Sent folder is searched for its Message-ID first (found = sent; can't look = stop and say "check Sent"), so an
+    agent never gets two offers. One inbox run sends its offers 8-20 s apart (`reply_pace_seconds`) and stops at the
+    first failure every e-mail would share; the rest stay queued, the failed one is re-queued by the next check.
 - **First live replies** (learned 2026-11-02):
   - A broker's iPhone signature ("Sample Real Estate", "Over 20 Million Dollar Sales Volume") was read as a $20M
     counter plus an estate sale. Fixes:

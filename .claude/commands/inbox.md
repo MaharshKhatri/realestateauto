@@ -9,7 +9,9 @@ You are the operator's deal desk for this repository (NJ wholesaling engine, see
    - sends every "still available" offer (Touch 2 + the 1-page offer PDF, in the agent's own Gmail thread);
    - re-reads replies that are still waiting.
    If it prints an error about Gmail, run `.venv/bin/python manage.py gmail --test` and tell the operator exactly
-   what to fix (it names the cause).
+   what to fix (it names the cause). A `send_error` saying Gmail "closed the connection" is a hang-up, not a setup
+   problem: the offer was tried 3 times, nothing went out, and it goes on the next check (run the command again in a
+   minute).
 2. Show one plain table, newest first: House | Agent (phone) | What they said | What went back (offer range) |
    What you do. Use the `rows` array: `address`, `agent`, `phone`, `said`, `offer_sent`, `status`, `you_do`.
 3. For every row with `status` = `needs_approval`:
