@@ -60,6 +60,8 @@ OPENER_BODIES = (
 )
 OPENER_SUBJECTS = ("{st}", "question on {st}", "{st} - still available?", "{place}")
 OPENER_OPT_OUT = 'If you\'d rather not hear from me, reply "no more".'
+LOI_LATER_LINE = "Let me know if that range is workable and I'll send over the written offer today."
+LOI_ATTACHED_LINE = "The 1-page written offer is attached; let me know if that range is workable."
 OUTREACH_DIR = DEALS_DIR / "agent_blast"
 log = logging.getLogger(__name__)
 
@@ -242,14 +244,17 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
     fast, std = int(cfg.get("fast_close_days", 21)), int(cfg.get("standard_close_days", 45))
     ask = gap.get("list_price")
     subject = hc.pick([f"question on {st}", f"{st} - still available?"], lead.id)
+    answered = session is not None and last_touch(session, lead) == "reply"      # Touch 2: they wrote back
+    attach = generate_loi and session is not None
     if kind == "offer":
         paragraphs = [
-            f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". "
+            (f"Thanks for getting back to me on {st}. " if answered else
+             f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". ") +
             f"{_why_now(f)} think the seller would look at a clean, as-is cash offer around "
             f"{price_range(anchor, best)} with no mortgage contingency and a quick close? "
             "I'm an investor buying for myself or a partner investor, and I'm not working with a buyer's agent, "
             "so you can handle both sides if your listing agreement allows it. "
-            "Let me know if that range is workable and I'll send over the written offer today."]
+            + (LOI_ATTACHED_LINE if attach else LOI_LATER_LINE)]
         terms = [(f"Option 1: {hc.money(anchor)} cash, as-is, no mortgage or appraisal contingency, close in about "
                   f"{fast} days.")]
         if best and anchor and best > anchor:
@@ -257,7 +262,7 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
                          f"about {std} days.")
         terms += ["No repairs, cleanout or credits requested; the seller picks the closing date.",
                   "The agreement of sale includes a 3-business-day attorney review."
-                  + (" A 1-page written offer is attached." if generate_loi and session is not None else "")]
+                  + (" A 1-page written offer is attached." if attach else "")]
     else:
         paragraphs = [
             f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". "
@@ -309,8 +314,9 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
             log.exception("LOI for lead %s could not be built", lead.id)
             packet.warnings.append(f"The 1-page written offer couldn't be built ({type(exc).__name__}); "
                                    "the e-mail goes without it.")
-        if not packet.loi_files.get("pdf"):
-            packet.email_body = packet.email_body.replace(" A 1-page written offer is attached.", "")
+        if not packet.loi_files.get("pdf"):        # no PDF after all: the text must not promise one
+            packet.email_body = packet.email_body.replace(" A 1-page written offer is attached.", "") \
+                .replace(LOI_ATTACHED_LINE, LOI_LATER_LINE)
     return packet
 
 

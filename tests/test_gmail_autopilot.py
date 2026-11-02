@@ -424,3 +424,87 @@ def test_simple_home_endpoints(live, monkeypatch):
     assert "Advanced Tools" in page and "🏠 Home" in page
     monkeypatch.delenv("SMTP_APP_PASSWORD")
     assert client.post("/api/simple/check-inbox").status_code == 409
+
+
+# -- real-world replies (2026-11-02; names, phones and addresses replaced) -----------------------------------------
+BROKER_SIGNATURE_REPLY = """Yes. Attorney 
+
+Sincerely,
+
+Pat Sample
+Sample Real Estate
+Owner/Broker
+100 Sample Ave
+Sampletown NJ 07000
+Cell: (973)555-0178
+pat@samplerealestate.test
+
+COMMERCIAL AND RESIDENTIAL SPECIALIST 
+
+Top 1% in New Jersey
+Recipient of NJAR Circle of Excellence PLATINUM Award Over 20 Million Dollar Sales Volume YEARLY 2004-2008,2013-2026
+
+
+Sorry for any errors, this email was sent from my IPhone 
+From: jordan@example.test <jordan@example.test>
+Sent: Monday, 02 November 2026 13:38:09
+To: pat samplerealestate.test <pat@samplerealestate.test>
+Subject: question on 1 Test St
+
+Hi Pat, Quick question on your listing. Is it still available, or are you already in attorney review?"""
+
+
+def test_broker_signature_is_not_read_as_a_20_million_counter(live):
+    from engine import reply_negotiator as rn
+    kept = gm.strip_quoted(BROKER_SIGNATURE_REPLY)
+    assert kept == "Yes. Attorney"
+    p = rn.parse_reply(kept)
+    assert p.counter_amount is None and "ESTATE" not in p.intents and "UNDER_CONTRACT" in p.intents
+    db = live
+    lead = listed(db)
+    ours = opener(db, lead)["Message-ID"]
+    gm.set_imap_factory(lambda: FakeIMAP({3: mail(3, BROKER_SIGNATURE_REPLY, frm="Pat Sample <pat@broker.test>",
+                                                  in_reply_to=ours)}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
+    db.expire_all()
+    row = db.query(InboundReply).one()
+    assert row.status == "needs_approval" and row.counter_amount is None and row.body_text == "Yes. Attorney"
+    assert row.headline.startswith("PROBABLY IN ATTORNEY REVIEW")
+    draft = row.analysis_json["reply_text"]
+    assert "in attorney review now?" in draft and "first call" in draft and "congratulations" not in draft.lower()
+    assert '"no more"' in draft and "PO Box 10" in draft
+
+
+@pytest.mark.parametrize("text, counter", [
+    ("Seller would take 310k.\n\nThanks,\nPat\nSample Realty\nOver 20 Million Dollar Sales Volume", 310000),
+    ("We did 20 million in sales last year, the seller wants 310k", 310000),
+])
+def test_signature_and_brag_numbers_never_become_the_counter(live, text, counter):
+    from engine import reply_negotiator as rn
+    lead = listed(live)
+    an = rn.analyze(live, lead, gm.strip_quoted(text))
+    assert an.parsed.counter_amount == counter and an.numbers.get("counter") == counter
+
+
+def test_a_number_that_cant_be_this_houses_price_is_ignored(live):
+    from engine import reply_negotiator as rn
+    lead = listed(live)
+    an = rn.analyze(live, lead, "Seller would take 20 million.")
+    assert an.parsed.counter_amount is None and "COUNTER" not in an.parsed.intents
+    assert any("isn't a price for this house" in w for w in an.warnings)
+
+
+def test_touch2_after_their_reply_thanks_them_and_signs_once(live, monkeypatch):
+    from engine import agent_outreach
+    db = live
+    monkeypatch.setitem(settings()["operator"], "company_name", "Jordan Operator")    # a sole investor
+    lead = listed(db)
+    db.add(Interaction(lead_id=lead.id, channel="email_in", outcome="AGENT_REPLIED", notes="still available",
+                       occurred_at=datetime.now()))
+    db.flush()
+    p = agent_outreach.build_packet(lead, generate_loi=False, session=db)
+    head = p.email_body.split("--- Offer Summary ---")[0]
+    assert head.startswith("Hi Pat,\n\nThanks for getting back to me on ") and "Quick question" not in head
+    assert "Jordan Operator | Jordan Operator" not in p.email_body and "Jordan Operator\n" in head
+    with_loi = agent_outreach.build_packet(lead, generate_loi=True, session=db)
+    assert "The 1-page written offer is attached" in with_loi.email_body and with_loi.loi_files.get("pdf")

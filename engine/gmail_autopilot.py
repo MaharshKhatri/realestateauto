@@ -192,8 +192,13 @@ _QUOTE_START = [
     re.compile(r"^\s*-{2,}\s*Forwarded message\s*-{2,}", re.I),
     re.compile(r"^\s*_{8,}\s*$"),                                        # Outlook web separator
     re.compile(r"^\s*>"),                                                # quoted lines
-    re.compile(r"^\s*(Sent from my (iPhone|iPad|Android|Samsung|Galaxy|mobile)|Get Outlook for (iOS|Android))", re.I),
+    re.compile(r"(sent from my (iphone|ipad|android|samsung|galaxy|mobile|phone|cell)|get outlook for (ios|android))", re.I),
+    re.compile(r"^--\s*$"),                                             # the standard signature delimiter
 ]
+# A sign-off on its own line ends the message: everything under it is the signature (name, brokerage, phones,
+# "Top 1%", "20 Million Dollar Sales Volume", ...), and none of it is part of the answer.
+_SIGN_OFF = re.compile(r"^\s*(sincerely|best|best regards|regards|kind regards|warm regards|warmly|thanks|thank you|"
+                       r"thanks again|many thanks|cheers|respectfully|all the best|talk soon)[,.!]?\s*$", re.I)
 _OUTLOOK_FROM = re.compile(r"^\s*\*?From:\*?\s", re.I)
 _OUTLOOK_NEXT = re.compile(r"^\s*\*?(Sent|Date|To|Subject):\*?\s", re.I)
 
@@ -209,6 +214,8 @@ def strip_quoted(text: str, limit: int | None = None) -> str:
         if re.match(r"^\s*On\b", line, re.I) and re.search(r"\bwrote:\s*$", nxt, re.I) and len(line) < 200:
             break                                                        # "On ... <x@y.com>\nwrote:" (wrapped)
         if _OUTLOOK_FROM.match(line) and any(_OUTLOOK_NEXT.match(x) for x in lines[i + 1:i + 5]):
+            break
+        if _SIGN_OFF.match(line) and any(x.strip() for x in out):
             break
         out.append(line.rstrip())
     body = re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()

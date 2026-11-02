@@ -653,6 +653,20 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - 🔌 Test Gmail (`POST /api/setup/test-gmail`, `manage.py gmail --test [--send-test]`) signs in to both servers
     and says which side fails and why.
   - SQLite runs WAL with busy_timeout 120 s (agents checkpoint per lead, so locks are short).
+- **First live replies** (learned 2026-11-02):
+  - A broker's iPhone signature ("Sample Real Estate", "Over 20 Million Dollar Sales Volume") was read as a $20M
+    counter plus an estate sale. Fixes:
+    - `strip_quoted` now cuts at a sign-off line ("Sincerely," / "Thanks," / "--") and at "sent from my iPhone"
+      anywhere on a line;
+    - ESTATE ignores "real estate";
+    - a counter outside 0.2-2.5x the larger of ask and ARV is dropped with a warning.
+  - A short reply naming the attorney ("Yes. Attorney") answers our opener's "or already in attorney review?". It
+    reads as UNDER_CONTRACT (attorney_ambiguous): the draft asks them to confirm and asks for the first call (no
+    congratulations), with a 7-day follow-up.
+  - Touch 2 after a reply opens "Thanks for getting back to me on <street>." When the LOI is generated it says
+    "The 1-page written offer is attached"; if the PDF fails, it falls back to "I'll send over the written offer
+    today".
+  - A company name equal to the operator's own name is printed once in the signature.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

@@ -116,7 +116,8 @@ class Email:
 
 def signature_lines(op: dict[str, str] | None = None) -> list[str]:
     op = op or operator()
-    who = " | ".join(x for x in (op["name"], op["company"]) if x)
+    company = op["company"] if op["company"].strip().lower() != op["name"].strip().lower() else ""
+    who = " | ".join(x for x in (op["name"], company) if x)      # a sole investor's "company" is their own name
     lines = [op["first"]] if op["first"] else []
     if who and who != op["first"]:
         lines.append(who)

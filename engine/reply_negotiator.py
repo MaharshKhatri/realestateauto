@@ -81,7 +81,7 @@ PHRASES: dict[str, list[str]] = {
     "CO": [r"certificate of occupancy", r"\bc\.?\s?of\s?o\.?\b", r"\bcco\b", r"fire cert", r"smoke cert", r"smoke detector cert",
            r"(?-i:\bCO\b)(?! ?-? ?owner)", r"co inspection", r"continued certificate"],
     "SHORT_SALE": [r"short sale", r"bank approval", r"lender approval", r"\bunderwater\b", r"owes? more than", r"third[- ]party approval"],
-    "ESTATE": [r"\bestate\b", r"\bprobate\b", r"surrogate", r"executor", r"executrix", r"administrat(or|rix)", r"passed away",
+    "ESTATE": [r"(?<!real )\bestate\b(?! (agent|broker|office|team|group|company|professional))", r"\bprobate\b", r"surrogate", r"executor", r"executrix", r"administrat(or|rix)", r"passed away",
                r"\bdeceased\b", r"\bheirs?\b", r"letters testamentary"],
     "OPT_OUT": [r"remove me", r"^\s*stop\b", r"please stop", r"\bno more\b", r"unsubscribe", r"do not contact", r"don'?t contact",
                 r"take me off", r"don'?t e-?mail", r"stop e-?mailing", r"stop contacting", r"not interested in (any|other|more)"],
@@ -197,6 +197,16 @@ def parse_reply(text: str) -> ParsedReply:
         out.intents.discard("QUESTION")
     if "OPT_OUT" in out.intents and re.search(r"not interested in (any|other|more)", low):
         out.intents.discard("REJECT")
+    # Our opener asks "still available, or already in attorney review?". A short answer that names the attorney
+    # ("Yes. Attorney", "attorney review", "in attorney") most likely means it is in attorney review: treat it as
+    # under contract, but ask them to confirm rather than congratulate.
+    words = re.findall(r"[a-z']+", low)
+    if "attorney" in words and len(words) <= 8 and "UNDER_CONTRACT" not in out.intents and not out.counter_amount \
+            and not re.search(r"still available|not (yet )?(in|under)|no attorney|send|offer|forward|e-?mail|number|"
+                              r"price|contract|call|my attorney|your attorney|seller'?s attorney", low):
+        out.intents.discard("AVAILABLE")
+        out.intents.add("UNDER_CONTRACT")
+        out.notes.append("attorney_ambiguous: a short reply naming the attorney, read as 'in attorney review'")
     dl = _DEADLINE.search(scrubbed)
     out.deadline = dl.group(0) if dl else None
     return out
@@ -370,6 +380,13 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
                               f"({calls}) and open the JV Partner Vault (#/partners) to lock one in.")
 
     counter = parsed.counter_amount
+    ref = max(float(ao.listing_gap(lead).get("list_price") or 0), float(nums.get("arv") or 0))
+    if counter and ref and not 0.2 * ref <= counter <= 2.5 * ref:
+        # "Over 20 Million Dollar Sales Volume" in a signature, a lot size, an MLS number: not a price for this house.
+        an.warnings.append(f"Ignored {hc.money(counter)}: it isn't a price for this house (likely from a signature "
+                           "or another listing). Check their message.")
+        parsed.counter_amount, counter = None, None
+        parsed.intents.discard("COUNTER")
     frfpa_floor = nums.get("frfpa_floor")
     priced = bool(nums) and nums.get("verdict") not in NO_PRICE_VERDICTS and nums.get("mao_walkaway", 0) > 0
 
@@ -496,6 +513,17 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         priced_reply(price, sentences, [])
         an.sms_text = f"Hi {first}, it's {me}. Great news on {st}; the written offer at {hc.money(price)} comes today." + sms_tail
         an.followup_at = ao._eastern(now)
+        return an
+    if "UNDER_CONTRACT" in intents and any(n.startswith("attorney_ambiguous") for n in parsed.notes):
+        an.headline = "PROBABLY IN ATTORNEY REVIEW: confirm and ask for the first call"
+        an.actions = ["Their answer was short: send this one-line check. If it is in attorney review, the follow-up in "
+                      "7 days asks whether it came back out."] + an.actions
+        sentences = ["Thanks for the quick answer.",
+                     f"Just so I have it right, is {st} in attorney review now?",
+                     "If it comes back out, I'd appreciate the first call; I can put a cash offer in writing the same day."]
+        an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
+        an.sms_text = f"Hi {first}, it's {me}. Is {st} in attorney review now? If it falls out I'd love the first call." + sms_tail
+        an.followup_at = _followup(now, 7)
         return an
     if "UNDER_CONTRACT" in intents:
         an.headline = "OFF THE TABLE FOR NOW: under contract"
