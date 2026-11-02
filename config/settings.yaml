@@ -48,7 +48,8 @@ ai:
 outreach:
   # B2B listing-agent offers (engine/agent_outreach.py). SMTP is optional: set SMTP_USER / SMTP_APP_PASSWORD
   # (a Gmail app password) in .env; mailto:/copy work without it.
-  daily_email_limit: 25              # personalized e-mails per rolling 24 hours, never bulk
+  daily_email_limit: 25              # COLD e-mails (openers, first offers, nudges) per rolling 24 hours, never bulk
+  reply_daily_limit: 150             # all e-mails incl. answers to agents who wrote back (Gmail allows ~500/day)
   smtp_host: "smtp.gmail.com"
   smtp_port: 465
   max_offer_basis: mao_70            # "best" structure in the e-mail: mao_70 (walk-away) or mao_75 (ceiling)

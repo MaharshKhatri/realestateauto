@@ -354,6 +354,10 @@ def send(session: Session, lead_id: int, channel: str, *, subject: str | None = 
                          generate_loi=(channel == "smtp" and card["kind"] != "followup" and card["touch"] == 2))
     # Touch 2 answers the agent's own e-mail: same Gmail thread (In-Reply-To / References, "Re:" subject).
     thread = gm.reply_thread(session, lead.id) if card["kind"] == "touch2" else None
+    # An agent who has written back is a conversation, not cold outreach: the cold daily cap doesn't apply.
+    engaged = card["kind"] == "touch2" or thread is not None or ao.last_touch(session, lead) == "reply" or bool(
+        session.scalar(select(Interaction.id).where(Interaction.lead_id == lead.id,
+                                                    Interaction.outcome == ao.REPLY_OUTCOME).limit(1)))
     if thread and thread.get("subject") and not (subject and subject.strip() and subject.strip() != card["subject"]):
         packet = replace(packet, subject=thread["subject"])
     op = hc.operator()
@@ -371,8 +375,8 @@ def send(session: Session, lead_id: int, channel: str, *, subject: str | None = 
         try:
             stage = (ao.send_smtp(session, lead, packet, now=now, smtp_factory=smtp_factory,
                                   in_reply_to=(thread or {}).get("message_id"),
-                                  references=(thread or {}).get("references")) if card["kind"] != "followup"
-                     else _smtp_followup(session, lead, packet, now, smtp_factory))
+                                  references=(thread or {}).get("references"), engaged=engaged)
+                     if card["kind"] != "followup" else _smtp_followup(session, lead, packet, now, smtp_factory, engaged))
         except RuntimeError as exc:
             raise AutopilotError(str(exc)) from exc
     elif card["kind"] == "followup":
@@ -389,22 +393,23 @@ def send(session: Session, lead_id: int, channel: str, *, subject: str | None = 
 
 
 def _log_followup(session: Session, lead: Lead, packet: ao.AgentPacket, channel: str, now: datetime | None,
-                  message_id: str | None = None) -> str:
+                  message_id: str | None = None, engaged: bool = False) -> str:
     when = ao.followup_time(now)
     session.add(Interaction(lead_id=lead.id, contact_id=packet.agent_contact_id, channel=channel,
                             outcome="AGENT_FOLLOWUP_SENT", notes=packet.subject, next_followup_at=when,
                             email_message_id=message_id,
-                            debrief_json={"packet": {"kind": "followup"}}, occurred_at=ao._eastern(now)))
+                            debrief_json={"packet": {"kind": "followup"}, "engaged": engaged},
+                            occurred_at=ao._eastern(now)))
     lead.next_followup_at = when
     lead.last_contact_at = ao._eastern(now)
     return lead.status_stage
 
 
 def _smtp_followup(session: Session, lead: Lead, packet: ao.AgentPacket, now: datetime | None,
-                   smtp_factory: Any) -> str:
+                   smtp_factory: Any, engaged: bool = False) -> str:
     """SMTP for a follow-up: same limits and postal-address rule, logged as a follow-up (stage unchanged)."""
-    message_id = ao.deliver(packet, session=session, now=now, smtp_factory=smtp_factory)
-    return _log_followup(session, lead, packet, "email_smtp", now, message_id=message_id)
+    message_id = ao.deliver(packet, session=session, now=now, smtp_factory=smtp_factory, engaged=engaged)
+    return _log_followup(session, lead, packet, "email_smtp", now, message_id=message_id, engaged=engaged)
 
 
 def outcome(session: Session, lead_id: int, button: str, *, notes: str = "", now: datetime | None = None,

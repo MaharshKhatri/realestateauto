@@ -15,7 +15,10 @@
     python manage.py buyers [--top 20]        active cash buyers
     python manage.py stats                    database and pipeline stats
     python manage.py server [--port 8000]     local CRM cockpit at http://127.0.0.1:8000
+    python manage.py inbox [--no-send] [--json]   /inbox: Gmail Sent import, agent replies, "still available" offers out now
+    python manage.py autopilot-daemon [--once]    hands-free loop (install-daemon puts it in macOS launchd)
     python manage.py gmail [--test [--send-test] | --run [N] | --dry-run | --check | --status | --approve ID | --dismiss ID]
+                           [--find TEXT | --send-offer LEAD | --reply LEAD --text ... [--price N]]
                                               Gmail autopilot: paced daily batch, read agent replies, Action Needed
     python manage.py queue [--top 25]         today's call queue (follow-ups first)
     python manage.py script <lead> [--contact ID] [--buyer ID]   pre-call battle card (playbooks A–E)
@@ -525,10 +528,163 @@ def _print_calendar_sync(r) -> None:
         console.print(f"[yellow]{r.error}[/yellow]")
 
 
+def _print_inbox(rows: list[dict]) -> None:
+    from rich.table import Table
+    t = Table(title="Agent replies (last 2 days + anything still waiting)", show_lines=True)
+    for col in ("#", "House", "Agent", "They said", "What went back", "You do"):
+        t.add_column(col, overflow="fold")
+    for r in rows:
+        went = (f"offer {r['offer_sent']}" if r["offer_sent"] else "") or r["light"]
+        t.add_row(str(r["id"]), f"{r['address'] or '?'}", f"{r['agent'] or r['from'] or ''}" + (f"\n{r['phone']}" if r["phone"] else ""),
+                  r["said"], f"[{r['status']}] {went}" + (f"\n{r['note']}" if r["note"] else ""), r["you_do"])
+    console.print(t)
+
+
+def cmd_inbox(args: argparse.Namespace) -> None:
+    """/inbox: import what you sent from Gmail, read new agent replies, send every "still available" offer now,
+    and print one table (--json for Claude)."""
+    import json as _json
+    from engine import gmail_autopilot as gm
+    init_db()
+    r = gm.run_inbox(send=not args.no_send)     # every commit queues its calendar events; they push before exit
+    if args.json:
+        print(_json.dumps(r, default=str, indent=1))
+        return
+    if not r.get("ok"):
+        console.print(f"[red]{r.get('error')}[/red]")
+        raise SystemExit(1)
+    p = r.get("poll") or {}
+    console.print(f"Gmail Sent: {r['sent_import'].get('imported', 0)} reply(ies) you wrote imported · inbox: "
+                  f"{p.get('checked', 0)} new message(s), {p.get('matched', 0)} agent repl{'y' if p.get('matched') == 1 else 'ies'}"
+                  f" · offers sent now: {r.get('sent_now', 0) + int(p.get('sent') or 0)}")
+    _print_inbox(r["rows"])
+
+
+def cmd_autopilot_daemon(args: argparse.Namespace) -> None:
+    """The hands-free loop (launchd runs it): every few minutes inside 8 AM-9 PM Eastern, import Gmail Sent, read
+    replies, send the "still available" offers, keep Google Calendar in sync. No web server needed."""
+    import logging
+    import time as _t
+    from datetime import datetime as _dt
+    from logging.handlers import RotatingFileHandler
+    from engine import gcal_sync
+    from engine import gmail_autopilot as gm
+    from engine.crm import TZ
+    init_db()
+    log_path = Path(__file__).resolve().parent / "logs" / "daemon.log"
+    log_path.parent.mkdir(exist_ok=True)
+    h = RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logging.getLogger().addHandler(h)
+    logging.getLogger().setLevel(logging.INFO)
+    lg = logging.getLogger("autopilot-daemon")
+    gcal_sync.start_background()
+    lg.info("started (every %ss, 8 AM-9 PM Eastern)", args.interval)
+    while True:
+        hour = _dt.now(TZ).hour
+        if 8 <= hour < 21:
+            try:
+                r = gm.run_inbox(send=True)
+                p = r.get("poll") or {}
+                lg.info("cycle: sent-import %s, new %s, matched %s, offers %s, waiting %s",
+                        (r.get("sent_import") or {}).get("imported"), p.get("checked"), p.get("matched"),
+                        r.get("sent_now", 0) + int(p.get("sent") or 0),
+                        sum(1 for x in r.get("rows", []) if x["status"] == "needs_approval"))
+                if not r.get("ok"):
+                    lg.warning("inbox: %s", r.get("error"))
+            except Exception:                      # noqa: BLE001 - the loop must survive anything
+                lg.exception("cycle failed")
+        if args.once:
+            return
+        _t.sleep(args.interval)
+
+
+def cmd_install_daemon(args: argparse.Namespace) -> None:
+    """macOS: ~/Library/LaunchAgents/com.khatri.wholesale.autopilot.plist runs `autopilot-daemon` at login and keeps
+    it running (logs/daemon.log). --uninstall removes it."""
+    import os
+    import subprocess
+    root = Path(__file__).resolve().parent
+    label = "com.khatri.wholesale.autopilot"
+    plist = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+    py = root / ".venv" / "bin" / "python"
+    if not py.exists():
+        py = Path(sys.executable)
+    if args.uninstall:
+        if sys.platform == "darwin":
+            subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}", str(plist)], check=False)
+        plist.unlink(missing_ok=True)
+        console.print(f"[green]removed[/green] {plist}")
+        return
+    body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{label}</string>
+  <key>ProgramArguments</key>
+  <array><string>{py}</string><string>{root / "manage.py"}</string><string>autopilot-daemon</string></array>
+  <key>WorkingDirectory</key><string>{root}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>{root / "logs" / "daemon.out.log"}</string>
+  <key>StandardErrorPath</key><string>{root / "logs" / "daemon.out.log"}</string>
+</dict>
+</plist>
+"""
+    if args.print or sys.platform != "darwin":
+        print(body)
+        if sys.platform != "darwin":
+            console.print("[yellow]launchd is macOS only: run `python manage.py autopilot-daemon` in a terminal instead.[/yellow]")
+        return
+    (root / "logs").mkdir(exist_ok=True)
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text(body)
+    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}", str(plist)], check=False, capture_output=True)
+    r = subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist)], capture_output=True, text=True)
+    if r.returncode != 0:
+        r = subprocess.run(["launchctl", "load", "-w", str(plist)], capture_output=True, text=True)
+    console.print(f"[green]installed[/green] {plist} → `manage.py autopilot-daemon` runs now and at every login "
+                  f"(log: logs/daemon.log){'' if r.returncode == 0 else ' — launchctl said: ' + (r.stderr or r.stdout)}")
+
+
 def cmd_gmail(args: argparse.Namespace) -> None:
     """Phase 8 Gmail autopilot from the terminal: check the inbox, send today's batch, list / approve replies."""
     from engine import gmail_autopilot as gm
     init_db()
+    if args.find:
+        import json as _json
+        with session_scope() as s:
+            rows = gm.find_leads(s, args.find)
+            s.rollback()
+        print(_json.dumps(rows, default=str, indent=1))
+        return
+    if args.send_offer:
+        from engine import autopilot
+        with session_scope() as s:
+            try:
+                out = autopilot.send(s, args.send_offer, "smtp")
+            except autopilot.AutopilotError as exc:
+                console.print(f"[red]{exc}[/red]")
+                raise SystemExit(1) from None
+        console.print(f"[green]sent[/green] {out['kind']} (touch {out['touch']}) to {out['to']}"
+                      + (" in their thread" if out.get("threaded") else ""))
+        return
+    if args.reply:
+        text = Path(args.body_file).read_text() if args.body_file else (args.text or "")
+        if not text.strip():
+            console.print("[red]--text or --body-file is required with --reply[/red]")
+            raise SystemExit(1)
+        with session_scope() as s:
+            try:
+                out = gm.send_custom_reply(s, args.reply, text, subject=args.subject, price=args.price)
+            except gm.ApprovalError as exc:
+                console.print(f"[red]{exc}[/red]")
+                raise SystemExit(1) from None
+        console.print(f"[green]sent[/green] to {out['to']} ({out['subject']})" + (" in their thread" if out["threaded"] else "")
+                      + (f" with the 1-page offer at ${out['price']:,.0f}" if out["loi_attached"] else ""))
+        for w in out["warnings"]:
+            console.print(f"[yellow]{w}[/yellow]")
+        return
     if args.test:
         r = gm.test_connection(send_to_self=args.send_test)
         console.print(f"Gmail account: {r['account'] or '—'}")
@@ -577,8 +733,8 @@ def cmd_gmail(args: argparse.Namespace) -> None:
                 console.print(f"[yellow]{exc}[/yellow]")
                 raise SystemExit(1) from None
             console.print(gm.campaign.message)
-    if not (args.check or args.approve or args.dismiss or args.run is not None or args.dry_run or args.test) \
-            or args.status:
+    if not (args.check or args.approve or args.dismiss or args.run is not None or args.dry_run or args.test
+            or args.find or args.reply or args.send_offer) or args.status:
         with session_scope() as s:
             st = gm.status(s)
             s.rollback()
@@ -1631,6 +1787,14 @@ def main(argv: list[str] | None = None) -> None:
     ycal.add_argument("--dry-run", action="store_true", help="list the events without writing anything")
     ycal.add_argument("--status", action="store_true", help="connection, queue and the next events")
     gm = sub.add_parser("gmail", help="Gmail autopilot: inbox check, today's paced batch, approve agent replies")
+    gm.add_argument("--find", metavar="TEXT", help="leads by street, town, agent name or agent e-mail (JSON)")
+    gm.add_argument("--send-offer", type=int, metavar="LEAD", help="send this lead's next e-mail now (Touch 2 in the "
+                                                                    "agent's thread when they replied)")
+    gm.add_argument("--reply", type=int, metavar="LEAD", help="send your own words in the agent's thread (/reply)")
+    gm.add_argument("--text", help="with --reply: the message")
+    gm.add_argument("--body-file", help="with --reply: a file holding the message")
+    gm.add_argument("--subject", help="with --reply: subject (default: the thread's Re: subject)")
+    gm.add_argument("--price", type=float, help="with --reply: attach the 1-page offer at this price (logged as an offer)")
     gm.add_argument("--test", action="store_true", help="sign in to smtp.gmail.com and imap.gmail.com with the saved "
                                                          "app password (nothing is sent)")
     gm.add_argument("--send-test", action="store_true", help="with --test: also send a short note to your own address")
@@ -1641,6 +1805,15 @@ def main(argv: list[str] | None = None) -> None:
     gm.add_argument("--approve", type=int, metavar="REPLY_ID", help="send the drafted answer to this agent reply")
     gm.add_argument("--dismiss", type=int, metavar="REPLY_ID", help="drop a reply from Action Needed")
     gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
+    ib = sub.add_parser("inbox", help="/inbox: import Gmail Sent, read agent replies, send 'still available' offers now")
+    ib.add_argument("--no-send", action="store_true", help="read and analyze only")
+    ib.add_argument("--json", action="store_true", help="machine-readable result (for Claude)")
+    dm = sub.add_parser("autopilot-daemon", help="hands-free loop: inbox + offers + calendar every few minutes, 8 AM-9 PM")
+    dm.add_argument("--interval", type=int, default=300, help="seconds between checks (default 300)")
+    dm.add_argument("--once", action="store_true", help="one cycle, then exit")
+    idm = sub.add_parser("install-daemon", help="macOS launchd: start autopilot-daemon at login and keep it running")
+    idm.add_argument("--uninstall", action="store_true")
+    idm.add_argument("--print", action="store_true", help="print the plist only")
     ds = sub.add_parser("db-sync", help="encrypted database snapshot for another machine (pack here, unpack there)")
     dsm = ds.add_mutually_exclusive_group()
     dsm.add_argument("--pack", action="store_true", help="VACUUM INTO -> xz -> AES-256-GCM -> data/snapshots/")
@@ -1779,7 +1952,8 @@ def main(argv: list[str] | None = None) -> None:
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
      "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "db-sync": cmd_db_sync, "setup-calendar": cmd_setup_calendar,
-     "sync-calendar": cmd_sync_calendar, "gmail": cmd_gmail, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
+     "sync-calendar": cmd_sync_calendar, "gmail": cmd_gmail, "inbox": cmd_inbox,
+     "autopilot-daemon": cmd_autopilot_daemon, "install-daemon": cmd_install_daemon, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
      "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,
      "mail-merge": cmd_mail_merge, "inspect": cmd_inspect, "stack": cmd_stack, "buyer-hotzones": cmd_buyer_hotzones,

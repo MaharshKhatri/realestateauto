@@ -55,6 +55,24 @@ def _comp_line(c: dict[str, Any]) -> dict[str, Any]:
             "time_adjusted": c.get("time_adjusted_price")}
 
 
+def listing_parcel_miles(lead: Any) -> tuple[float, str, str] | None:
+    """(miles, listing town, parcel town) between the MLS listing's own coordinates and the parcel we linked it to."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import object_session
+
+    from core.geo import haversine_miles
+    from db.models import Listing
+    p = lead.property
+    session = object_session(lead)
+    refs = [sg.source_ref for sg in p.signals if sg.signal_type == "STALE_LISTING" and sg.source_ref]
+    if session is None or not refs or p.lat is None or p.lon is None:
+        return None
+    lst = session.scalar(select(Listing).where(Listing.source_ref.in_(refs), Listing.lat.is_not(None)).limit(1))
+    if lst is None or lst.lon is None:
+        return None
+    return (haversine_miles(p.lat, p.lon, lst.lat, lst.lon), lst.city or "listing", (p.municipality or "parcel").title())
+
+
 def check(lead: Any, today: date | None = None) -> Preflight:
     from engine.listing_comps import listing_type
     from engine.scoring import valuation_suspect
@@ -73,6 +91,11 @@ def check(lead: Any, today: date | None = None) -> Preflight:
     if valuation_suspect(v):
         hold = True
         issues.append("valuation was outlier-capped or the parcel is not a 1-4 family home")
+    far = listing_parcel_miles(lead)
+    if far is not None and far[0] > 1.0:
+        hold = True
+        issues.append(f"wrong parcel: the MLS listing ({far[1]}) and the parcel record ({far[2]}) are {far[0]:.1f} miles "
+                      "apart, so the numbers are for a different house; re-match before quoting")
     if a.get("comps_need_refresh"):
         hold = True
         issues.append(f"{a['comps_need_refresh']} stored comps failed hygiene: re-underwrite before quoting")

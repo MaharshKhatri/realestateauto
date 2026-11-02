@@ -350,13 +350,14 @@ def reply_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
         agent = session.get(Contact, row.contact_id) if row.contact_id else listing_agent(lead)
         n = (row.analysis_json or {}).get("numbers") or {}
         s, e = _timed(start, 15)
-        summary = f"🔥 Agent replied: {place.street} (approve in the dashboard)"
+        summary = (f"🔥 COUNTER-OFFER RECEIVED: {place.street} - Open Claude Chat" if row.counter_amount else
+                   f"🔥 Agent replied: {place.street} - Open Claude Chat")
         lines = [f"The listing agent answered: {row.headline or row.verdict or 'see the dashboard'}.",
                  f"Their number: {_money(row.counter_amount)}" if row.counter_amount else None,
                  f"Your walk-away: {_money(n.get('mao_walkaway'))}" if n.get("mao_walkaway") else None,
                  f"Why it waits for you: {row.note}" if row.note else None, *_agent_lines(session, agent),
-                 f"Open the dashboard: {dashboard_url()}/",
-                 "One click there sends the drafted answer in their Gmail thread."]
+                 "Open Claude Code in your realestateauto folder and type /inbox: it shows their message, the math and "
+                 "the drafted answer, and sends it in their Gmail thread when you say so."]
         out.append(Desired(f"reply:{lead.id}:r{row.id}", "reply", lead.id,
                            _body("reply", summary, lines, s, e, reminders=[0], link=lead_link(lead.id)), start))
     return out

@@ -379,7 +379,8 @@ def test_calendar_alert_for_a_reply_waiting_on_the_operator(live):
     ev = gcal_sync.reply_events(db, lead, datetime(2026, 11, 4, 11, 1))
     assert len(ev) == 1 and ev[0].key == f"reply:{lead.id}:r{row.id}" and ev[0].kind == "reply"
     body = ev[0].body
-    assert body["summary"].startswith("🔥 Agent replied: ") and "$310,000" in body["description"]
+    assert body["summary"].startswith("🔥 COUNTER-OFFER RECEIVED: ") and body["summary"].endswith("Open Claude Chat")
+    assert "$310,000" in body["description"] and "/inbox" in body["description"]
     assert "Quinn" not in body["description"] and ev[0].starts_at == datetime(2026, 11, 4, 11, 10)
     row.status = "approved"
     db.flush()
@@ -459,7 +460,7 @@ def test_broker_signature_is_not_read_as_a_20_million_counter(live):
     kept = gm.strip_quoted(BROKER_SIGNATURE_REPLY)
     assert kept == "Yes. Attorney"
     p = rn.parse_reply(kept)
-    assert p.counter_amount is None and "ESTATE" not in p.intents and "UNDER_CONTRACT" in p.intents
+    assert p.counter_amount is None and "ESTATE" not in p.intents and p.intents == {"BACKUP"}
     db = live
     lead = listed(db)
     ours = opener(db, lead)["Message-ID"]
@@ -468,10 +469,11 @@ def test_broker_signature_is_not_read_as_a_20_million_counter(live):
     gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
     db.expire_all()
     row = db.query(InboundReply).one()
-    assert row.status == "needs_approval" and row.counter_amount is None and row.body_text == "Yes. Attorney"
-    assert row.headline.startswith("PROBABLY IN ATTORNEY REVIEW")
+    # "Yes. Attorney" answers "still available, or already in attorney review?": the offer goes as a backup.
+    assert row.status == "auto_queued" and row.counter_amount is None and row.body_text == "Yes. Attorney"
+    assert row.headline == "SEND A BACKUP OFFER NOW (Touch 2)"
     draft = row.analysis_json["reply_text"]
-    assert "in attorney review now?" in draft and "first call" in draft and "congratulations" not in draft.lower()
+    assert "backup offer in case the current contract doesn't go through" in draft and "congratulations" not in draft.lower()
     assert '"no more"' in draft and "PO Box 10" in draft
 
 
@@ -570,7 +572,7 @@ def test_a_reply_misread_by_an_older_version_is_read_again(live):
     db = live
     lead = listed(db)
     lead.last_counter_amount = 20_000_000
-    row = InboundReply(message_id="<old@b.test>", lead_id=lead.id, status="needs_approval", verdict="RED",
+    row = InboundReply(message_id="<old@b.test>", lead_id=lead.id, status="needs_approval", verdict="RED", match_method="thread",
                        headline="HOLD FIRM AT $292,000 / SET 14-DAY DRIP", counter_amount=20_000_000,
                        intents_json=["COUNTER", "ESTATE"], body_text=BROKER_SIGNATURE_REPLY.split("\nFrom:")[0],
                        received_at=datetime(2026, 11, 4, 9, 41), analysis_json={"reply_text": "$20,000,000 doesn't work"})
@@ -578,11 +580,12 @@ def test_a_reply_misread_by_an_older_version_is_read_again(live):
     db.flush()
     assert gm.refresh_open_replies(db) == 1
     assert row.counter_amount is None and row.body_text == "Yes. Attorney" and lead.last_counter_amount is None
-    assert row.headline.startswith("PROBABLY IN ATTORNEY REVIEW") and "20,000,000" not in row.analysis_json["reply_text"]
-    st = gm.status(db, now=T0)
-    card = next(c for c in st["action_needed"] if c["id"] == row.id)
-    assert card["offer_ok"] and not card["loi"]                       # "✉️ Send my offer instead" is offered
+    assert row.headline == "SEND A BACKUP OFFER NOW (Touch 2)" and "20,000,000" not in row.analysis_json["reply_text"]
+    assert row.status == "auto_queued" and "re-read" in row.note      # released: the backup offer goes out
     assert gm.refresh_open_replies(db) == 0                           # idempotent
+    row.status = "needs_approval"
+    db.flush()
+    assert gm.refresh_open_replies(db, promote=False) == 0 and row.status == "needs_approval"
 
 
 def test_lead_page_points_a_counter_to_action_needed(live):

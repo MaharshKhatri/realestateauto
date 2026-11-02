@@ -179,7 +179,15 @@ class StaleListingDistressAgent(BaseAgent):
                 feature = gis.find_by_address(county, street, None)
         if feature:
             data = feature_to_property(feature)
-        else:
+            far = _miles_apart(data, row)
+            if far is not None and far > MAX_PARCEL_MILES:
+                # Same street name in another town of the county ("22 Grand Ave", Iselin vs South River): a valuation
+                # of that parcel would price a different house. Keep the listing, not the wrong parcel.
+                ctx.bump("parcel_rejected_distance")
+                ctx.note(f"{street}, {row.get('city')}: nearest NJGIN match is {far:.1f} mi away "
+                         f"({data.get('municipality')}); not linked")
+                feature = None
+        if not feature:
             data = {"parcel_id": f"{(county or 'NJ').upper()}-UNMATCHED-{re.sub(r'[^A-Z0-9]+', '-', normalize_street(street))}-{row.get('zip')}",
                     "county": county or "Unknown", "street_address": street.upper()}
             ctx.bump("parcel_unmatched")
@@ -214,6 +222,19 @@ class StaleListingDistressAgent(BaseAgent):
                                       contact_name=f"{agent.get('name')} (listing agent)" if agent.get("name") else None)
         if lead_created:
             ctx.new_leads_found += 1
+
+
+MAX_PARCEL_MILES = 1.0            # a listing and its parcel farther apart than this are two different houses
+
+
+def _miles_apart(parcel: dict, row: dict) -> float | None:
+    from core.geo import haversine_miles
+    try:
+        if None in (parcel.get("lat"), parcel.get("lon"), row.get("lat"), row.get("lon")):
+            return None
+        return haversine_miles(float(parcel["lat"]), float(parcel["lon"]), float(row["lat"]), float(row["lon"]))
+    except (TypeError, ValueError):
+        return None
 
 
 def _d(value: str | None):

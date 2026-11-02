@@ -209,9 +209,35 @@ def _why_now(f: dict[str, Any]) -> str:
     return "Do you"
 
 
+def reply_flags_for(session: Session, lead: Lead) -> set[str]:
+    """What the agent's latest answer asked for (ASKS_ROLE, ASKS_SHOWING, CALL_ME, BACKUP).
+
+    Their own words are read again with today's parser (a reply logged by an older version keeps its old intents),
+    falling back to the intents logged with the reply."""
+    from db.models import InboundReply
+    from engine import reply_negotiator as rn
+    row = session.scalar(select(InboundReply).where(InboundReply.lead_id == lead.id,
+                                                    InboundReply.status.not_in(("bounce", "auto_reply")),
+                                                    InboundReply.body_text.is_not(None))
+                         .order_by(InboundReply.received_at.desc(), InboundReply.id.desc()).limit(1))
+    if row is not None:
+        from engine.gmail_autopilot import strip_quoted
+        return set(rn.parse_reply(strip_quoted(row.body_text)).intents)
+    inter = session.scalar(select(Interaction).where(Interaction.lead_id == lead.id, Interaction.outcome == REPLY_OUTCOME)
+                           .order_by(Interaction.occurred_at.desc(), Interaction.id.desc()).limit(1))
+    if inter is None:
+        return set()
+    text = (inter.notes or "").split(": ", 1)[-1]
+    return set(rn.parse_reply(text).intents) if text else set(((inter.debrief_json or {}).get("intents") or []))
+
+
 def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = True,
-                 out_root: Path | None = None, session: Session | None = None) -> AgentPacket:
-    """Stale-listing note to the listing agent: plain 3-4 sentences on top, the full terms under the summary line."""
+                 out_root: Path | None = None, session: Session | None = None,
+                 reply_flags: set[str] | None = None) -> AgentPacket:
+    """Stale-listing note to the listing agent: plain 3-4 sentences on top, the full terms under the summary line.
+
+    reply_flags: the agent's answer (from engine.reply_negotiator). The first line answers what they asked: who we are
+    ("buyer or realtor?"), a showing, a call request, a backup offer while another contract is pending."""
     from engine import human_copy as hc
     from engine.contracts import ContractBlocked, contract_gate, generate
     from engine.fast_track import is_listed_foreclosure
@@ -244,17 +270,39 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
     fast, std = int(cfg.get("fast_close_days", 21)), int(cfg.get("standard_close_days", 45))
     ask = gap.get("list_price")
     subject = hc.pick([f"question on {st}", f"{st} - still available?"], lead.id)
-    answered = session is not None and last_touch(session, lead) == "reply"      # Touch 2: they wrote back
+    if reply_flags is None and session is not None:
+        reply_flags = reply_flags_for(session, lead) if last_touch(session, lead) == "reply" else set()
+    flags = set(reply_flags or ())
+    answered = "ANSWERED" in flags or (session is not None and last_touch(session, lead) == "reply")   # Touch 2
     attach = generate_loi and session is not None
     if kind == "offer":
-        paragraphs = [
-            (f"Thanks for getting back to me on {st}. " if answered else
-             f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". ") +
-            f"{_why_now(f)} think the seller would look at a clean, as-is cash offer around "
-            f"{price_range(anchor, best)} with no mortgage contingency and a quick close? "
-            "I'm an investor buying for myself or a partner investor, and I'm not working with a buyer's agent, "
-            "so you can handle both sides if your listing agreement allows it. "
-            + (LOI_ATTACHED_LINE if attach else LOI_LATER_LINE)]
+        who = ("I'm an investor buying for myself or a partner investor, and I'm not working with a buyer's agent, "
+               "so you can handle both sides if your listing agreement allows it. ")
+        if "ASKS_ROLE" in flags:
+            first_line = ("I'm the buyer: an investor buying for myself or a partner investor, not a realtor, and I'm not "
+                          "working with a buyer's agent, so you can handle both sides if your listing agreement allows it. ")
+            who = ""
+        elif "BACKUP" in flags:
+            first_line = ("Thanks, and yes, I'd like to put in a clean backup offer in case the current contract doesn't go "
+                          "through. ")
+        elif "CALL_ME" in flags:
+            first_line = "Thanks, I'll give you a call; so you have the numbers in front of you, here they are in writing. "
+        elif answered:
+            first_line = f"Thanks for getting back to me on {st.rstrip('.')}. "
+        else:
+            first_line = f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". "
+        ask_line = (f"{_why_now(f)} think the seller would look at a clean, as-is cash offer around {price_range(anchor, best)} "
+               "with no mortgage contingency and a quick close? ")
+        if "BACKUP" in flags:
+            ask_line = (f"I can do {price_range(anchor, best)} cash, as-is, no mortgage or appraisal contingency, so the seller "
+                   "can move straight to me if the current buyer falls out. ")
+        showing = ""
+        if "ASKS_SHOWING" in flags:
+            # the operator works without a car: photos / video first, a walkthrough during the inspection period
+            showing = ("As for seeing it, a few interior photos or a short video would help first, and it can be walked "
+                       "during the inspection period once the seller is in that range. ")
+            who = "I'm an investor buying for myself or a partner investor, with no buyer's agent. " if who else ""
+        paragraphs = [first_line + ask_line + who + showing + (LOI_ATTACHED_LINE if attach else LOI_LATER_LINE)]
         terms = [(f"Option 1: {hc.money(anchor)} cash, as-is, no mortgage or appraisal contingency, close in about "
                   f"{fast} days.")]
         if best and anchor and best > anchor:
@@ -422,10 +470,13 @@ def _eastern(now: datetime | None) -> datetime:
     return (now or datetime.now()).astimezone(TZ).replace(tzinfo=None)
 
 
-def sent_last_24h(session: Session, now: datetime | None = None) -> int:
+def sent_last_24h(session: Session, now: datetime | None = None, *, cold_only: bool = False) -> int:
+    """SMTP e-mails in the last 24 hours. cold_only: just the ones to agents who haven't written back (the daily cap
+    is for cold outreach; answering an agent who replied is never held back by it)."""
     since = _eastern(now) - timedelta(hours=24)
-    return int(session.scalar(select(func.count(Interaction.id)).where(
-        Interaction.channel == "email_smtp", Interaction.occurred_at >= since)) or 0)
+    rows = session.execute(select(Interaction.id, Interaction.debrief_json).where(
+        Interaction.channel.in_(("email_smtp", "email_gmail")), Interaction.occurred_at >= since)).all()
+    return sum(1 for _, d in rows if not (cold_only and (d or {}).get("engaged")))
 
 
 def smtp_ready() -> tuple[bool, str]:
@@ -447,7 +498,7 @@ def followup_time(now: datetime | None = None) -> datetime:
 
 
 def record_sent(session: Session, lead: Lead, packet: AgentPacket, channel: str, now: datetime | None = None,
-                message_id: str | None = None) -> str:
+                message_id: str | None = None, engaged: bool = False) -> str:
     """Log the outreach, move the lead to OFFER_SENT_TO_AGENT and schedule the 48-hour follow-up call.
 
     message_id: the sent e-mail's Message-ID, kept on the interaction so the agent's reply finds its lead."""
@@ -460,7 +511,8 @@ def record_sent(session: Session, lead: Lead, packet: AgentPacket, channel: str,
         inter = Interaction(lead_id=lead.id, contact_id=contact.id if contact else None, channel=channel,
                             outcome=OPENER_OUTCOME if packet.kind == "opener" else "AGENT_INQUIRY_SENT",
                             notes=packet.subject, email_message_id=message_id,
-                            debrief_json={"packet": {"kind": packet.kind}}, next_followup_at=followup_time(now),
+                            debrief_json={"packet": {"kind": packet.kind}, "engaged": engaged},
+                            next_followup_at=followup_time(now),
                             occurred_at=_eastern(now))
         session.add(inter)
         lead.next_followup_at = followup_time(now)
@@ -471,7 +523,8 @@ def record_sent(session: Session, lead: Lead, packet: AgentPacket, channel: str,
         lead.offer_amount = packet.anchor
     r = crm.log_call(session, lead, outcome, notes=f"{packet.subject} — {money(packet.anchor)} / {money(packet.best)}",
                      contact=contact, channel=channel, followup_at=followup_time(now), now=now,
-                     debrief={"packet": {"kind": packet.kind, "anchor": packet.anchor, "best": packet.best}})
+                     debrief={"packet": {"kind": packet.kind, "anchor": packet.anchor, "best": packet.best},
+                              "engaged": engaged})
     if message_id:
         inter = session.get(Interaction, r.interaction_id)
         if inter is not None:
@@ -487,16 +540,23 @@ def new_message_id() -> str:
 
 
 def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = None, smtp_factory: Any = None,
-            in_reply_to: str | None = None, references: list[str] | None = None) -> str:
+            in_reply_to: str | None = None, references: list[str] | None = None, engaged: bool = False) -> str:
     """Send one personalized e-mail over SMTP (Gmail app password), inside the rolling 24-hour limit.
 
     Returns the Message-ID. in_reply_to / references answer an agent's e-mail inside its own Gmail thread."""
     ok, why = smtp_ready()
     if not ok:
         raise RuntimeError(why)
-    limit = int(_cfg().get("daily_email_limit", 25))
-    if sent_last_24h(session, now) >= limit:
-        raise RuntimeError(f"daily limit reached ({limit} e-mails in 24 hours)")
+    if engaged or in_reply_to:
+        # Answering an agent who wrote back is never cold outreach: only Gmail's own ceiling (reply_daily_limit).
+        cap = int(_cfg().get("reply_daily_limit", 150))
+        if sent_last_24h(session, now) >= cap:
+            raise RuntimeError(f"Gmail safety ceiling reached ({cap} e-mails in 24 hours); replies resume tomorrow")
+    else:
+        limit = int(_cfg().get("daily_email_limit", 25))
+        if sent_last_24h(session, now, cold_only=True) >= limit:
+            raise RuntimeError(f"daily limit reached ({limit} cold e-mails in 24 hours); replies to agents who wrote "
+                               "back still go out")
     if not packet.agent_email:
         raise RuntimeError("agent has no e-mail address")
     message_id = new_message_id()
@@ -539,10 +599,12 @@ def smtp_connection() -> smtplib.SMTP:
 
 
 def send_smtp(session: Session, lead: Lead, packet: AgentPacket, now: datetime | None = None,
-              smtp_factory: Any = None, in_reply_to: str | None = None, references: list[str] | None = None) -> str:
+              smtp_factory: Any = None, in_reply_to: str | None = None, references: list[str] | None = None,
+              engaged: bool = False) -> str:
+    engaged = engaged or bool(in_reply_to)
     message_id = deliver(packet, session=session, now=now, smtp_factory=smtp_factory, in_reply_to=in_reply_to,
-                         references=references)
-    return record_sent(session, lead, packet, "email_smtp", now, message_id=message_id)
+                         references=references, engaged=engaged)
+    return record_sent(session, lead, packet, "email_smtp", now, message_id=message_id, engaged=engaged)
 
 
 def opt_out(session: Session, contact: Contact, notes: str = "agent asked to stop") -> None:

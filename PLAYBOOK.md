@@ -159,6 +159,28 @@ The dashboard's 🎯 Autopilot opens with **Phase 0** until three partners are "
 4. From then on offers in that buy box say "acquiring with our verified local capital partner", the negotiator can answer a
    proof-of-funds request, and the JV agreement is pre-filled with that partner.
 
+## Part 2a — run it from Claude (no dashboard)
+
+Open the **Claude app → Code**, pick the `realestateauto` folder on your Mac (or run `claude` in Terminal from
+`~/realestateauto`), and type:
+
+| You type | What happens |
+|---|---|
+| `/inbox` | Reads every agent reply in Gmail and sends the offer to everyone who said "still available". That includes "yes it is", "are you a buyer or a realtor?", "want to see it?", "call me" and backup offers. It shows one table: house, what they said, what went back, what you do. Counters and questions wait for your OK. |
+| `/daily` | Answers replies first, refreshes the deals, previews today's openers, sends them 25-60 seconds apart (max 25 cold e-mails a day), syncs the calendar. |
+| `/status` | Today's numbers, every warm agent thread, what's waiting on you, the next move. |
+| `/reply 22 Grand Ave tell him I'll call at 5` | Writes it in your style and sends it in the agent's Gmail thread. Say a price ("…and offer 400k") and the 1-page offer at that price is attached. |
+
+**Hands-free:** run `.venv/bin/python manage.py install-daemon` once. From then on, every 5 minutes between 8 AM
+and 9 PM, your Mac:
+- reads new replies;
+- sends the "still available" offers;
+- puts counter-offers on your Google Calendar ("🔥 COUNTER-OFFER RECEIVED … Open Claude Chat").
+
+Its log is `logs/daemon.log`; `install-daemon --uninstall` stops it.
+
+Replies you type yourself in Gmail (on your phone, say) are picked up too, so nothing is ever sent twice.
+
 ## Part 2 — every day: one button, then your replies
 
 Double-click the Desktop icon. The home page has three parts, top to bottom:

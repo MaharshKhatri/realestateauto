@@ -37,7 +37,10 @@ from engine.scripts import lead_facts
 REPLY_OUTCOME = ao.REPLY_OUTCOME
 NO_PRICE_VERDICTS = {"PASS", "FRFPA_BLOCKED", "EQUITY_RESCUE_REFERRAL", "SHORT_SALE_ONLY"}
 INTENTS = ("COUNTER", "ACCEPT", "REJECT", "AVAILABLE", "UNDER_CONTRACT", "POF_REQUEST", "HIGHEST_AND_BEST", "OIL_TANK",
-           "TENANTS", "CO", "SHORT_SALE", "ESTATE", "OPT_OUT", "QUESTION")
+           "TENANTS", "CO", "SHORT_SALE", "ESTATE", "OPT_OUT", "QUESTION",
+           # what an agent adds to "it's available" (2026-11-02 live replies); Touch 2 answers each in its first line
+           "ASKS_ROLE", "ASKS_SHOWING", "CALL_ME", "BACKUP", "EXPIRED")
+TOUCH2_FLAGS = ("ASKS_ROLE", "ASKS_SHOWING", "CALL_ME", "BACKUP")
 
 # -- amounts ------------------------------------------------------------------------------------------
 _PHONE = re.compile(r"\(?\b\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b")
@@ -61,7 +64,9 @@ PHRASES: dict[str, list[str]] = {
     "REJECT": [r"not interested", r"no thanks", r"too low", r"won'?t work", r"\bpass\b", r"insult", r"not even close",
                r"no way", r"declined", r"rejected", r"lowball", r"way off", r"not going to work", r"isn'?t going to work",
                r"nowhere near"],
-    "AVAILABLE": [r"still available", r"(it'?s|it is|yes,? it'?s|yes it is|yes,? still) available", r"\bavailable\b",
+    "AVAILABLE": [r"\A\W*(?:hello|hi|hey)?\b[^.!?\n]{0,30}?\b(yes|yep|yup|yeah|absolutely)\b(?![^.!?\n]*\b(but|however|under contract|"
+                  r"attorney|pending|sold)\b)",          # "Yes it is." answers our "is it still available?"
+                  r"still available", r"(it'?s|it is|yes,? it'?s|yes it is|yes,? still) available", r"\bavailable\b",
                   r"still (on the market|active|listed|for sale)", r"no offers (yet|so far)", r"haven'?t (had|gotten|received) any offers",
                   r"not (yet )?under contract", r"no accepted offer", r"what'?s your (offer|number|price)", r"how much",
                   r"what number", r"send (me )?(your|the|an) (offer|numbers?|details)", r"make an offer", r"submit (an|your) offer",
@@ -85,6 +90,19 @@ PHRASES: dict[str, list[str]] = {
                r"\bdeceased\b", r"\bheirs?\b", r"letters testamentary"],
     "OPT_OUT": [r"remove me", r"^\s*stop\b", r"please stop", r"\bno more\b", r"unsubscribe", r"do not contact", r"don'?t contact",
                 r"take me off", r"don'?t e-?mail", r"stop e-?mailing", r"stop contacting", r"not interested in (any|other|more)"],
+    "ASKS_ROLE": [r"are you (a |an )?(buyer|investor|realtor|agent|broker)", r"(buyer|investor) or (a |an )?(realtor|agent|broker)",
+                  r"(realtor|agent|broker) or (a |an )?(buyer|investor)", r"do you have a (buyer|client)",
+                  r"(looking to )?show it to (someone|a client|your client|a buyer)", r"who (do you|are you) represent",
+                  r"are you (working with|representing) (a|the) buyer"],
+    "ASKS_SHOWING": [r"(interested in|want to|like to|care to) (see|seeing|view|viewing|tour|touring) (it|the (house|home|property))",
+                     r"schedule (a )?(showing|tour|walk-?through|viewing)", r"come (see|look at) it", r"want a showing",
+                     r"when (can|would) you (like to )?(see|view|tour) it"],
+    "CALL_ME": [r"(please |pls |kindly )?(call|phone|ring) me", r"give me a (call|ring|buzz)", r"call (to|and) discuss",
+                r"let'?s (talk|chat|speak)", r"(call|reach) me (at|on)", r"best to call", r"easier to (talk|call)"],
+    "BACKUP": [r"(have|has|got) a contract,? but", r"not sure (it'?s|it is|if it'?s|if it is|it will|it'?ll) (going|go) through",
+               r"(might|may|could) fall (through|apart)", r"back-?up offer", r"second position", r"in case (it|the deal) falls"],
+    "EXPIRED": [r"listing (has )?expired", r"\bexpired\b", r"no longer (listed|on the market|with (me|us|our office))",
+                r"(i|we) (no longer|don'?t) (have|represent) (it|the listing|that listing)", r"listing (was )?cancell?ed"],
     "QUESTION": [r"\?", r"who are you", r"are you (an |a )?(agent|realtor|broker|investor|wholesaler)", r"how (do|does) (this|that) work",
                  r"what('s| is) your (company|name)", r"tell me more"],
 }
@@ -108,7 +126,9 @@ class ParsedReply:
 
 
 def _negated(text: str, start: int) -> bool:
-    return bool(_NEG.search(text[max(0, start - 14):start]))
+    # "No, sorry it sold" / "Nope - pending": a leading "no" answers our question, it doesn't negate what follows.
+    window = re.sub(r"\b(no|nope|sorry)\s*[,.!;:\-]+", " ", text[max(0, start - 14):start], flags=re.I)
+    return bool(_NEG.search(window))
 
 
 def _amount_value(dollar: str | None, number: str, suffix: str | None, ask_before: bool = False) -> float | None:
@@ -205,8 +225,17 @@ def parse_reply(text: str) -> ParsedReply:
             and not re.search(r"still available|not (yet )?(in|under)|no attorney|send|offer|forward|e-?mail|number|"
                               r"price|contract|call|my attorney|your attorney|seller'?s attorney", low):
         out.intents.discard("AVAILABLE")
-        out.intents.add("UNDER_CONTRACT")
-        out.notes.append("attorney_ambiguous: a short reply naming the attorney, read as 'in attorney review'")
+        out.intents.add("BACKUP")
+        out.notes.append("attorney_ambiguous: a short reply naming the attorney, probably in attorney review: the offer "
+                         "goes as a backup")
+    if "BACKUP" in out.intents:
+        # "We have a contract but not sure it's going through, did you want to submit an offer": a backup offer is
+        # exactly what they asked for, so the under-contract reading must not stop it.
+        out.intents.discard("UNDER_CONTRACT")
+    if "EXPIRED" in out.intents:
+        out.intents.discard("AVAILABLE")
+    if out.intents & set(TOUCH2_FLAGS) and "QUESTION" in out.intents:
+        out.intents.discard("QUESTION")                   # the question is one Touch 2 answers
     dl = _DEADLINE.search(scrubbed)
     out.deadline = dl.group(0) if dl else None
     return out
@@ -287,6 +316,17 @@ def _followup(now: datetime | None, days: int) -> datetime:
     if day.weekday() == 6:
         day += timedelta(days=1)
     return datetime.combine(day, time(10))
+
+
+def _call_slot(now: datetime | None) -> datetime:
+    """"Please call me": the next sensible calling time (in 3 hours, inside 9am-8pm Eastern, never on Sunday)."""
+    t = ao._eastern(now) + timedelta(hours=3)
+    if t.hour >= 20 or t.hour < 9:
+        day = t.date() + timedelta(days=1) if t.hour >= 20 else t.date()
+        t = datetime.combine(day, time(10))
+    if t.weekday() == 6:
+        t = datetime.combine(t.date() + timedelta(days=1), time(10))
+    return t.replace(minute=(t.minute // 15) * 15, second=0, microsecond=0)
 
 
 def _terms(price: float, f: dict[str, Any], op: dict[str, str], extra: list[str]) -> list[str]:
@@ -391,6 +431,19 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
     priced = bool(nums) and nums.get("verdict") not in NO_PRICE_VERDICTS and nums.get("mao_walkaway", 0) > 0
 
     # -- gates: no number we can give --------------------------------------------------------------------------
+    from engine import preflight
+    pf = preflight.check(lead)
+    if nums and pf.status == "HOLD" and not ({"OPT_OUT", "UNDER_CONTRACT", "EXPIRED"} & intents):
+        # The numbers can't be defended yet (wrong parcel match, failed comps, ...): no price goes out, ask instead.
+        an.headline = "NUMBERS ON HOLD: " + (pf.issues[0] if pf.issues else "re-underwrite first")
+        an.actions.insert(0, "Don't quote a price yet: " + "; ".join(pf.issues[:2]) + ". Call them or use this no-price note.")
+        sentences = [("Thanks, I'll give you a call. " if "CALL_ME" in intents else "Thanks for getting back to me. ") +
+                     f"Before I put a number in writing on {st}, could you confirm the bedrooms, baths and square footage?",
+                     "And roughly what condition is it in, and what does the seller need to net?"]
+        an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
+        an.sms_text = f"Hi {first}, it's {me}. Thanks on {st}; can you confirm beds, baths, sqft and condition?" + sms_tail
+        an.followup_at = _call_slot(now) if "CALL_ME" in intents else _followup(now, 2)
+        return an
     if not nums:
         an.headline = "UNDERWRITE FIRST"
         an.actions.insert(0, "This lead has no valuation: run the underwriter before answering with a number.")
@@ -514,16 +567,17 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         an.sms_text = f"Hi {first}, it's {me}. Great news on {st}; the written offer at {hc.money(price)} comes today." + sms_tail
         an.followup_at = ao._eastern(now)
         return an
-    if "UNDER_CONTRACT" in intents and any(n.startswith("attorney_ambiguous") for n in parsed.notes):
-        an.headline = "PROBABLY IN ATTORNEY REVIEW: confirm and ask for the first call"
-        an.actions = ["Their answer was short: send this one-line check. If it is in attorney review, the follow-up in "
-                      "7 days asks whether it came back out."] + an.actions
-        sentences = ["Thanks for the quick answer.",
-                     f"Just so I have it right, is {st} in attorney review now?",
-                     "If it comes back out, I'd appreciate the first call; I can put a cash offer in writing the same day."]
+    if "EXPIRED" in intents:
+        an.headline = "LISTING EXPIRED: the owner may still sell"
+        an.actions = ["The agent no longer has it listed. If the owner's mailing address is on the lead, a letter goes "
+                      "out from Inspector & Mail; check back in 30 days in case it relists."] + an.actions
+        sentences = ["Thanks for letting me know.",
+                     "If the owner still wants to sell, I'm glad to put an as-is cash offer in writing, so feel free to "
+                     "pass along my number.",
+                     "And if it comes back on the market, I'd appreciate a heads-up."]
         an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
-        an.sms_text = f"Hi {first}, it's {me}. Is {st} in attorney review now? If it falls out I'd love the first call." + sms_tail
-        an.followup_at = _followup(now, 7)
+        an.sms_text = f"Hi {first}, it's {me}. Thanks on {st}; if the owner still wants to sell I'm glad to make an offer." + sms_tail
+        an.followup_at = _followup(now, 30)
         return an
     if "UNDER_CONTRACT" in intents:
         an.headline = "OFF THE TABLE FOR NOW: under contract"
@@ -552,10 +606,12 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         an.sms_text = f"Hi {first}, it's {me}. Proof of funds for {st} is on its way by e-mail." + sms_tail
         an.followup_at = _followup(now, 1)
         return an
-    if "AVAILABLE" in intents:
-        an.verdict, an.headline = "GREEN", "SEND THE OFFER NOW (Touch 2)"
+    if "AVAILABLE" in intents or "BACKUP" in intents:
+        an.verdict = "GREEN"
+        an.headline = ("SEND A BACKUP OFFER NOW (Touch 2)" if "BACKUP" in intents else "SEND THE OFFER NOW (Touch 2)")
         an.stage_to = LeadStage.CONTACTED
-        packet = ao.build_packet(lead, agent=agent, generate_loi=False, session=session) if agent else None
+        packet = ao.build_packet(lead, agent=agent, generate_loi=False, session=session,
+                                 reply_flags=set(intents) | {"ANSWERED"}) if agent else None
         if packet is not None:
             an.reply_subject, an.reply_text, an.sms_text = packet.subject, packet.email_body, packet.sms_text
             an.style = hc.lint(packet.email_body)
@@ -564,7 +620,10 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
                                 "no-price inquiry is ready on the deal card.")] + an.actions
             if packet.warnings:
                 an.warnings.extend(packet.warnings)
-        an.followup_at = ao._eastern(now)
+        an.followup_at = (_call_slot(now) if "CALL_ME" in intents else ao._eastern(now))
+        if "CALL_ME" in intents:
+            an.actions.insert(0, "They asked for a call: the written numbers go first, then call them at the follow-up time "
+                                 "(it is on your calendar).")
         return an
     if "REJECT" in intents:
         an.verdict, an.headline = "RED", f"HOLD AT {hc.money(adj_walk)} / SET {int(ncfg.get('drip_days', 14))}-DAY DRIP"

@@ -73,7 +73,7 @@ def test_parse_reply(text, counter, intents):
 
 def test_parse_ignores_phones_years_and_units():
     p = rn.parse_reply("Call me at (973) 555-0100 or 201-555-0199. Built in 1925, 1,400 sqft, taxes 9,800. 10 day inspection.")
-    assert p.amounts == [] and p.counter_amount is None and p.intents == set()
+    assert p.amounts == [] and p.counter_amount is None and p.intents == {"CALL_ME"}   # "call me" is read, numbers aren't
     assert rn.parse_reply("highest and best by Friday 5pm").deadline == "by Friday 5pm"
 
 

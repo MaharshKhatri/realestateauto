@@ -49,6 +49,7 @@ driving for dollars, door-knocking or an in-person visit by the operator.
 | **6. Quant Pricing, Funding Partners, Two-Step Funnel, Reply Negotiator, Item 14 & Double Close, Fast Skip-Trace** | `engine/quant_pricing.py` (end-buyer solve: ≥15% ROI and ≥$45K after rehab + contingency, closing, 6-month taxes/carry/capital, commission + NJ RTF/graduated fee; alpha ∈ [0.68, 0.80] calibrated from 1,162 recorded investor purchases → `config/market_calibration.yaml`; buyer_max / mao_target / mao_walkaway / opening_offer on every valuation; `manage.py calibrate` / `recalibrate`); `engine/jv_partner_vault.py` (jv_partners seeded from the top 30 named repeat buyers, Phase 0 cards, buy-box matching, proof-of-funds upload → "verified local capital partner" line); two-step funnel (Touch 1 opener, 48-h nudge, Touch 2 offer on reply; urgent listed foreclosures skip it); `engine/reply_negotiator.py` (paste the agent's reply → intents, counter, risk buffers, GREEN/YELLOW/RED/INFO, 3-sentence reply, AGENT_REPLIED + follow-up); `engine/deal_structure.py` (Section 37 / "Item 14" attorney-review rider with CPEA disclosure + tank-sweep inspection, Correa acknowledgment in the assignment, disclosed single-purpose-LLC option, assignment vs double-close net check); `engine/clipboard_skiptrace.py` (queue → manual links → one-click paste → DNC scrub → best mobile → READY_TO_CALL); cockpit: first-touch toggle, paste-reply panel, 🤝 Partners & POF, ⚡ Skip Trace, quant breakdown, structure card | **Done (Phase 6)** |
 | **7. Google Calendar Auto-Connector & Real-Time Event Sync** | `engine/gcal_sync.py` (OAuth Desktop client → `setup-calendar` once → `config/token.json`; `calendar_events` outbox with natural keys = deterministic Google event ids); 🔥 agent follow-ups exactly 48 h after each e-mail (moved into calling hours), 📞 call-backs, ⚠️ attorney review 5 PM on the 3rd NJ business day (+ FRFPA cancellation end), 📋 closing milestones, 🚨 priority sheriff sales that move with adjournments, 🎯 10:00 daily goal; SQLAlchemy commit hooks → background push in the cockpit / CLI / swarm, offline queue, two-way pull (deletes respected, moved follow-ups move the CRM, legal dates restored); `sync-calendar`, `calendar_sync` swarm agent, 📅 cockpit button, `/leads/<id>` links | **Done (Phase 7)** |
 | **8. True Zero-Click Autonomous Mode** | `engine/gmail_autopilot.py`: the My Setup Gmail address + app password read agent replies over IMAP (INBOX read-only, BODY.PEEK, only new UIDs, bodies downloaded only for matched mail: thread headers → known agent address → street in the subject), quoted history stripped, out-of-office / bounce handling, `inbound_replies` + `interactions.email_message_id`; a plain "still available" sends Touch 2 + LOI by itself in the agent's thread (In-Reply-To / References) after a human-paced delay inside send hours; everything else waits in 🔥 Action Needed for one click (`approve()`); 🚀 paced daily batch (25-60 s apart, 25 / 24 h); 5-minute background poller + `gmail_replies` swarm agent + `manage.py gmail`; actionable-only deck (agent e-mail or callable phone; Phase 0 partners only when reachable, the rest in Skip Trace); ✅ Interested turns the card into Touch 2; 🔥 calendar alert for replies; simple home (one button, live counts, Action Needed, optional card player) with the 12 tabs under Advanced Tools ▾ | **Done (Phase 8)** |
+| **8½. Claude-Native Operation** | No dashboard needed: `.claude/commands/` (/inbox, /daily, /status, /reply) drive `manage.py inbox` / `gmail` from a Claude Code chat on the laptop; `autopilot-daemon` + `install-daemon` (macOS launchd) run the inbox hands-free 8 AM-9 PM; the 25/day cap is cold-only (`engaged` replies use `reply_daily_limit`); Gmail Sent is imported as the record (`sync_sent`); Touch 2 answers "buyer or realtor?", "want to see it?", "call me", backup offers; EXPIRED; wrong-parcel listings on HOLD | **Done** |
 | **9. Lead Sources & Learning at Scale** | NJ permits (demolition/alteration → flipper + condition signals), paid skip-trace provider adapters, older municipal owner layers with deed-match rule (Middlesex 2022, Passaic City 2023, Essex/Passaic 2017), Mercer sheriff list import once its format is verified, outcome-driven weight re-fits once calls are logged | Next |
 | **10. Disposition at Scale** | Buyer list growth (more county deed exports + registered web buyers), deal sheets to matched buyers after attorney review, attorney-reviewed templates replacing the drafts, proof-of-funds tracking on bids | Planned |
 
@@ -56,13 +57,15 @@ driving for dollars, door-knocking or an in-person visit by the operator.
 
 ```
 CLAUDE.md                     ← you are here
+.claude/commands/             ← /inbox, /daily, /status, /reply: the operator runs the desk from a Claude Code chat on the
+                                laptop (no web dashboard); Claude Code asks once per manage.py command ("always allow")
 manage.py                     ← operator CLI (rich): briefing (A ready-to-call / B sheriff+estate spreads / C stacked),
                                 lead, underwrite, buyers, stats, server, queue, script, call, occupancy, contract, docs,
                                 skiptrace, dnc (+ --suppress-address), match, pii-scan, agent-blast, mail-merge,
                                 inspect, stack, buyer-hotzones, walkthrough, bid, today, fast-track, closing, finance,
                                 partners, inbound, site, build-site, install-shortcut, calibrate, recalibrate, vault,
                                 skiptrace-fast, reply, structure, preflight, db-sync, setup-calendar, sync-calendar,
-                                gmail, swarm passthrough
+                                gmail, inbox, autopilot-daemon, install-daemon, swarm passthrough
 Launch_Dashboard.command / launch_dashboard.sh / Launch_Dashboard.bat ← double-click launchers (generated by
                                 scripts/install_desktop_shortcut.py; path-independent): start the server if needed,
                                 wait for /api/health, open the browser
@@ -678,6 +681,50 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     - Nothing else goes out while a row is "sending".
     - Every inbox check re-reads replies still waiting with the current parser (`refresh_open_replies`). A
       counter the new reading drops is cleared on the lead.
+### Claude-native operation (learned 2026-11-02, operator's 25 openers → 8 replies in 90 minutes) — enforced in code
+- **The interface is a Claude Code chat on the laptop**, opened in `~/realestateauto`. The slash commands in
+  `.claude/commands/` run the CLI:
+  - `/inbox` → `manage.py inbox --json`;
+  - `/daily` → refresh, `gmail --dry-run`, `gmail --run`;
+  - `/status`;
+  - `/reply <house> <words>` → `gmail --find` + `gmail --reply LEAD --body-file F [--price N]`.
+
+  The web dashboard is optional (`pkill -f "manage.py server"`). A cloud Claude session has no route to the laptop's
+  Gmail (SMTP 465 / IMAP 993 are blocked there, and the app password lives only in the laptop's .env), and its
+  Gmail connector may be signed in to another account: answer agents from the laptop.
+- **Hands-free** (`manage.py autopilot-daemon`, installed in macOS launchd by `manage.py install-daemon` as
+  `com.khatri.wholesale.autopilot`, log in logs/daemon.log): every 5 minutes between 8 AM and 9 PM Eastern it runs
+  `run_inbox`:
+  1. import Gmail Sent;
+  2. read new replies;
+  3. send every "still available" offer;
+  4. keep the calendar in sync.
+- **The 25/day cap is for cold e-mail only** (`outreach.daily_email_limit`: openers, first offers, nudges to agents
+  who never wrote back). Anything to an agent who replied (`engaged`: Touch 2, approved answers, /reply, in-thread
+  follow-ups) counts only against `reply_daily_limit` (150, under Gmail's ~500). The 25 openers of 2026-11-02 had
+  silently queued every Touch 2 ("daily limit reached").
+- **Gmail is the record** (`gmail_autopilot.sync_sent`): replies the operator types in Gmail itself (phone, web,
+  another computer) in a lead's thread are imported from the \Sent folder (found by its special-use flag, any
+  language):
+  - an offer when the text says "Option 1: $X" or "offer … $X", else a follow-up;
+  - the waiting / queued reply is closed, so the autopilot never sends a second offer on top.
+- **What the agent asked shapes Touch 2's first line** (`reply_negotiator` intents, `agent_outreach.build_packet(reply_flags=…)`):
+  - ASKS_ROLE ("buyer or a realtor?") → "I'm the buyer: an investor … not a realtor …";
+  - ASKS_SHOWING ("interested in seeing it?") → photos / video first, walked during the inspection period (no car,
+    no claim of a partner we don't have);
+  - CALL_ME → "I'll give you a call; … here they are in writing", follow-up at the next call slot (~3 h, 9 AM-8 PM);
+  - BACKUP ("contract but not sure it's going through", and a bare "Yes. Attorney") → "a clean backup offer in case
+    the current contract doesn't go through";
+  - EXPIRED ("Listing expired") → a no-price "if the owner still wants to sell" note, which waits for approval.
+
+  A leading "yes" answers our "is it still available?". A leading "no," / "sorry," never negates what follows ("No,
+  sorry it sold" is sold). These four flags are auto-send eligible; numbers, risk topics and other questions still
+  wait.
+- **Wrong parcel = HOLD** (`preflight.listing_parcel_miles`): when the MLS listing's own coordinates are more than a
+  mile from the parcel it was linked to (2026-11-02: "22 Grand Ave, Iselin" sat on a South River parcel 10.4 miles
+  away; 25 of 1,410 listings), the card is HOLD, so it is off the deck, never auto-priced, and the negotiator drafts a
+  no-price "confirm beds / baths / sqft / condition" note. `stale_listing_distress_agent` no longer links a parcel
+  more than `MAX_PARCEL_MILES` (1.0) from the listing (a county-wide fallback hit the same street in another town).
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 
@@ -776,6 +823,9 @@ python manage.py sync-calendar             # two-way Google Calendar sync (--dry
 python manage.py gmail --dry-run            # Phase 8: today's paced batch (no send); --run [N] sends it; --check reads agent replies
 python manage.py gmail --status             # today's counts, 🔥 Action Needed, queued Touch 2; --approve <id> / --dismiss <id>
 python manage.py gmail --test               # sign in to smtp.gmail.com + imap.gmail.com with the saved app password (--send-test: note to yourself)
+python manage.py inbox                      # /inbox: Gmail Sent import → agent replies → "still available" offers out now → table (--json, --no-send)
+python manage.py gmail --find "22 Grand"    # leads by street / town / agent; --reply LEAD --text "..." [--price N]; --send-offer LEAD
+python manage.py autopilot-daemon           # hands-free inbox loop 8 AM-9 PM; install-daemon puts it in macOS launchd (--uninstall)
 python -m swarm.orchestrator run gmail_replies  # one inbox check (the dashboard also checks every 5 minutes)
 pytest                                      # tests
 ```

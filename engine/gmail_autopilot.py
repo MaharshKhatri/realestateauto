@@ -67,7 +67,7 @@ OPEN_STATUSES = ("needs_approval", "auto_queued", "sending")
 HANDLED_STATUSES = ("auto_sent", "approved", "opted_out", "bounce", "dismissed")
 HEADER_FIELDS = ("FROM", "TO", "SUBJECT", "DATE", "MESSAGE-ID", "IN-REPLY-TO", "REFERENCES", "AUTO-SUBMITTED",
                  "X-AUTOREPLY", "X-AUTORESPOND", "PRECEDENCE", "CONTENT-TYPE")
-AUTO_OK_INTENTS = {"AVAILABLE", "QUESTION"}
+AUTO_OK_INTENTS = {"AVAILABLE", "QUESTION", "ASKS_ROLE", "ASKS_SHOWING", "CALL_ME", "BACKUP"}
 # Pre-flight issues that must reach a person before a price does (the rest are "confirm on the call" notes).
 PRICE_BLOCKERS = re.compile(r"FRFPA|payoff|condo / townhouse unit|unit count|sheriff sale in|outlier|not a 1-4|"
                             r"above every comp|confidence [0-4]\d/100", re.I)
@@ -273,6 +273,10 @@ def _default_imap() -> Any:
     return imaplib.IMAP4_SSL(host, port, ssl_context=ssl_context(), timeout=30)
 
 
+def _quote_box(name: str) -> str:
+    return name if name.upper() == "INBOX" or name.startswith('"') else f'"{name}"'
+
+
 def _uid_of(meta: bytes) -> int | None:
     m = re.search(rb"UID (\d+)", meta)
     return int(m.group(1)) if m else None
@@ -281,8 +285,9 @@ def _uid_of(meta: bytes) -> int | None:
 class Mailbox:
     """INBOX, opened read-only: we never set \\Seen, move or delete anything in the operator's Gmail."""
 
-    def __init__(self, user: str, password: str) -> None:
+    def __init__(self, user: str, password: str, mailbox: str | None = None) -> None:
         self.user, self.password = user, password
+        self.mailbox = mailbox                 # None = INBOX; "\\Sent" = the account's Sent folder (any language)
         self.imap: Any = None
         self.uidvalidity = 0
 
@@ -297,7 +302,10 @@ class Mailbox:
         except imaplib.IMAP4.error as exc:
             raise GmailError("Gmail refused the sign-in: check the Gmail address and the 16-letter app password "
                              f"in My Setup ({exc})") from exc
-        typ, _ = self.imap.select(_cfg().get("mailbox", "INBOX"), readonly=True)
+        box = self.mailbox or _cfg().get("mailbox", "INBOX")
+        if box == "\\Sent":
+            box = self._special("\\Sent") or "[Gmail]/Sent Mail"
+        typ, _ = self.imap.select(_quote_box(box), readonly=True)
         if typ != "OK":
             raise GmailError("Gmail would not open the inbox")
         _, val = self.imap.response("UIDVALIDITY")
@@ -306,6 +314,20 @@ class Mailbox:
         except (TypeError, ValueError):
             self.uidvalidity = 0
         return self
+
+    def _special(self, flag: str) -> str | None:
+        """The mailbox carrying a special-use flag (RFC 6154), e.g. Gmail's Sent folder in any interface language."""
+        try:
+            typ, data = self.imap.list()
+        except Exception:                  # noqa: BLE001 - an old server without LIST attributes: use the default
+            return None
+        for line in data or []:
+            text = line.decode("utf-8", "replace") if isinstance(line, bytes) else str(line)
+            if flag.lower() in text.lower():
+                m = re.search(r'"([^"]+)"\s*$', text) or re.search(r"(\S+)\s*$", text)
+                if m:
+                    return m.group(1)
+        return None
 
     def __exit__(self, *exc: Any) -> None:
         for step in ("close", "logout"):
@@ -431,8 +453,13 @@ def reply_subject(subject: str | None) -> str:
 
 
 def _only_offer_questions(text: str) -> bool:
+    """Every question in the reply is one Touch 2 answers: what's your offer, are you a buyer or an agent, do you want
+    to see it, did you want to submit an offer."""
+    from engine import reply_negotiator as rn
+    answerable = [OFFER_QUESTION, *rn._COMPILED["ASKS_ROLE"], *rn._COMPILED["ASKS_SHOWING"], *rn._COMPILED["BACKUP"],
+                  re.compile(r"(submit|send|make|put in) (an |your |a )?offer", re.I)]
     qs = [q for q in re.findall(r"[^.!?\n]*\?", text or "") if q.strip(" ?")]
-    return all(OFFER_QUESTION.search(q) for q in qs)
+    return all(any(p.search(q) for p in answerable) for q in qs)
 
 
 def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str | None, text: str) -> str | None:
@@ -446,7 +473,7 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
     intents = set(analysis.parsed.intents)
     if analysis.parsed.counter_amount:
         return "they named a number: your call"
-    if "AVAILABLE" not in intents or analysis.verdict != "GREEN":
+    if not ({"AVAILABLE", "BACKUP"} & intents) or analysis.verdict != "GREEN":
         return "not a plain 'still available'"
     extra = intents - AUTO_OK_INTENTS
     if extra:
@@ -691,7 +718,8 @@ def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
             row.status, row.note = "needs_approval", block
             return False
         agent = (s.get(Contact, row.contact_id) if row.contact_id else None) or ao.agent_contact(lead)
-        packet = ao.build_packet(lead, agent=agent, generate_loi=True, session=s)
+        packet = ao.build_packet(lead, agent=agent, generate_loi=True, session=s,
+                                 reply_flags=set(an.parsed.intents) | {"ANSWERED"})
         if packet.warnings or not packet.loi_files.get("pdf"):
             row.status = "needs_approval"
             row.note = "the written offer could not be attached: " + ("; ".join(packet.warnings) or "no PDF")
@@ -716,8 +744,13 @@ def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
             row.note = f"not sent yet: {exc}"
             row.resolved_at = None
             return False
-        ao.record_sent(s, lead, packet, "email_smtp", now, message_id=mid)
+        ao.record_sent(s, lead, packet, "email_smtp", now, message_id=mid, engaged=True)
+        if "CALL_ME" in (row.intents_json or []):
+            from engine import reply_negotiator as rn2
+            lead.next_followup_at = rn2._call_slot(now)          # they asked for a call: it goes on the calendar
         row.status, row.sent_message_id, row.price = "auto_sent", mid, packet.anchor
+        row.analysis_json = {**(row.analysis_json or {}), "sent": {"anchor": packet.anchor, "best": packet.best,
+                                                                   "subject": packet.subject}}
         row.resolved_at = now_eastern(now)
         row.note = (f"offer sent in their thread: {hc.money(packet.anchor)} / {hc.money(packet.best)} with the "
                     "1-page written offer; follow-up in 48 hours")
@@ -775,7 +808,7 @@ def approve(session: Session, reply_id: int, *, subject: str | None = None, body
         raise ApprovalError(f"Gmail didn't send it: {exc}") from exc
     when = now_eastern(now)
     if kind == "offer":
-        ao.record_sent(session, lead, packet, "email_smtp", now, message_id=mid)
+        ao.record_sent(session, lead, packet, "email_smtp", now, message_id=mid, engaged=True)
         follow = an.get("followup_at")
         try:
             later = datetime.fromisoformat(follow) if follow else None
@@ -787,7 +820,8 @@ def approve(session: Session, reply_id: int, *, subject: str | None = None, body
         follow_at = ao.followup_time(now)
         session.add(Interaction(lead_id=lead.id, contact_id=agent.id if agent else None, channel="email_smtp",
                                 outcome="AGENT_FOLLOWUP_SENT", notes=packet.subject, next_followup_at=follow_at,
-                                email_message_id=mid, debrief_json={"packet": {"kind": "reply"}}, occurred_at=when))
+                                email_message_id=mid, debrief_json={"packet": {"kind": "reply"}, "engaged": True},
+                                occurred_at=when))
         lead.last_contact_at, lead.next_followup_at = when, follow_at
     row.status, row.sent_message_id, row.resolved_at = "approved", mid, when
     row.note = (f"sent in their thread{f' at {hc.money(loi_price)}' if loi_price else ''}"
@@ -862,20 +896,23 @@ def send_now(rid: int, *, now: datetime | None = None, smtp_factory: Any = None)
         return {"id": rid, "sent": sent, "status": row.status, "note": row.note}
 
 
-def refresh_open_replies(session: Session, now: datetime | None = None) -> int:
+def refresh_open_replies(session: Session, now: datetime | None = None, *, promote: bool = True) -> int:
     """Re-read replies still waiting on the operator with today's parser (a signature once read as a counter, ...).
     The stored analysis, light and drafted answer are replaced; a counter the new reading drops is cleared on the
     lead too. Nothing is sent."""
     from engine import reply_negotiator as rn
     n = 0
-    for row in session.scalars(select(InboundReply).where(InboundReply.status == "needs_approval",
+    for row in session.scalars(select(InboundReply).where(InboundReply.status.in_(("needs_approval", "auto_queued")),
                                                           InboundReply.lead_id.is_not(None))):
         lead = session.get(Lead, row.lead_id)
         if lead is None or not row.body_text:
             continue
         text = strip_quoted(row.body_text)
         an = rn.analyze(session, lead, text, now=now)
-        if an.headline == row.headline and an.parsed.counter_amount == row.counter_amount and text == row.body_text:
+        same = an.headline == row.headline and an.parsed.counter_amount == row.counter_amount and text == row.body_text \
+            and sorted(an.parsed.intents) == sorted(row.intents_json or [])
+        if same and (row.status == "auto_queued"
+                     or not (promote and auto_touch2_block(session, lead, an, row.match_method, text) is None)):
             continue
         old_counter = row.counter_amount
         row.body_text, row.verdict, row.headline = text, an.verdict, an.headline[:200]
@@ -883,6 +920,16 @@ def refresh_open_replies(session: Session, now: datetime | None = None) -> int:
         row.analysis_json, row.price = _analysis_json(an), reply_price(an)
         if old_counter and not an.parsed.counter_amount and lead.last_counter_amount == old_counter:
             lead.last_counter_amount = None
+        if row.status == "auto_queued":
+            n += 1                         # queued already: only the stored reading is refreshed (it sends as planned)
+            continue
+        if promote and "OPT_OUT" not in an.parsed.intents:
+            block = auto_touch2_block(session, lead, an, row.match_method, text)
+            if block is None:
+                row.status, row.send_after = "auto_queued", now_eastern(now)
+                row.note = "re-read: they confirmed it's available, so the offer goes out now"
+            else:
+                row.note = block
         n += 1
     if n:
         session.flush()
@@ -973,7 +1020,8 @@ def run_daily_outbound_autopilot(limit: int | None = None, *, now: datetime | No
     if picked is None:
         limit = limit or autopilot.daily_goal()
         with session_scope() as s:
-            room = int((settings().get("outreach", {}) or {}).get("daily_email_limit", 25)) - ao.sent_last_24h(s, now)
+            room = int((settings().get("outreach", {}) or {}).get("daily_email_limit", 25)) - ao.sent_last_24h(
+                s, now, cold_only=True)
             picked, skipped = pick_cards(s, max(0, min(limit, room)), now)
         campaign.skipped = skipped[:30]
         campaign.total = len(picked)
@@ -1030,7 +1078,8 @@ def start_campaign(limit: int | None = None, *, now: datetime | None = None, smt
             raise CampaignError("Already sending today's batch.")
         limit = limit or autopilot.daily_goal()
         with session_scope() as s:
-            room = int((settings().get("outreach", {}) or {}).get("daily_email_limit", 25)) - ao.sent_last_24h(s, now)
+            room = int((settings().get("outreach", {}) or {}).get("daily_email_limit", 25)) - ao.sent_last_24h(
+                s, now, cold_only=True)
             if room <= 0:
                 raise CampaignError("You've sent 25 e-mails in the last 24 hours (Gmail's safe pace); the next "
                                     "batch can go out tomorrow.")
@@ -1062,6 +1111,212 @@ def start_campaign(limit: int | None = None, *, now: datetime | None = None, smt
 def stop_campaign() -> dict[str, Any]:
     _stop.set()
     return campaign.to_json()
+
+
+# -- Gmail is the record: what the operator sent from Gmail itself ------------------------------------------------
+_OPTION = re.compile(r"Option 1:\s*\$([\d,]+)|(?:offer|cash)[^.$]{0,40}\$([\d,]{6,})", re.I)
+
+
+def sync_sent(*, now: datetime | None = None) -> dict[str, Any]:
+    """Import replies the operator sent into a lead's thread from Gmail itself (phone, web, another computer).
+
+    Each one becomes the interaction it is (an offer when it states a price, else a follow-up), closes whatever was
+    waiting for that agent and sets the 48-hour follow-up, so the autopilot never sends a second offer on top of a
+    reply the operator already wrote. Sent mail outside our lead threads is never downloaded past its headers."""
+    from engine import crm
+    ok, why = configured()
+    if not ok:
+        return {"ok": False, "error": why}
+    user, pw = credentials() or ("", "")
+    with session_scope() as s:
+        known, state = load_known(s), _state(s)
+    since = now_eastern(now).date() - timedelta(days=int(_cfg().get("lookback_days", 14)))
+    found: list[tuple[Mail, int]] = []
+    with Mailbox(user, pw, mailbox="\\Sent") as mb:
+        same = state.get("account") == user.lower() and state.get("sent_uidvalidity") == mb.uidvalidity
+        last = int(state.get("sent_last_uid") or 0) if same else 0
+        uids = mb.search(last, since)
+        for uid, raw in sorted(mb.headers(uids).items()):
+            head = parse_headers(raw, uid, mb.uidvalidity)
+            if head.message_id in known.thread:
+                continue                                   # sent by the autopilot itself: already logged
+            lead_id = next((known.thread[m] for m in [head.in_reply_to, *reversed(head.references)]
+                            if m and m in known.thread), None)
+            if lead_id is not None:
+                found.append((parse_message(mb.message(uid), uid, mb.uidvalidity), lead_id))
+        uidvalidity, top = mb.uidvalidity, max(uids) if uids else last
+    imported = 0
+    for mail, lead_id in found:
+        with session_scope() as s:
+            if s.scalar(select(Interaction.id).where(Interaction.email_message_id == mail.message_id).limit(1)):
+                continue
+            lead = s.get(Lead, lead_id)
+            if lead is None:
+                continue
+            agent = ao.agent_contact(lead)
+            when = mail.received_at or now_eastern(now)
+            m = _OPTION.search(mail.text or "")
+            price = float((m.group(1) or m.group(2)).replace(",", "")) if m else None
+            if price:
+                r = crm.log_call(s, lead, ao.SENT_OUTCOME, notes=f"{mail.subject} (sent from Gmail)", contact=agent,
+                                 channel="email_gmail", followup_at=ao.followup_time(when), now=when,
+                                 offer_amount=price, debrief={"engaged": True, "imported": "gmail_sent",
+                                                              "packet": {"kind": "offer", "anchor": price}})
+                inter = s.get(Interaction, r.interaction_id)
+                inter.email_message_id = mail.message_id
+            else:
+                s.add(Interaction(lead_id=lead.id, contact_id=agent.id if agent else None, channel="email_gmail",
+                                  outcome="AGENT_FOLLOWUP_SENT", notes=f"{mail.subject} (sent from Gmail)",
+                                  next_followup_at=ao.followup_time(when), email_message_id=mail.message_id,
+                                  debrief_json={"engaged": True, "imported": "gmail_sent", "packet": {"kind": "reply"}},
+                                  occurred_at=when))
+                lead.last_contact_at, lead.next_followup_at = when, ao.followup_time(when)
+            resolve_open_replies(s, lead.id, "you answered this one in Gmail")
+            imported += 1
+    with session_scope() as s:
+        _save_state(s, account=user.lower(), sent_uidvalidity=uidvalidity, sent_last_uid=top)
+    return {"ok": True, "checked": len(uids), "imported": imported}
+
+
+def run_inbox(*, send: bool = True, now: datetime | None = None, smtp_factory: Any = None) -> dict[str, Any]:
+    """`manage.py inbox` / the /inbox command / one daemon cycle: Gmail Sent → the inbox → offers out → the table.
+
+    send=True sends every queued "still available" offer now (the operator asked for it, so no 4-11 minute wait and
+    no send-hours window); counters, questions and the rest stay in Action Needed with a drafted answer."""
+    out: dict[str, Any] = {"ok": True}
+    try:
+        out["sent_import"] = sync_sent(now=now)
+    except GmailError as exc:
+        out["sent_import"] = {"ok": False, "error": str(exc)}
+    try:
+        out["poll"] = poll_gmail_replies(now=now, smtp_factory=smtp_factory)
+    except GmailError as exc:
+        out.update(ok=False, error=str(exc))
+        return out
+    sent = 0
+    if send:
+        with session_scope() as s:
+            ids = list(s.scalars(select(InboundReply.id).where(InboundReply.status == "auto_queued")))
+        for rid in ids:
+            with session_scope() as s:
+                s.get(InboundReply, rid).send_after = now_eastern(now)
+            try:
+                sent += int(_send_auto(rid, now=now, smtp_factory=smtp_factory))
+            except Exception:                              # noqa: BLE001
+                log.exception("inbox: offer for reply %s failed", rid)
+    out["sent_now"] = sent
+    with session_scope() as s:
+        out["rows"] = inbox_rows(s, now)
+    return out
+
+
+def inbox_rows(session: Session, now: datetime | None = None, days: int = 2) -> list[dict[str, Any]]:
+    """Every agent reply of the last `days` days (and anything still waiting): what they said, what went back."""
+    since = now_eastern(now) - timedelta(days=days)
+    rows = session.scalars(select(InboundReply).where(
+        (InboundReply.received_at >= since) | InboundReply.status.in_(OPEN_STATUSES))
+        .order_by(InboundReply.received_at.desc()))
+    out = []
+    for row in rows:
+        if row.status == "auto_reply":
+            continue
+        j = reply_json(session, row)
+        sent = (row.analysis_json or {}).get("sent") or {}
+        offer = (f"{hc.money(sent.get('anchor'))} to {hc.money(sent.get('best'))}" if sent.get("anchor") and sent.get("best")
+                 else hc.money(row.price) if row.price and row.status in ("approved", "auto_sent") else "")
+        if not offer and row.status == "approved" and row.lead_id:
+            lead = session.get(Lead, row.lead_id)
+            offer = hc.money(lead.offer_amount) if lead is not None and lead.offer_amount else ""
+        todo = {"needs_approval": "your call: see the drafted answer", "auto_queued": "goes out on the next check",
+                "sending": "going out now", "opted_out": "nothing (they asked to stop)",
+                "bounce": "find a new e-mail or call", "dismissed": "nothing"}.get(row.status, "nothing")
+        if "CALL_ME" in (row.intents_json or []) and row.status in ("auto_sent", "approved"):
+            todo = "call them (it's on your calendar)"
+        out.append({**{k: j[k] for k in ("id", "lead_id", "address", "town", "agent", "from", "status", "note")},
+                    "said": (row.body_text or "").replace("\n", " ")[:140], "light": j["light"]["text"],
+                    "offer_sent": offer, "you_do": todo, "received_at": j["received_at"],
+                    "phone": (j.get("phone") or {}).get("display"),
+                    "draft": j["reply_text"] if row.status == "needs_approval" else "",
+                    "numbers": j["numbers"], "offer_ok": j.get("offer_ok")})
+    return out
+
+
+def find_leads(session: Session, query: str, limit: int = 8) -> list[dict[str, Any]]:
+    """Leads by street address, town, agent name or agent e-mail (for /reply and `gmail --find`)."""
+    from db.models import Property
+    from engine.scripts import lead_facts
+    q = f"%{query.strip()}%"
+    ids = list(session.scalars(select(Lead.id).join(Property, Lead.property_id == Property.id)
+                               .where(Property.street_address.ilike(q) | Property.municipality.ilike(q)).limit(limit)))
+    ids += [i for i in session.scalars(select(Contact.lead_id).where(
+        Contact.contact_type == ContactType.LISTING_AGENT, Contact.name.ilike(q) | Contact.email.ilike(q)).limit(limit))
+        if i not in ids]
+    out = []
+    for lid in ids[:limit]:
+        lead = session.get(Lead, lid)
+        if lead is None:
+            continue
+        agent = ao.agent_contact(lead)
+        waiting = waiting_reply(session, lid)
+        out.append({"lead_id": lid, "address": lead_facts(lead)["address"], "stage": lead.status_stage,
+                    "agent": agent.name if agent else None, "agent_email": agent.email if agent else None,
+                    "last_touch": ao.last_touch(session, lead), "waiting_reply": waiting.id if waiting else None})
+    return out
+
+
+def send_custom_reply(session: Session, lead_id: int, text: str, *, subject: str | None = None,
+                      price: float | None = None, now: datetime | None = None, smtp_factory: Any = None
+                      ) -> dict[str, Any]:
+    """`/reply <house> <what to say>`: the operator's own words, in the agent's thread, from Gmail, logged.
+
+    The signature, mailing address and opt-out are added when missing (CAN-SPAM); price=N attaches the 1-page
+    offer at N through the normal LOI gates and logs it as an offer."""
+    from engine.contracts import ContractBlocked, generate
+    lead = session.get(Lead, lead_id)
+    if lead is None:
+        raise ApprovalError(f"lead {lead_id} not found")
+    agent = ao.agent_contact(lead)
+    if agent is None:
+        raise ApprovalError("no listing agent on this lead (or they asked to stop)")
+    thread = reply_thread(session, lead_id)
+    op = hc.operator()
+    body = text.strip()
+    if op["postal"] and op["postal"] not in body:
+        body += "\n\n" + "\n".join(hc.signature_lines(op)) + "\n\n" + "\n".join(hc.footer_lines(op))
+    waiting = waiting_reply(session, lead_id)
+    to = (waiting.from_email if waiting is not None and waiting.from_email else None) or agent.email
+    if not to:
+        raise ApprovalError("no e-mail address for this agent")
+    base = _base_packet(session, lead, agent)
+    files: dict[str, str] = {}
+    warnings: list[str] = []
+    if price:
+        try:
+            g = generate(session, lead, "loi", price=price)
+            files = {p.suffix.lstrip("."): str(p) for p in g.paths}
+        except ContractBlocked as exc:
+            warnings.extend(exc.reasons)
+    subj = (subject or "").strip() or ((thread or {}).get("subject")) or f"Re: {base.subject}"
+    packet = replace(base, kind="offer" if price else "followup", subject=subj, email_body=body, agent_email=to,
+                     loi_files=files, anchor=price or base.anchor)
+    session.commit()
+    try:
+        mid = ao.deliver(packet, session=session, now=now, smtp_factory=smtp_factory, engaged=True,
+                         in_reply_to=(thread or {}).get("message_id"), references=(thread or {}).get("references"))
+    except (RuntimeError, OSError, smtplib.SMTPException) as exc:
+        raise ApprovalError(f"Gmail didn't send it: {exc}") from exc
+    if price:
+        ao.record_sent(session, lead, packet, "email_smtp", now, message_id=mid, engaged=True)
+    else:
+        when = now_eastern(now)
+        session.add(Interaction(lead_id=lead.id, contact_id=agent.id, channel="email_smtp", outcome="AGENT_FOLLOWUP_SENT",
+                                notes=subj, next_followup_at=ao.followup_time(now), email_message_id=mid,
+                                debrief_json={"packet": {"kind": "reply"}, "engaged": True}, occurred_at=when))
+        lead.last_contact_at, lead.next_followup_at = when, ao.followup_time(now)
+    resolve_open_replies(session, lead.id, "answered with your own words (/reply)")
+    session.flush()
+    return {"lead_id": lead.id, "to": to, "subject": subj, "threaded": bool(thread), "price": price,
+            "loi_attached": bool(files.get("pdf")), "warnings": warnings}
 
 
 # -- connection test ----------------------------------------------------------------------------------------------
