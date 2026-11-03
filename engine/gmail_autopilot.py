@@ -949,6 +949,33 @@ def approvable(session: Session) -> tuple[list[InboundReply], list[tuple[Inbound
     return ok, held
 
 
+# Answers that go out with no person (learned 2026-11-03: the operator handles calls only). No-price notes always;
+# a priced hold / counter only when the agent's number was stated plainly ("wants 355k", "we are at 470"), never one
+# read out of a signature. Accepts, unclassified questions and anything else stay for a call.
+SAFE_NO_PRICE = ("CONFIRM THE FACTS FIRST", "NUMBERS ON HOLD", "LISTING EXPIRED", "OFF THE TABLE")
+SAFE_PRICED = ("BACKUP AT", "HOLD FIRM AT", "HOLD AT", "COUNTER AT")
+
+
+def auto_approve(*, now: datetime | None = None, smtp_factory: Any = None) -> dict[str, Any]:
+    """Send the drafted answers the desk may send by itself (`gmail_autopilot.auto_approve`, default on)."""
+    from engine import reply_negotiator as rn
+    empty: dict[str, Any] = {"sent": [], "failed": [], "stopped": None}
+    if not _cfg().get("auto_approve", True):
+        return empty
+    with session_scope() as s:
+        ok, _ = approvable(s)
+        ids = []
+        for r in ok:
+            an = r.analysis_json or {}
+            head = str(an.get("headline") or r.headline or "").upper()
+            if an.get("kind") == "fact_check" or head.startswith(SAFE_NO_PRICE):
+                ids.append(r.id)
+            elif head.startswith(SAFE_PRICED) and (not r.counter_amount
+                                                   or rn.parse_reply(r.body_text or "").counter_explicit):
+                ids.append(r.id)
+    return approve_all(now=now, smtp_factory=smtp_factory, ids=ids) if ids else empty
+
+
 def approve_all(*, now: datetime | None = None, smtp_factory: Any = None,
                 ids: list[int] | None = None) -> dict[str, Any]:
     """Send every drafted answer waiting on the operator (or just `ids`), each through approve() with its gates (LOI

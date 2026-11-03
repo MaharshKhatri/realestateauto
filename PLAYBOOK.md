@@ -190,6 +190,15 @@ Then delete the old one on the same Google page.
 **Your calendar is the report:** every day an all-day "📊 Deal desk" event says what went out, what came back and
 exactly what waits on you (with the command to run). Replies that need you get a 🔥 event, calls a 📞 / 🔥 follow-up.
 
+**No laptop needed (the cloud desk):** GitHub runs the whole desk every 15 minutes, so the laptop can stay closed.
+Turn it on once on github.com: your repository → Settings → Secrets and variables → Actions → New repository secret,
+three times:
+- `SMTP_USER`: your business Gmail address;
+- `SMTP_APP_PASSWORD`: a new Gmail app password (myaccount.google.com/apppasswords);
+- `DESK_KEY`: type any 30+ random letters and numbers (you never need it again).
+The next time your Mac is open, it hands its database to the cloud by itself and goes quiet. Calls are on your
+calendar; everything else happens without you.
+
 **One command for everything:** open Claude Code on the Mac in `~/realestateauto` and type `/go`. It answers every
 agent (you say yes once), makes the Mac hands-free, sends today's new e-mails and tells you what's left. Without
 Claude: `.venv/bin/python manage.py inbox`, then `.venv/bin/python manage.py gmail --approve-all`.

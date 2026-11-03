@@ -365,14 +365,21 @@ def reply_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
         agent = session.get(Contact, row.contact_id) if row.contact_id else listing_agent(lead)
         n = (row.analysis_json or {}).get("numbers") or {}
         s, e = _timed(start, 15)
-        summary = (f"🔥 COUNTER-OFFER RECEIVED: {place.street} - Open Claude Chat" if row.counter_amount else
-                   f"🔥 Agent replied: {place.street} - Open Claude Chat")
+        # The operator handles calls only (2026-11-03): a reply the desk can't answer by itself is a call.
+        phone = agent_phone(session, agent)
+        who = _name(agent.name) if agent is not None and agent.name else "the agent"
+        if phone:
+            summary = (f"📞 COUNTER-OFFER RECEIVED: call {who} about {place.street}" if row.counter_amount else
+                       f"📞 Call {who} about {place.street}: they replied")
+        else:
+            summary = (f"🔥 COUNTER-OFFER RECEIVED: {place.street} (no phone on file)" if row.counter_amount else
+                       f"🔥 Agent replied: {place.street} (no phone on file)")
         lines = [f"The listing agent answered: {row.headline or row.verdict or 'see the dashboard'}.",
                  f"Their number: {_money(row.counter_amount)}" if row.counter_amount else None,
                  f"Your walk-away: {_money(n.get('mao_walkaway'))}" if n.get("mao_walkaway") else None,
                  f"Why it waits for you: {row.note}" if row.note else None, *_agent_lines(session, agent),
-                 "Open Claude Code in your realestateauto folder and type /inbox: it shows their message, the math and "
-                 "the drafted answer, and sends it in their Gmail thread when you say so."]
+                 "Call them: hear what they need, never go above your walk-away, and if they want it in writing, "
+                 "tell Claude what they said (the desk sends it in their Gmail thread)."]
         out.append(Desired(f"reply:{lead.id}:r{row.id}", "reply", lead.id,
                            _body("reply", summary, lines, s, e, reminders=[0], link=lead_link(lead.id)), start))
     return out

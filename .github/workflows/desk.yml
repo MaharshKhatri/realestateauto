@@ -1,0 +1,80 @@
+# The deal desk in the cloud (engine/cloud_desk.py): replies, answers, openers, calendar, nightly backup.
+# Runs every 15 minutes on GitHub's servers, so the operator's laptop can be closed. It stays off until the
+# repository has three secrets (Settings > Secrets and variables > Actions): SMTP_USER, SMTP_APP_PASSWORD, DESK_KEY.
+# The repository is public: the run prints counts only, and the state it keeps between runs is encrypted.
+name: Deal desk
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"      # the desk (it reads replies 8 AM-9 PM Eastern and sends 8 AM-8 PM)
+    - cron: "17 10 * * *"       # ~5:17 AM Eastern: the daily data refresh (sheriff sales, listings, comps)
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "run | refresh | approve"
+        default: run
+      reply:
+        description: "with approve: the reply # to send"
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deal-desk              # one run at a time: they share one database
+  cancel-in-progress: false
+
+jobs:
+  desk:
+    if: github.repository == 'MaharshKhatri/realestateauto'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
+      DESK_KEY: ${{ secrets.DESK_KEY }}
+      TZ: America/New_York
+    steps:
+      - name: Turned on?
+        id: cfg
+        run: |
+          if [ -n "$SMTP_USER" ] && [ -n "$SMTP_APP_PASSWORD" ] && [ -n "$DESK_KEY" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "The cloud desk is off: add the SMTP_USER, SMTP_APP_PASSWORD and DESK_KEY repository secrets."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.cfg.outputs.ok == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.cfg.outputs.ok == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        if: steps.cfg.outputs.ok == 'true'
+        run: pip install -q -e .
+      - name: Restore the desk's encrypted state
+        if: steps.cfg.outputs.ok == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: data/cloud
+          key: desk-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: desk-state-
+      - name: Run the desk
+        if: steps.cfg.outputs.ok == 'true'
+        env:
+          TASK: ${{ github.event.schedule == '17 10 * * *' && 'refresh' || github.event.inputs.task || 'run' }}
+          REPLY: ${{ github.event.inputs.reply }}
+        run: |
+          if [ -n "$REPLY" ]; then
+            python manage.py cloud --run --task "$TASK" --approve "$REPLY" 2>/dev/null
+          else
+            python manage.py cloud --run --task "$TASK" 2>/dev/null
+          fi
+      - name: Save the desk's encrypted state
+        if: always() && steps.cfg.outputs.ok == 'true' && hashFiles('data/cloud/state.enc') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: data/cloud
+          key: desk-state-${{ github.run_id }}-${{ github.run_attempt }}

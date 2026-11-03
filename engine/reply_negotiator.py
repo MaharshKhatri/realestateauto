@@ -128,6 +128,7 @@ class ParsedReply:
     intents: set[str] = field(default_factory=set)
     deadline: str | None = None
     notes: list[str] = field(default_factory=list)
+    counter_explicit: bool = False      # the number sits right after "wants" / "is at" / "would take" ... (not a guess)
 
     def to_json(self) -> dict[str, Any]:
         return {"amounts": self.amounts, "counter_amount": self.counter_amount, "intents": sorted(self.intents),
@@ -202,6 +203,7 @@ def parse_reply(text: str) -> ParsedReply:
     if scored:
         best = max(scored, key=lambda t: (t[1], t[0]))
         out.counter_amount = best[0]
+        out.counter_explicit = best[1] >= 1.0
     low = scrubbed.lower()
     for intent, pats in _COMPILED.items():
         for p in pats:

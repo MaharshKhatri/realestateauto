@@ -480,3 +480,29 @@ def test_every_waiting_answer_goes_out_after_one_yes(live, monkeypatch):
     assert {m["In-Reply-To"] for m in FakeSMTP.sent[-2:]} == {"<agent-101@broker.test>", "<agent-102@broker.test>"}
     db.expire_all()
     assert {x.status for x in db.query(InboundReply)} == {"approved", "needs_approval"}       # the street-only one waits
+
+
+def test_the_desk_answers_the_safe_replies_by_itself_and_leaves_the_rest_for_a_call(live):
+    """Calls only for the operator (2026-11-03): no-price notes and holds on a plainly stated number go out by
+    themselves; an accept, a question or a number read out of a signature waits for a call."""
+    db = live
+    leads = [listed(db) for _ in range(4)]
+    texts = {0: "Never happen. We are at 470.00 Sorry.",              # RED hold, stated number: sends
+             1: "Seller would take 250k, send it over.",             # GREEN accept: a call
+             2: "Who is the buyer and how did you get my info?",     # a question: a call
+             3: "Thanks.\n\nPat Sample | Lic 0897105 | 470"}          # nothing plainly stated: never priced
+    ours = {i: opener(db, lead, when=T0 + timedelta(minutes=i))["Message-ID"] for i, lead in enumerate(leads)}
+    gm.set_imap_factory(lambda: FakeIMAP({200 + i: mail(200 + i, t, in_reply_to=ours[i], subject=f"Re: q{i}",
+                                                        frm=f"Pat Sample <pat{i}@broker.test>")
+                                          for i, t in texts.items()}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=40), smtp_factory=FakeSMTP)
+    db.expire_all()
+    rows = {r.lead_id: r for r in db.query(InboundReply)}
+    n = len(FakeSMTP.sent)
+    r = gm.auto_approve(now=T0 + timedelta(minutes=50), smtp_factory=FakeSMTP)
+    db.expire_all()
+    sent_leads = {x["lead_id"] for x in r["sent"]}
+    assert leads[0].id in sent_leads and leads[1].id not in sent_leads and leads[2].id not in sent_leads
+    assert len(FakeSMTP.sent) == n + len(r["sent"])
+    assert db.get(InboundReply, rows[leads[1].id].id).status == "needs_approval"
+    assert db.get(InboundReply, rows[leads[2].id].id).status == "needs_approval"

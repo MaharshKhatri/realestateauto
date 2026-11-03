@@ -379,8 +379,8 @@ def test_calendar_alert_for_a_reply_waiting_on_the_operator(live):
     ev = gcal_sync.reply_events(db, lead, datetime(2026, 11, 4, 11, 1))
     assert len(ev) == 1 and ev[0].key == f"reply:{lead.id}:r{row.id}" and ev[0].kind == "reply"
     body = ev[0].body
-    assert body["summary"].startswith("🔥 COUNTER-OFFER RECEIVED: ") and body["summary"].endswith("Open Claude Chat")
-    assert "$310,000" in body["description"] and "/inbox" in body["description"]
+    assert body["summary"].startswith("📞 COUNTER-OFFER RECEIVED: call Pat Agent about ")
+    assert "$310,000" in body["description"] and "Call them" in body["description"]
     assert "Quinn" not in body["description"] and ev[0].starts_at == datetime(2026, 11, 4, 11, 10)
     row.status = "approved"
     db.flush()

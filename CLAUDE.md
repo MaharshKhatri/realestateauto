@@ -799,6 +799,35 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - The 🔑 calendar re-connect event says how to publish the OAuth app, so the 7-day sign-in stops for good.
   - "Please call me" answered by e-mail: the follow-up the answer set (the call slot, under 20 h after the e-mail) is
     the calendar event, titled "📞 Call <agent> about <street> (they asked you to call)", not a 48-hour follow-up.
+- **The cloud desk** (learned 2026-11-03, the operator can't keep a laptop open; `engine/cloud_desk.py`,
+  `.github/workflows/desk.yml`):
+  - **Runtime:** GitHub Actions every 15 minutes, which reaches Gmail directly. It reads replies 8 AM-9 PM and sends
+    8 AM-8 PM: Touch 2, fact checks, `auto_approve`, the 10:30 openers. Then it syncs the calendar. The data refresh
+    (run-all) runs at ~5:17 AM, and an encrypted backup goes out after 8 PM. One run at a time (concurrency group).
+  - **Turning it on:** three repository secrets, SMTP_USER, SMTP_APP_PASSWORD and DESK_KEY (≥ 16 random characters).
+    Until they exist, every run exits in its first step.
+  - **State:** `data/cloud/state.enc` in the Actions cache: database + settings.local.yaml + token.json +
+    credentials.json, AES-256-GCM under HKDF(DESK_KEY). It is restored with prefix `desk-state-` and saved under a new
+    key every run.
+    - The repository is public: runs print one JSON line of counts (stderr to /dev/null). No message text,
+      addresses or names ever reach the log.
+  - **Handoff, no command:** the first run with no state mails itself "[njw-cloud] ready for the handoff" with its
+    X25519 public key, derived from DESK_KEY.
+    - The Mac daemon checks Sent every 30 minutes (`mac_handoff`). It seals its database + config to that key and
+      mails them to itself as "[njw-bundle] db <stamp> i/n" parts (12 MB each, SHA-256 in the body).
+    - It then writes `data/runtime_cloud.json` and goes idle (self-update and config hand-over only).
+    - A later `setup-calendar` on the Mac sends a "config" bundle the cloud applies on its next run.
+    - Bundles open only with DESK_KEY; the nightly backups use the same format, so a lost cache restores from the
+      newest one (up to a day old).
+  - **What goes out without a person** (`gmail_autopilot.auto_approve`, `auto_approve: true`):
+    - no-price notes (facts first, numbers on hold, listing expired, under contract);
+    - holds / counters / backups at or under the walk-away, only when the agent's number was stated plainly
+      (`ParsedReply.counter_explicit`: right after "wants" / "is at" / "would take" ...).
+    - Accepts, unclassified questions and signature numbers stay for the operator.
+    - Their calendar alert is a call ("📞 COUNTER-OFFER RECEIVED: call <agent> about <street>" / "📞 Call <agent>
+      about <street>: they replied"), since the operator handles calls only.
+  - **Approving one reply from a cloud Claude session:** `workflow_dispatch` with task `approve` and the reply #
+    (the inputs are public: ids only, never text).
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

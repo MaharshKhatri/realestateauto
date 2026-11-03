@@ -541,6 +541,30 @@ def _print_inbox(rows: list[dict]) -> None:
     console.print(t)
 
 
+def cmd_cloud(args: argparse.Namespace) -> None:
+    """The cloud desk (GitHub Actions: .github/workflows/desk.yml). --run prints counts only: the run log is public."""
+    import json as _json
+    import logging
+    import tempfile
+    from engine import cloud_desk
+    if args.run:
+        logging.basicConfig(level=logging.WARNING, handlers=[logging.FileHandler(Path(tempfile.gettempdir()) / "desk.log")],
+                            force=True)
+        try:
+            r = cloud_desk.cloud_run(args.task, approve_id=args.approve)
+        except Exception as exc:               # noqa: BLE001 - one line, no message text (it may hold addresses)
+            print(_json.dumps({"state": "error", "error": type(exc).__name__}))
+            raise SystemExit(1) from None
+        print(_json.dumps({k: v for k, v in r.items() if isinstance(v, (int, float, str, bool))}))
+        return
+    if args.handoff:
+        init_db()
+        console.print(cloud_desk.mac_handoff())
+        return
+    console.print({"handed_off_to_cloud": cloud_desk.FLAG.exists(),
+                   "flag": _json.loads(cloud_desk.FLAG.read_text()) if cloud_desk.FLAG.exists() else None})
+
+
 def cmd_set_gmail(args: argparse.Namespace) -> None:
     """Save a new Gmail app password without the dashboard. It's typed at a hidden prompt in your own Terminal
     (never shown, never pasted into a chat), written to .env (chmod 600), then both Gmail servers are tested."""
@@ -627,7 +651,9 @@ def cmd_autopilot_daemon(args: argparse.Namespace) -> None:
     claude = mac_desk.find_claude(args.claude) if args.agent_every else None
     lg.info("started (every %ss, 8 AM-9 PM Eastern; desk agent: %s; self-update every %s min)", args.interval,
             claude or "off (Claude Code CLI not found)", args.update_every)
+    from engine import cloud_desk
     last_update = 0.0
+    cloud = cloud_desk.FLAG.exists()
     while True:
         hour = _dt.now(TZ).hour
         if args.update_every and _t.time() - last_update >= args.update_every * 60:
@@ -639,6 +665,20 @@ def cmd_autopilot_daemon(args: argparse.Namespace) -> None:
                 os.execv(sys.executable, [sys.executable, *sys.argv])
             elif u["reason"] not in ("up to date", ""):
                 lg.warning("self-update skipped: %s", u["reason"])
+            try:
+                h = cloud_desk.mac_handoff()
+                if h["state"] == "handed_off":
+                    lg.info("handed the desk to the cloud (%s e-mail part(s)); this Mac now stays idle", h["parts"])
+                elif h.get("sent"):
+                    lg.info("sent the new calendar sign-in to the cloud desk")
+                cloud = h["state"] in ("handed_off", "idle")
+            except Exception:                      # noqa: BLE001 - a failed check keeps the Mac running the desk
+                lg.exception("cloud handoff check failed")
+        if cloud:
+            if args.once:
+                return
+            _t.sleep(args.interval)
+            continue                               # the cloud desk runs everything now
         if 8 <= hour < 21:
             try:
                 r = gm.run_inbox(send=gm.in_send_hours())   # read until 9 PM; send only 8 AM-8 PM
@@ -651,6 +691,10 @@ def cmd_autopilot_daemon(args: argparse.Namespace) -> None:
                     lg.warning("inbox: %s", r.get("error"))
                 if r.get("send_error"):
                     lg.warning("inbox stopped sending: %s", r["send_error"])
+                if gm.in_send_hours():
+                    a = gm.auto_approve()
+                    if a["sent"]:
+                        lg.info("answered %s waiting repl%s by itself", len(a["sent"]), "y" if len(a["sent"]) == 1 else "ies")
                 gcal_sync.kick(full=True)          # the 📊 desk status on the calendar stays current
                 d = gm.daily_openers(args.daily_openers, at=args.openers_at, background=not args.once)
                 if d is not None:
@@ -1933,6 +1977,11 @@ def main(argv: list[str] | None = None) -> None:
     gm.add_argument("--yes", action="store_true", help="with --approve-all: don't ask (Claude passes it after you say yes)")
     gm.add_argument("--dismiss", metavar="REPLY", help="drop a reply from Action Needed (its # or the street)")
     gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
+    cl = sub.add_parser("cloud", help="the cloud desk (GitHub Actions): --run (the workflow), --handoff (Mac), status")
+    cl.add_argument("--run", action="store_true", help="one cloud run (what .github/workflows/desk.yml calls)")
+    cl.add_argument("--task", default="run", choices=["run", "refresh", "approve"])
+    cl.add_argument("--approve", type=int, metavar="REPLY_ID", help="with --task approve: send this drafted answer")
+    cl.add_argument("--handoff", action="store_true", help="Mac: hand the desk to the cloud now if it's ready")
     sg = sub.add_parser("set-gmail", help="save a new Gmail app password at a hidden prompt (no dashboard) and test it")
     sg.add_argument("--email", help="the Gmail address (default: the one already saved)")
     ib = sub.add_parser("inbox", help="/inbox: import Gmail Sent, read agent replies, send 'still available' offers now")
@@ -2094,7 +2143,7 @@ def main(argv: list[str] | None = None) -> None:
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
      "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "db-sync": cmd_db_sync, "setup-calendar": cmd_setup_calendar,
-     "sync-calendar": cmd_sync_calendar, "gmail": cmd_gmail, "inbox": cmd_inbox, "set-gmail": cmd_set_gmail,
+     "sync-calendar": cmd_sync_calendar, "gmail": cmd_gmail, "inbox": cmd_inbox, "set-gmail": cmd_set_gmail, "cloud": cmd_cloud,
      "autopilot-daemon": cmd_autopilot_daemon, "install-daemon": cmd_install_daemon, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
      "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,
