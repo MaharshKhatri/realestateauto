@@ -61,10 +61,13 @@ class ListingIndex:
 
     @classmethod
     def build(cls, listings: list[Listing]) -> "ListingIndex":
+        """Index the listings still on the market: a pending / contingent / sold listing, or one the harvest stopped
+        seeing (off_market), no longer stacks, so its ACTIVE_LISTING signal is retired below."""
+        from agents.scrapers.stale_listing_distress_agent import OFF_MARKET
         by_key: dict[tuple[str, str], list[Listing]] = defaultdict(list)
         by_number: dict[str, list[Listing]] = defaultdict(list)
         for lst in listings:
-            if lst.address:
+            if lst.address and (lst.status or "").lower() not in OFF_MARKET:
                 by_key[listing_key(lst.address, lst.zip_code)].append(lst)
                 if lst.lat and lst.lon:
                     by_number[house_number(lst.address)].append(lst)
@@ -189,7 +192,7 @@ class SignalStackerAgent(BaseAgent):
             if SignalType.SHERIFF_SALE in types:
                 ctx.bump("listed_foreclosures")
             new_sigs.append(sig)
-        # A listing that came off the market no longer stacks.
+        # A listing that came off the market (pending / contingent / sold / no longer seen) no longer stacks.
         for old in s.scalars(select(DistressSignal).where(DistressSignal.source == SOURCE,
                                                           DistressSignal.signal_type == SignalType.ACTIVE_LISTING,
                                                           DistressSignal.active.is_(True))):

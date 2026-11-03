@@ -218,6 +218,15 @@ def format_phone(digits: str | None) -> str:
     return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}" if digits and len(digits) == 10 else (digits or "")
 
 
+FAX_RE = re.compile(r"fax|facsimile", re.I)
+
+
+def is_fax_label(*labels: str | None) -> bool:
+    """True when any label / type says the number is a fax line ("Fax", "office_fax", "Office Fax", "facsimile").
+    A fax number is never callable and never goes on a call list."""
+    return any(FAX_RE.search(str(label)) for label in labels if label)
+
+
 def split_person_name(name: str | None) -> tuple[str, str]:
     """('QUINN', 'SAMPLE') from 'SAMPLE, QUINN A' / 'Quinn A. Sample Jr' / 'SAMPLE QUINN & MARY' (best effort)."""
     s = clean(name).upper()

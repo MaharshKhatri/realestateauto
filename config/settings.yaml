@@ -162,6 +162,60 @@ markets:
     - {county: MONMOUTH, name: FREEHOLD BORO}
   arv_sweet_spot: {min: 150000, max: 650000}
 
+stale_listings:
+  # agents/scrapers/stale_listing_distress_agent.py (homeharvest / Realtor.com: low volume, cached, 2 s between calls).
+  min_days_on_market: 60             # stale = this many days on market (price cuts qualify at 45, distress words always)
+  max_list_price: 900000
+  deactivate_after_missed_harvests: 3   # a listing missing from its ZIP's last 3 successful harvests is off the market
+                                        # (pending / contingent / sold drop out at once)
+  blocked_cooldown_hours: 12         # after a refusal (403): stop, keep what was harvested, ask nothing for this long
+  include_auto_expansion: true       # also harvest the ZIPs of towns in swarm_state.auto_expansion (from our parcels)
+  auto_expansion_min_parcels: 5      # ... a ZIP counts when it holds 5+ of that town's parcels
+  auto_expansion_min_share: 0.10     # ... and 10%+ of them
+  auto_expansion_max_zips: 4
+  zips:                              # quote every ZIP (an unquoted 07012 would read as a number)
+    # Middlesex: Woodbridge Twp sections, Edison, New Brunswick, Perth Amboy
+    ["07095", "07001", "07067", "08830", "08863", "07064", "08817", "08820", "08837", "08901", "08861",
+    # Union: Elizabeth, Plainfield, Linden
+     "07201", "07202", "07206", "07208", "07060", "07062", "07063", "07036",
+    # Essex: Newark, Irvington, East Orange
+     "07102", "07103", "07104", "07105", "07106", "07107", "07108", "07112", "07114", "07111", "07017", "07018",
+    # Hudson: Jersey City, Bayonne
+     "07302", "07304", "07305", "07306", "07307", "07002",
+    # Passaic: Paterson, Passaic
+     "07501", "07502", "07503", "07504", "07505", "07513", "07514", "07522", "07524", "07055",
+    # Bergen: Hackensack, Garfield
+     "07601", "07026",
+    # Camden: Camden, Pennsauken
+     "08102", "08103", "08104", "08105", "08109", "08110",
+    # Mercer: Trenton, Hamilton, Ewing
+     "08608", "08609", "08610", "08611", "08618", "08619", "08620", "08628", "08629", "08638", "08690", "08691",
+    # Monmouth: Asbury Park, Neptune, Long Branch, Freehold
+     "07712", "07753", "07740", "07728",
+    # Added 2026-11-03: ZIPs holding most of our foreclosure / estate / vacant signals outside the list above.
+    # Camden: Sicklerville, Gloucester City, Lindenwold / Clementon, Cherry Hill, Voorhees, Bellmawr
+     "08081", "08030", "08021", "08003", "08043", "08034", "08031",
+    # Passaic: Wayne, Clifton
+     "07470", "07011",
+    # Middlesex: Piscataway, East Brunswick, Carteret, North Brunswick, Old Bridge (+ Matawan / Aberdeen, Monmouth)
+     "08854", "08816", "07008", "08902", "07747", "08857",
+    # Union: Hillside, Rahway, Union, Roselle
+     "07205", "07065", "07083", "07203",
+    # Essex: Bloomfield, West Orange, Belleville, Orange
+     "07003", "07052", "07109", "07050",
+    # Bergen: Teaneck, Cliffside Park, Englewood, Lyndhurst, Elmwood Park
+     "07666", "07010", "07631", "07071", "07407",
+    # Hudson: Union City, West New York
+     "07087", "07093",
+    # Monmouth: Middletown, Howell, Keansburg
+     "07748", "07731", "07734"]
+
+underwrite:
+  new_listing_cap: 300               # value_new_listings: listing leads with no valuation, valued per run
+  new_listing_max_minutes: 20        # time budget per run (~13 s per valuation, measured 2026-11-03); the rest wait for
+                                     # the next run (0 = none); the nightly daemon run gets 120 (agents.schedule_options)
+  new_listing_retry_days: 3          # a listing whose comps came back empty is tried again after this many days
+
 harvest:
   absentee_min_years_owned: 10       # "high equity" proxy: owned 10+ years
   old_stock_year_built_max: 1980
@@ -271,6 +325,9 @@ agents:
     signal_stacker: "55 6 * * *"
     lead_scoring: "0 7 * * *"
     underwriter: "15 7 * * *"
+    value_new_listings: "10 2 * * *"     # nightly: every listing lead still without a valuation (also in run-all)
+  schedule_options:                      # options for a scheduled run only (run-all and the dashboard keep the defaults)
+    value_new_listings: {max_minutes: 120}   # the long nightly run: up to new_listing_cap (300) at ~13 s each
     outlier_guard: "25 7 * * *"
     fast_track: "30 7 * * *"
     closing_alerts: "0 8 * * 1-5"

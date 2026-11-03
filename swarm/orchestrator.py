@@ -12,8 +12,8 @@ Jobs (each composed of agents; every agent logs its own agent_runs row):
     DataRefreshAgent             tax_assessment + cash_buyers + stale_listings + tax_sales → owner_enrichment
     ContactEnrichmentAgent       municipal_owners → listing_agents → owner_resolver → signal_stacker
                                  (names, agents, heirs, mailing matches; listed distress + portfolio owners)
-    CompUnderwriterAgent         lead_scoring → underwriter(top N) → outlier_guard → lead_scoring → fast_track
-                                 → buyer_matcher
+    CompUnderwriterAgent         lead_scoring → underwriter(top N) → value_new_listings (every unvalued listing
+                                 lead, capped) → outlier_guard → lead_scoring → fast_track → buyer_matcher
     PipelineSelfImprovementAgent closing_alerts → self_improvement
 """
 from __future__ import annotations
@@ -76,6 +76,11 @@ def _signal_stacker(**opts: Any) -> BaseAgent:
     return SignalStackerAgent(**opts)
 
 
+def _value_new_listings(**opts: Any) -> BaseAgent:
+    from engine.underwriter import NewListingValuationAgent
+    return NewListingValuationAgent(**opts)
+
+
 def _outlier_guard(**opts: Any) -> BaseAgent:
     from engine.valuation_guard import OutlierGuardAgent
     return OutlierGuardAgent(**opts)
@@ -135,6 +140,8 @@ REGISTRY: dict[str, AgentSpec] = {spec.name: spec for spec in [
     AgentSpec("signal_stacker", _signal_stacker, "Stacked distress: listed foreclosures/absentee/tax leads, portfolio owners.", "enrich"),
     AgentSpec("lead_scoring", LeadScoringAgent, LeadScoringAgent.description, "analyze"),
     AgentSpec("underwriter", UnderwriterAgent, UnderwriterAgent.description, "analyze", {"top": 25}),
+    AgentSpec("value_new_listings", _value_new_listings, "Underwrite every listing lead with no current valuation, "
+              "highest priority / newest first (underwrite.new_listing_cap per run, inside a time budget).", "analyze"),
     AgentSpec("outlier_guard", _outlier_guard, "Comp hygiene + ARV guard on every valuation (package deeds, ask, "
               "assessment, $/sqft, non-residential); re-underwrites thin comp sets.", "analyze", {"max_live": 25}),
     AgentSpec("fast_track", _fast_track, "Listed-foreclosure sniper queue + portfolio owners (counts, call-today notes).",
@@ -153,8 +160,8 @@ JOBS: dict[str, list[str]] = {
     "SheriffSaleMonitorAgent": ["sheriff_sales", "lis_pendens"],
     "DataRefreshAgent": ["tax_assessment", "cash_buyers", "stale_listings", "tax_sales", "owner_enrichment"],
     "ContactEnrichmentAgent": ["municipal_owners", "listing_agents", "owner_resolver", "signal_stacker"],
-    "CompUnderwriterAgent": ["lead_scoring", "underwriter", "outlier_guard", "lead_scoring", "fast_track",
-                             "buyer_matcher"],
+    "CompUnderwriterAgent": ["lead_scoring", "underwriter", "value_new_listings", "outlier_guard", "lead_scoring",
+                             "fast_track", "buyer_matcher"],
     "PipelineSelfImprovementAgent": ["closing_alerts", "calendar_sync", "self_improvement"],
 }
 JOB_ALIASES = {"sheriff": "SheriffSaleMonitorAgent", "data_refresh": "DataRefreshAgent",
@@ -242,12 +249,14 @@ def daemon() -> None:
     tz = cfg.operator.get("timezone", "America/New_York")
     sched = BlockingScheduler(timezone=tz)
     schedules = cfg.agents.get("schedules", {})
+    options = cfg.agents.get("schedule_options", {}) or {}     # e.g. the long nightly value_new_listings run
     for name, cron in schedules.items():
         if name not in REGISTRY:
             log.warning("schedule for unknown agent %s ignored", name)
             continue
-        sched.add_job(run_agent, CronTrigger.from_crontab(cron, timezone=tz), args=[name], id=name,
-                      max_instances=1, coalesce=True, misfire_grace_time=3600)
+        sched.add_job(run_agent, CronTrigger.from_crontab(cron, timezone=tz), args=[name],
+                      kwargs=dict(options.get(name) or {}), id=name, max_instances=1, coalesce=True,
+                      misfire_grace_time=3600)
         log.info("scheduled %-18s %s", name, cron)
     log.info("swarm daemon started (Ctrl+C to stop)")
     try:

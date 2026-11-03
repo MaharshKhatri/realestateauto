@@ -213,10 +213,24 @@ def listing_terms(prop: Property) -> dict[str, Any]:
     return listing_gap(ask, val.mao_conservative, val.mao_aggressive, val.arv_estimate) if ask else {}
 
 
+LISTING_SIGNALS = (SignalType.STALE_LISTING, SignalType.ACTIVE_LISTING)
+
+
+def listing_off_market(prop: Property) -> bool:
+    """The property was listed (a stale / active listing signal) and none of those listings is live any more: it went
+    pending / contingent / sold or the harvest stopped seeing it. Its listing agent is no longer a cold-call target."""
+    sigs = [s for s in prop.signals if s.signal_type in LISTING_SIGNALS]
+    return bool(sigs) and not any(s.active for s in sigs)
+
+
 def has_agent_contact(prop: Property) -> bool:
+    """A listing agent we can reach about a live listing (a fax line never counts as a phone; the e-mail still does)."""
+    from engine.compliance import is_fax_contact
     lead = prop.lead
-    return bool(lead and any(c.contact_type == "LISTING_AGENT" and (c.phone or c.email) and c.dnc_status != "dnc"
-                             for c in lead.contacts))
+    if not lead or listing_off_market(prop):
+        return False
+    return any(c.contact_type == "LISTING_AGENT" and c.dnc_status != "dnc"
+               and ((c.phone and not is_fax_contact(c)) or c.email) for c in lead.contacts)
 
 
 def viability(prop: Property, weights: dict[str, Any], primary_source: str | None) -> tuple[float, list[str], str]:
@@ -392,10 +406,14 @@ def ready_to_call(lead: Lead) -> tuple[bool, str | None]:
             return False, None
     elif val.verdict not in READY_VERDICTS:
         return False, None
+    from engine.compliance import is_fax_contact
+    off_market = listing_off_market(lead.property)
     for c in sorted(lead.contacts, key=lambda c: (c.contact_type != "LISTING_AGENT", -(c.confidence_score or 0))):
         if c.dnc_status == "dnc" or (c.confidence_score or 0) <= 0:
             continue
-        if c.phone:
+        if c.contact_type == "LISTING_AGENT" and off_market:
+            continue                # the listing went pending / sold / vanished: nothing to offer its agent
+        if c.phone and not is_fax_contact(c):
             return True, ("listing agent phone" if c.contact_type == "LISTING_AGENT" else
                           f"{c.contact_type.lower().replace('_', ' ')} phone")
         if c.email and c.contact_type == "LISTING_AGENT":

@@ -14,7 +14,8 @@ Notes (see docs/recon/comps_listings.md for the evidence):
 * homeharvest scrapes an undocumented Realtor.com API. Realtor.com's terms of use prohibit
   automated scraping; treat this as a best-effort, low-volume source that can break or be
   blocked at any time. A 403 from Realtor.com is raised as ``ProviderBlocked`` so the caller
-  can fall back to another source.
+  can fall back to another source, and the process then sends it nothing for ``pause_hours()``
+  (``mark_blocked`` / ``blocked``): a refusal is honored, never retried around.
 * Calls are throttled in-process (``MIN_INTERVAL_S`` between requests) and run with
   ``parallel=False`` so pagination is sequential.
 * Sold results mix MLS closings (``mls`` set, beds/baths/list data present) with public-record
@@ -75,6 +76,34 @@ class ProviderBlocked(ProviderError):
 
 _lock = threading.Lock()
 _last_call = 0.0
+BLOCK_HOURS = 12.0    # after a refusal, this process sends Realtor.com nothing for this long (never evaded)
+_block: dict[str, Any] = {"until": 0.0, "reason": None}
+
+
+def pause_hours() -> float:
+    """How long a refusal is honored: `stale_listings.blocked_cooldown_hours` when the engine's settings load."""
+    try:
+        from core.config import settings
+        return float((settings().get("stale_listings") or {}).get("blocked_cooldown_hours", BLOCK_HOURS))
+    except Exception:  # noqa: BLE001 - standalone use of this module
+        return BLOCK_HOURS
+
+
+def mark_blocked(reason: str, *, hours: float | None = None, until: float | None = None) -> float:
+    """Remember a refusal: every later call in this process raises ProviderBlocked without a request until `until`
+    (epoch seconds; default now + `hours`, else `pause_hours()`). Returns the epoch the pause ends."""
+    end = float(until) if until is not None else time.time() + float(hours or pause_hours()) * 3600
+    _block.update(until=max(end, float(_block["until"] or 0)), reason=str(reason)[:300])
+    return float(_block["until"])
+
+
+def blocked() -> str | None:
+    """The refusal this process is still honoring, or None."""
+    return _block["reason"] if time.time() < float(_block["until"] or 0) else None
+
+
+def clear_block() -> None:
+    _block.update(until=0.0, reason=None)
 
 
 def _ensure_ca_bundle() -> None:
@@ -95,6 +124,10 @@ def _scrape(**kwargs) -> list[dict]:
         raise ProviderError("homeharvest is not installed: pip install homeharvest") from e
 
     with _lock:
+        why = blocked()
+        if why:
+            # Realtor.com already said no: honor it for the rest of the pause instead of asking again.
+            raise ProviderBlocked(f"not requested: the provider refused us earlier ({why})")
         wait = MIN_INTERVAL_S - (time.monotonic() - _last_call)
         if wait > 0:
             time.sleep(wait)
@@ -102,9 +135,12 @@ def _scrape(**kwargs) -> list[dict]:
             return scrape_property(return_type="raw", parallel=False, **kwargs) or []
         except AuthenticationError as e:
             status = getattr(getattr(e, "response", None), "status_code", None)
-            raise ProviderBlocked(f"Realtor.com refused the request (status={status}): {e}") from e
+            msg = f"Realtor.com refused the request (status={status}): {e}"
+            mark_blocked(msg)
+            raise ProviderBlocked(msg) from e
         except Exception as e:
             if "403" in str(e):
+                mark_blocked(str(e))
                 raise ProviderBlocked(str(e)) from e
             raise ProviderError(f"{type(e).__name__}: {e}") from e
         finally:

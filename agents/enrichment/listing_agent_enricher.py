@@ -17,10 +17,11 @@ import logging
 from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
 
 from agents.base import AgentContext, BaseAgent
-from core.text import clean, normalize_phone
+from core.text import clean, is_fax_label, normalize_phone
 from db.models import ContactType, DistressSignal, SignalType
 from db.repository import upsert_contact
 from engine.compliance import classify_number
@@ -29,8 +30,17 @@ log = logging.getLogger(__name__)
 SOURCE = "mls_listing"
 
 
+def phone_kind(label: str | None) -> str:
+    """Realtor's phone type ("Mobile", "Office", "Fax") as stored on a contact ("wireless", "office", "fax")."""
+    kind = (label or "").strip().lower()
+    return {"mobile": "wireless"}.get(kind, kind or "unknown")
+
+
 def advertiser_contacts(raw: dict[str, Any]) -> list[dict[str, Any]]:
-    """Flatten homeharvest/Realtor 'advertisers' into contact dicts (seller-side agents and offices)."""
+    """Flatten homeharvest/Realtor 'advertisers' into contact dicts (seller-side agents and offices).
+
+    Fax lines are dropped: a fax number is never a callable phone (an agent with only a fax and an e-mail becomes an
+    e-mail contact)."""
     out: list[dict[str, Any]] = []
     for adv in raw.get("advertisers") or []:
         if not adv:
@@ -38,23 +48,66 @@ def advertiser_contacts(raw: dict[str, Any]) -> list[dict[str, Any]]:
         broker = clean((adv.get("broker") or {}).get("name")) or None
         office = adv.get("office") or {}
         name = clean(adv.get("name")) or None
-        phones = [(normalize_phone(p.get("number")), (p.get("type") or "").lower() or None)
-                  for p in (adv.get("phones") or []) if p]
-        phones = [(n, t) for n, t in phones if n]
+        phones = [(normalize_phone(p.get("number")), p.get("type")) for p in (adv.get("phones") or []) if p]
+        phones = [(n, t) for n, t in phones if n and not is_fax_label(t)]
         if not phones and not adv.get("email"):
             continue
         for number, kind in phones or [(None, None)]:
             out.append({"name": name, "company": broker or clean(office.get("name")) or None,
-                        "phone": number, "phone_type": {"mobile": "wireless"}.get(kind or "", kind or "unknown"),
+                        "phone": number, "phone_type": phone_kind(kind) if number else None,
                         "email": (adv.get("email") or "").strip().lower() or None,
                         "role": adv.get("type")})
         for p in office.get("phones") or []:
             number = normalize_phone((p or {}).get("number"))
-            if number:
+            if number and not is_fax_label((p or {}).get("type")):
                 out.append({"name": clean(office.get("name")) or broker, "company": broker, "phone": number,
                             "phone_type": "office", "email": (office.get("email") or "").lower() or None,
                             "role": "office"})
     return out
+
+
+def scrub_fax_contacts(session: Session) -> int:
+    """Contacts saved before fax lines were filtered: a number labelled fax (on the contact, or as the advertiser's fax
+    on its listing) leaves `Contact.phone`, so no call list, script or packet can offer it. The number is kept in
+    raw_json["fax"] for reference; a contact left with nothing to reach and no history is removed."""
+    from db.models import Contact, Interaction
+    fax_by_lead: dict[int, set[str]] = defaultdict(set)
+    for sig in session.scalars(select(DistressSignal).where(
+            DistressSignal.signal_type.in_((SignalType.STALE_LISTING, SignalType.ACTIVE_LISTING)))):
+        lead = sig.property.lead if sig.property else None
+        fax = (sig.raw_metadata_json or {}).get("listing_agent_fax") or []
+        if lead is not None and fax:
+            fax_by_lead[lead.id].update(fax)
+    stmt = select(Contact).where(Contact.phone.is_not(None), or_(
+        Contact.phone_type.ilike("%fax%"),
+        Contact.lead_id.in_(list(fax_by_lead)) & (Contact.contact_type == ContactType.LISTING_AGENT)))
+    n = 0
+    for c in session.scalars(stmt).all():
+        if not (is_fax_label(c.phone_type) or c.phone in fax_by_lead.get(c.lead_id or 0, set())):
+            continue
+        used = session.scalar(select(Interaction.id).where(Interaction.contact_id == c.id).limit(1)) is not None
+        twin = c.email and session.scalar(select(Contact.id).where(
+            Contact.id != c.id, Contact.lead_id == c.lead_id, Contact.contact_type == c.contact_type,
+            Contact.email == c.email, Contact.phone.is_(None)).limit(1)) is not None
+        if not used and (twin or not c.email):
+            session.delete(c)
+        else:
+            c.raw_json = {**(c.raw_json or {}), "fax": c.phone}
+            c.phone, c.phone_type, c.dnc_status = None, None, None
+        n += 1
+    session.flush()
+    return n
+
+
+def meta_contact(meta: dict[str, Any]) -> dict[str, Any]:
+    """The listing agent as the stale-listing harvest stored it on the signal (first non-fax phone, e-mail)."""
+    phone = normalize_phone(meta.get("listing_agent_phone"))
+    kind = meta.get("listing_agent_phone_type")
+    if phone and (is_fax_label(kind) or phone in set(meta.get("listing_agent_fax") or [])):
+        phone, kind = None, None
+    return {"name": meta.get("listing_agent"), "company": meta.get("listing_broker"), "phone": phone,
+            "phone_type": phone_kind(kind) if phone else None, "email": meta.get("listing_agent_email"),
+            "role": "seller"}
 
 
 class ListingAgentEnricher(BaseAgent):
@@ -62,6 +115,9 @@ class ListingAgentEnricher(BaseAgent):
     description = "Attach listing-agent contacts (name, brokerage, phones, email) to stale MLS leads."
 
     def run(self, ctx: AgentContext) -> None:
+        scrubbed = scrub_fax_contacts(ctx.session)
+        if scrubbed:
+            ctx.bump("fax_numbers_removed", scrubbed)
         sigs = ctx.session.scalars(select(DistressSignal).where(
             DistressSignal.signal_type == SignalType.STALE_LISTING, DistressSignal.active.is_(True))).all()
         refreshed: dict[str, list[dict]] = {}
@@ -72,10 +128,7 @@ class ListingAgentEnricher(BaseAgent):
             if lead is None:
                 continue
             meta = sig.raw_metadata_json or {}
-            contacts = refreshed.get(sig.source_ref) or [{
-                "name": meta.get("listing_agent"), "company": meta.get("listing_broker"),
-                "phone": normalize_phone(meta.get("listing_agent_phone")), "phone_type": "unknown",
-                "email": meta.get("listing_agent_email"), "role": "seller"}]
+            contacts = refreshed.get(sig.source_ref) or [meta_contact(meta)]
             ctx.records_processed += 1
             for c in contacts:
                 if not (c.get("phone") or c.get("email")):

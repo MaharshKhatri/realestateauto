@@ -27,8 +27,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.config import DATA_DIR
-from core.text import PHONE_RE, clean, format_phone, is_entity, mailing_city, mailing_state, normalize_phone, \
-    split_person_name
+from core.text import PHONE_RE, clean, format_phone, is_entity, is_fax_label, mailing_city, mailing_state, \
+    normalize_phone, split_person_name
 from db.models import Contact, ContactType, Lead, LeadStage
 from db.repository import upsert_contact
 from engine.compliance import classify_number
@@ -204,6 +204,7 @@ def import_found(session: Session, lead: Lead, *, name: str | None, role: str | 
                  source: str = "manual_skiptrace") -> int:
     n = 0
     ctype = _target_type(role)
+    phones = [(d, k) for d, k in phones if not is_fax_label(k)]     # a fax line is never a number to call
     for i, (digits, kind) in enumerate(phones):
         upsert_contact(session, lead=lead, contact_type=ctype, source=source, name=name, phone=digits,
                        phone_type=kind or "unknown", dnc_status=classify_number(session, digits),
