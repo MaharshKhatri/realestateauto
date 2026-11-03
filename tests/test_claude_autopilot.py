@@ -455,3 +455,28 @@ def test_set_gmail_saves_a_new_password_from_a_hidden_prompt(setup_paths, monkey
     with pytest.raises(SystemExit):
         manage.cmd_set_gmail(type("A", (), {"email": "jordan@example.test"})())
     assert "SMTP_APP_PASSWORD=abcdefghijklmnop" in (setup_paths / ".env").read_text()   # nothing saved on a typo
+
+
+def test_every_waiting_answer_goes_out_after_one_yes(live, monkeypatch):
+    """2026-11-03: the operator came back to a full inbox. One confirmed command sends every drafted answer (each
+    through approve(): LOI at the drafted price, CAN-SPAM lines, stop list); street-only matches stay for a look."""
+    db = live
+    a, b = listed(db), listed(db)
+    oa, ob = opener(db, a)["Message-ID"], opener(db, b, when=T0 + timedelta(minutes=1))["Message-ID"]
+    gm.set_imap_factory(lambda: FakeIMAP({
+        101: mail(101, "Seller wants 355k, can you get there?", in_reply_to=oa, subject="Re: question a"),
+        102: mail(102, "Who is the buyer and how did you get my info?", in_reply_to=ob, subject="Re: question b",
+                  frm="Pat Sample <pat2@broker.test>")}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=40), smtp_factory=FakeSMTP)
+    db.add(InboundReply(message_id="<street-only@x.test>", lead_id=a.id, status="needs_approval", match_method="address",
+                        analysis_json={"reply_text": "hi"}, subject="Re: something on your street"))
+    db.commit()
+    ok, held = gm.approvable(db)
+    assert len(ok) == 2 and [why for _, why in held] == ["matched only by the street in the subject: check it's about "
+                                                          "this listing"]
+    n = len(FakeSMTP.sent)
+    r = gm.approve_all(now=T0 + timedelta(minutes=50), smtp_factory=FakeSMTP)
+    assert len(r["sent"]) == 2 and not r["failed"] and len(FakeSMTP.sent) == n + 2
+    assert {m["In-Reply-To"] for m in FakeSMTP.sent[-2:]} == {"<agent-101@broker.test>", "<agent-102@broker.test>"}
+    db.expire_all()
+    assert {x.status for x in db.query(InboundReply)} == {"approved", "needs_approval"}       # the street-only one waits

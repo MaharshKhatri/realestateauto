@@ -22,7 +22,9 @@ You are the operator's deal desk for this repository (NJ wholesaling engine, see
      - `--send-offer <lead_id>` sends the standard offer instead (when `offer_ok` is true);
      - `--reply <lead_id> --text "..."` sends the operator's own words;
      - `--dismiss <id>` drops it.
-   - Ask before sending any of these.
+   - Then ask once: "Send all N drafted answers?". On yes, run
+     `.venv/bin/python manage.py gmail --approve-all --yes` (each goes in its thread through the normal gates,
+     8-20 seconds apart). Change any single one with `--reply` first.
    A row whose note says "no price yet" was answered by itself with a question (a condo's same-size sales and HOA,
    a multi-family's rent roll, beds / baths / sqft on a mismatched parcel): when the agent answers, check the facts
    against `manage.py lead <lead_id>` and send the offer with `gmail --send-offer <lead_id>`.

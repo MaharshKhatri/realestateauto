@@ -758,6 +758,37 @@ def cmd_gmail(args: argparse.Namespace) -> None:
         console.print(f"checked {r['checked']} new message(s): {r['matched']} agent repl{'y' if r['matched'] == 1 else 'ies'}"
                       f" · {r.get('auto_queued', 0)} offer(s) queued · {r.get('needs_approval', 0)} need you · "
                       f"{r.get('sent', 0)} sent · {r.get('opted_out', 0)} opted out · {r.get('bounce', 0)} bounced")
+    if args.approve_all:
+        from engine import human_copy as hc
+        with session_scope() as s:
+            ok, held = gm.approvable(s)
+            rows = []
+            for r in ok:
+                an = r.analysis_json or {}
+                lead = s.get(gm.Lead, r.lead_id) if r.lead_id else None
+                street = hc.street(lead.property.street_address) if lead is not None else (r.subject or "?")
+                price = gm.reply_price(an) if an.get("verdict") in ("GREEN", "YELLOW", "RED") else None
+                rows.append((r.id, street, (an.get("headline") or r.verdict or "")[:70],
+                             f"{hc.money(price)} + 1-page offer" if price else "no price"))
+            held_rows = [(r.id, r.subject or "", why) for r, why in held]
+            s.rollback()
+        if not rows:
+            console.print("Nothing waiting with a drafted answer.")
+        for rid, street, head, what in rows:
+            console.print(f"  #{rid}  {street}: {head}  → {what}")
+        for rid, subj, why in held_rows:
+            console.print(f"  [dim]left for you #{rid} {subj[:50]}: {why}[/dim]")
+        if rows and (args.yes or input(f"Send all {len(rows)} drafted answers from Gmail now? [y/N] ").strip().lower()
+                     in ("y", "yes")):
+            r = gm.approve_all()
+            for x in r["sent"]:
+                console.print(f"  [green]sent[/green] #{x['id']} to {x['to']}" + (f" at ${x['price']:,.0f}" if x["price"] else "")
+                              + (" with the written offer" if x["loi_attached"] else ""))
+            for x in r["failed"]:
+                console.print(f"  [red]not sent #{x['id']}: {x['error']}[/red]")
+            if r["stopped"]:
+                console.print(f"[yellow]Stopped: {r['stopped']}[/yellow]")
+        return
     if args.approve:
         with session_scope() as s:
             try:
@@ -1865,6 +1896,9 @@ def main(argv: list[str] | None = None) -> None:
     gm.add_argument("--dry-run", action="store_true", help="list today's batch without sending")
     gm.add_argument("--approve", metavar="REPLY", help="send the drafted answer to this agent reply (its # from the "
                     "inbox table, or the street)")
+    gm.add_argument("--approve-all", action="store_true",
+                    help="list every drafted answer waiting on you, confirm once, send them all (8-20 s apart)")
+    gm.add_argument("--yes", action="store_true", help="with --approve-all: don't ask (Claude passes it after you say yes)")
     gm.add_argument("--dismiss", metavar="REPLY", help="drop a reply from Action Needed (its # or the street)")
     gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
     sg = sub.add_parser("set-gmail", help="save a new Gmail app password at a hidden prompt (no dashboard) and test it")

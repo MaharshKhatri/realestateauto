@@ -765,6 +765,15 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - A 🔥 reply alert is timed from when the Mac READ the reply (the later of `received_at`, Eastern, and `created_at`,
     UTC → Eastern), not from when the agent sent it: replies read hours late (Mac asleep, no daemon) used to get no
     alert at all because it landed in the past.
+- **One yes for the whole inbox** (learned 2026-11-03, the operator came back to a full inbox):
+  - `gmail --approve-all [--yes]` (`gmail_autopilot.approve_all`) lists every drafted answer waiting on the operator,
+    asks once, and sends each through `approve()` (LOI at the drafted price, CAN-SPAM lines, stop list), 8-20 s
+    apart, stopping at a Gmail failure every e-mail would share.
+  - Rows matched only by a street in the subject, rows with no draft, and agents who asked to stop are left for a look.
+  - `/go` (`.claude/commands/go.md`) is the one command for a Claude Code chat on the Mac: pull, inbox, one question,
+    approve-all, install the daemon if missing, today's batch, calendar sync, a short report.
+  - A cloud session can't use a Mac folder unless the Mac offers it under Remote Control; that isn't available to every
+    account yet, so the desk runs in a Claude Code session on the Mac itself.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

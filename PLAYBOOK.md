@@ -190,6 +190,10 @@ Then delete the old one on the same Google page.
 **Your calendar is the report:** every day an all-day "📊 Deal desk" event says what went out, what came back and
 exactly what waits on you (with the command to run). Replies that need you get a 🔥 event, calls a 📞 / 🔥 follow-up.
 
+**One command for everything:** open Claude Code on the Mac in `~/realestateauto` and type `/go`. It answers every
+agent (you say yes once), makes the Mac hands-free, sends today's new e-mails and tells you what's left. Without
+Claude: `.venv/bin/python manage.py inbox`, then `.venv/bin/python manage.py gmail --approve-all`.
+
 Commands take the street instead of an id: `gmail --approve "108 S Park"`, `gmail --send-offer "54 N 4th"`,
 `gmail --reply "22 Grand" --text "..."`, `gmail --dismiss "12 Juliette"`.
 

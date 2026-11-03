@@ -924,6 +924,53 @@ def approve(session: Session, reply_id: int, *, subject: str | None = None, body
             "loi_attached": bool(files.get("pdf")), "warnings": warnings}
 
 
+def approvable(session: Session) -> tuple[list[InboundReply], list[tuple[InboundReply, str]]]:
+    """Replies `approve_all` may send (a drafted answer, matched by thread or the agent's own address) and the ones it
+    leaves for the operator, with why (no draft, matched only by a street in the subject, the agent asked to stop)."""
+    ok: list[InboundReply] = []
+    held: list[tuple[InboundReply, str]] = []
+    for row in session.scalars(select(InboundReply).where(InboundReply.status == "needs_approval")
+                               .order_by(InboundReply.received_at)):
+        an = row.analysis_json or {}
+        agent = session.get(Contact, row.contact_id) if row.contact_id else None
+        if not (an.get("reply_text") or "").strip():
+            held.append((row, "no drafted answer: call them or dismiss it"))
+        elif row.match_method not in ("thread", "agent_email"):
+            held.append((row, "matched only by the street in the subject: check it's about this listing"))
+        elif agent is not None and agent.dnc_status == "dnc":
+            held.append((row, "the agent asked to stop"))
+        else:
+            ok.append(row)
+    return ok, held
+
+
+def approve_all(*, now: datetime | None = None, smtp_factory: Any = None,
+                ids: list[int] | None = None) -> dict[str, Any]:
+    """Send every drafted answer waiting on the operator (or just `ids`), each through approve() with its gates (LOI
+    at the drafted price, CAN-SPAM lines, stop list), 8-20 seconds apart, stopping at a Gmail failure every e-mail
+    would share. The operator confirms the list once (`gmail --approve-all`) instead of one reply at a time."""
+    lo, hi = (float(x) for x in _cfg().get("reply_pace_seconds", [8, 20]))
+    with session_scope() as s:
+        ok, _ = approvable(s)
+        todo = [r.id for r in ok if ids is None or r.id in ids]
+    out: dict[str, Any] = {"sent": [], "failed": [], "stopped": None}
+    for n, rid in enumerate(todo):
+        if n:
+            _sleep(random.uniform(lo, hi))
+        try:
+            with session_scope() as s:
+                r = approve(s, rid, now=now, smtp_factory=smtp_factory)
+            out["sent"].append(r)
+            log.info("sent %d of %d", len(out["sent"]), len(todo))
+        except ApprovalError as exc:
+            out["failed"].append({"id": rid, "error": str(exc)})
+            cause = exc.__cause__
+            if getattr(cause, "fatal", False):
+                out["stopped"] = str(exc)
+                break
+    return out
+
+
 def dismiss(session: Session, reply_id: int, note: str = "") -> dict[str, Any]:
     row = session.get(InboundReply, reply_id)
     if row is None:
