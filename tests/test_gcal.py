@@ -648,3 +648,52 @@ def test_an_agent_who_asked_for_a_call_gets_the_call_not_a_48_hour_follow_up(db)
     db.flush()
     [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
     assert d.starts_at == call and d.body["summary"].startswith("📞 Call ") and "asked you to call" in d.body["summary"]
+
+
+def test_every_call_event_carries_the_script_and_the_background(db, monkeypatch):
+    """2026-11-03: the operator handles calls only and wants the script and the background on the event itself."""
+    from db.models import Interaction
+    from engine import preflight
+    lead, agent = agent_lead(db)
+    sent, call = datetime(2026, 11, 3, 14, 16), datetime(2026, 11, 3, 17, 15)
+    db.add(Interaction(lead_id=lead.id, contact_id=agent.id, channel="email_smtp", outcome="AGENT_FOLLOWUP_SENT",
+                       occurred_at=sent, next_followup_at=call, debrief_json={"packet": {"kind": "fact_check"}}))
+    lead.next_followup_at = call
+    db.flush()
+    # Numbers the facts support: the three prices, the intro line, the questions, what happens after.
+    monkeypatch.setattr(preflight, "check", lambda lead, today=None: preflight.Preflight(status="GO"))
+    [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
+    text = d.body["description"]
+    v = lead.property.current_valuation
+    assert "--- Call brief ---" in text and f"walk away above ${v.mao_aggressive:,.0f}" in text
+    assert "Hi Pat," in text and "not a realtor" in text and "what the seller needs to net" in text
+    assert f"lead {lead.id}: send the offer" in text and "never promise to stop a foreclosure" in text
+    # A pre-flight HOLD (a wrong parcel): no price on the call, only the facts to get.
+    monkeypatch.setattr(preflight, "check", lambda lead, today=None: preflight.Preflight(
+        status="HOLD", issues=["wrong parcel: the MLS listing is 10.4 miles from the parcel"]))
+    [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
+    text = d.body["description"]
+    assert "Don't name a price on this call: wrong parcel" in text and "walk away above" not in text
+    assert "bedrooms, baths and square footage" in text
+
+
+def test_from_the_cloud_desk_events_carry_no_dead_dashboard_link(db, monkeypatch):
+    lead, agent = agent_lead(db)
+    ao.record_sent(db, lead, offer_packet(lead, agent), "email", now=datetime(2026, 11, 3, 14, 15, tzinfo=ET))
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 16))
+    assert "127.0.0.1" not in d.body["description"] and "source" not in d.body
+    assert "--- Call brief ---" in d.body["description"]
+
+
+def test_a_mac_that_handed_off_never_writes_to_the_calendar(db, google, monkeypatch, tmp_path):
+    """2026-11-03: after the handoff the idle Mac's background sync overwrote the cloud's 📊 desk report with its stale
+    copy of the database. A handed-off computer is "not connected", and a sync there talks to no one."""
+    lead, agent = agent_lead(db)
+    ao.record_sent(db, lead, offer_packet(lead, agent), "email", now=datetime(2026, 11, 3, 14, 15, tzinfo=ET))
+    flag = tmp_path / "runtime_cloud.json"
+    flag.write_text("{}")
+    monkeypatch.setattr(gs, "HANDOFF_FLAG", flag)
+    assert gs.configured() is False
+    r = gs.sync(db, now=datetime(2026, 11, 3, 14, 16))
+    assert "cloud desk" in (r.error or "") and google.calls == 0 and not google.live()

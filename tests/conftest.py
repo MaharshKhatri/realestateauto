@@ -14,6 +14,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 # at paths that never exist (tests/test_gcal.py swaps in its own token and a fake Google service).
 os.environ["WHOLESALING_GCAL_TOKEN"] = str(ROOT / "tests" / ".no-calendar-token.json")
 os.environ["WHOLESALING_GCAL_CREDENTIALS"] = str(ROOT / "tests" / ".no-calendar-credentials.json")
+# ... and a Mac that handed the desk to the cloud (data/runtime_cloud.json) still runs the calendar tests.
+os.environ["WHOLESALING_HANDOFF_FLAG"] = str(ROOT / "tests" / ".no-handoff-flag.json")
 # ... and no test may open the operator's Gmail: IMAP goes to a closed local port (tests/test_gmail_autopilot.py
 # serves its messages from a fake connection instead).
 os.environ["WHOLESALING_IMAP_HOST"] = "127.0.0.1"

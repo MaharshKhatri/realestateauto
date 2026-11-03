@@ -153,3 +153,26 @@ def test_the_cloud_waits_for_the_handoff_then_runs_from_its_own_encrypted_state(
 def test_without_its_secrets_the_cloud_desk_does_nothing(monkeypatch, tmp_path):
     monkeypatch.delenv("DESK_KEY", raising=False)
     assert cd.cloud_run(root=tmp_path) == {"state": "not_configured"}
+
+
+def test_after_a_call_claude_can_send_the_offer_or_close_the_reply_with_ids_only(db, monkeypatch, tmp_path):
+    """The cloud chat reaches the desk only through the public workflow inputs: a lead # ("send the offer") or a reply #
+    ("handled on a call"). No price travels, so the offer is the desk's own, under the walk-away."""
+    from db.models import InboundReply
+    from engine import autopilot
+    from tests.factories import make_lead
+    lead = make_lead(db)
+    row = InboundReply(message_id="<r1@example.test>", lead_id=lead.id, status="needs_approval")
+    db.add(row)
+    db.commit()
+    sent = []
+    monkeypatch.setattr(autopilot, "send", lambda s, lead_id, channel, **kw: sent.append((lead_id, channel)) or
+                        {"kind": "touch2", "touch": 2, "to": "agent@example.test"})
+    early = datetime(2026, 11, 3, 7, 0)                        # before the inbox hours: only the task itself runs
+    kw = dict(now=early, smtp_factory=None, user=ME, pw="p", desk_key=KEY, root=tmp_path)
+    assert cd._work("offer", approve_id=None, lead_id=lead.id, **kw)["offer_sent"] == 1
+    assert sent == [(lead.id, "smtp")]
+    assert cd._work("dismiss", approve_id=row.id, **kw)["dismissed"] == 1
+    db.refresh(row)
+    assert row.status == "dismissed" and row.note == "handled on a call"
+    assert cd._work("dismiss", approve_id=row.id, **kw)["dismiss_error"] == "ApprovalError"     # only once

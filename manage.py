@@ -513,6 +513,12 @@ def cmd_setup_calendar(args: argparse.Namespace) -> None:
                       f"{info['removed_old']} old events there; they are re-created here now.")
     if info.get("cleanup_error"):
         console.print(f"[yellow]{info['cleanup_error']}[/yellow]")
+    if gcal_sync.handed_off():
+        # The cloud desk owns the calendar; this Mac's database is a stale copy. The daemon mails the new sign-in
+        # to the cloud within 30 minutes (engine/cloud_desk.mac_handoff).
+        console.print("Saved. Leave this Mac awake for about 30 minutes: it passes the new sign-in to the cloud desk, "
+                      "which keeps your calendar.")
+        return
     with session_scope() as s:
         r = gcal_sync.sync(s)
     _print_calendar_sync(r)
@@ -551,7 +557,7 @@ def cmd_cloud(args: argparse.Namespace) -> None:
         logging.basicConfig(level=logging.WARNING, handlers=[logging.FileHandler(Path(tempfile.gettempdir()) / "desk.log")],
                             force=True)
         try:
-            r = cloud_desk.cloud_run(args.task, approve_id=args.approve)
+            r = cloud_desk.cloud_run(args.task, approve_id=args.approve, lead_id=args.lead)
         except Exception as exc:               # noqa: BLE001 - one line, no message text (it may hold addresses)
             print(_json.dumps({"state": "error", "error": type(exc).__name__}))
             raise SystemExit(1) from None
@@ -1979,8 +1985,10 @@ def main(argv: list[str] | None = None) -> None:
     gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
     cl = sub.add_parser("cloud", help="the cloud desk (GitHub Actions): --run (the workflow), --handoff (Mac), status")
     cl.add_argument("--run", action="store_true", help="one cloud run (what .github/workflows/desk.yml calls)")
-    cl.add_argument("--task", default="run", choices=["run", "refresh", "approve"])
-    cl.add_argument("--approve", type=int, metavar="REPLY_ID", help="with --task approve: send this drafted answer")
+    cl.add_argument("--task", default="run", choices=["run", "refresh", "approve", "dismiss", "offer"])
+    cl.add_argument("--approve", type=int, metavar="REPLY_ID",
+                    help="with --task approve: send this drafted answer; with --task dismiss: stop it waiting")
+    cl.add_argument("--lead", type=int, metavar="LEAD_ID", help="with --task offer: send this lead's offer e-mail now")
     cl.add_argument("--handoff", action="store_true", help="Mac: hand the desk to the cloud now if it's ready")
     sg = sub.add_parser("set-gmail", help="save a new Gmail app password at a hidden prompt (no dashboard) and test it")
     sg.add_argument("--email", help="the Gmail address (default: the one already saved)")

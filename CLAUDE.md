@@ -826,8 +826,27 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     - Accepts, unclassified questions and signature numbers stay for the operator.
     - Their calendar alert is a call ("📞 COUNTER-OFFER RECEIVED: call <agent> about <street>" / "📞 Call <agent>
       about <street>: they replied"), since the operator handles calls only.
-  - **Approving one reply from a cloud Claude session:** `workflow_dispatch` with task `approve` and the reply #
-    (the inputs are public: ids only, never text).
+  - **Acting from a cloud Claude session:** `workflow_dispatch` (the inputs are public: ids only, never text or a
+    price):
+    - task `approve` + reply #: send the drafted answer;
+    - task `dismiss` + reply #: a call settled it;
+    - task `offer` + lead #: the lead's next e-mail, the same as `gmail --send-offer` (Touch 2 at the desk's own
+      price, with the Offer Summary and the LOI, in the agent's thread).
+  - **After the handoff the Mac never writes to the calendar** (learned 2026-11-03: its background sync overwrote
+    the cloud's 📊 report with its stale copy). `gcal_sync.handed_off()` reads `data/runtime_cloud.json`: then
+    `configured()` is False and `sync()` talks to no one. `setup-calendar` on the Mac only saves the new sign-in,
+    and the daemon mails it to the cloud.
+  - **Every call event carries a call brief** (`gcal_sync.call_brief`): reply calls, "call me" follow-ups and
+    48-hour follow-ups. It holds:
+    - the house (beds / baths / sqft / year / days on market / ask);
+    - our open / aim / walk-away, or "Don't name a price" with the pre-flight reason, never above an offer
+      already sent;
+    - the intro line and the questions for that fact kind (condo, units, basics);
+    - the never-say rules;
+    - "tell Claude in the chat what they said".
+
+    48-hour follow-ups say the call is optional (the morning batch e-mails the nudge). From the cloud, events
+    carry no dashboard link, and the 📊 report says "by the cloud desk".
 - **Google Voice** (learned 2026-11-03, the operator's number is Google Voice on the business Gmail):
   - Voice has no API for software to send texts or place calls; automating its web app would break Google's terms
     and "never impersonate a browser". Automated texts / AI calls to cell phones are also off-limits (TCPA; texts are

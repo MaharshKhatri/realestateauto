@@ -67,6 +67,8 @@ SCOPES = ["https://www.googleapis.com/auth/calendar.events"]      # events on yo
 IDENTITY_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
 CREDENTIALS = Path(os.environ.get("WHOLESALING_GCAL_CREDENTIALS") or ROOT / "config" / "credentials.json")
 TOKEN = Path(os.environ.get("WHOLESALING_GCAL_TOKEN") or ROOT / "config" / "token.json")
+# On a Mac that handed the desk to the cloud (engine/cloud_desk.py): its database is a stale copy from that moment.
+HANDOFF_FLAG = Path(os.environ.get("WHOLESALING_HANDOFF_FLAG") or ROOT / "data" / "runtime_cloud.json")
 STATE_KEY = "gcal"
 WORKER_FLAG = "gcal_worker"            # session.info flag: this session belongs to the sync itself (no re-trigger)
 TERMINAL = {LeadStage.DEAD, LeadStage.DO_NOT_CONTACT, LeadStage.CLOSED}
@@ -129,6 +131,11 @@ def lead_link(lead_id: int) -> str:
     return f"{dashboard_url()}/leads/{lead_id}"
 
 
+def card_link(lead_id: int) -> str | None:
+    """The lead card link, only where a dashboard can exist (not from the cloud desk)."""
+    return None if in_cloud() else lead_link(lead_id)
+
+
 def _clock(key: str, default: str) -> time:
     hh, _, mm = str(cfg().get(key) or default).partition(":")
     return time(int(hh), int(mm or 0))
@@ -139,8 +146,19 @@ def now_local() -> datetime:
     return datetime.now(ZoneInfo(tz_name())).replace(tzinfo=None)
 
 
+def handed_off() -> bool:
+    """This computer handed the desk to the cloud: it never writes to the calendar again (2026-11-03: the idle Mac's
+    background sync overwrote the cloud's fresh 📊 desk report with its stale copy of the database)."""
+    return HANDOFF_FLAG.exists()
+
+
+def in_cloud() -> bool:
+    """The desk runs in GitHub Actions (.github/workflows/desk.yml): there is no dashboard to link to."""
+    return os.environ.get("GITHUB_ACTIONS") == "true"
+
+
 def configured() -> bool:
-    return bool(cfg().get("enabled", True)) and TOKEN.is_file()
+    return bool(cfg().get("enabled", True)) and TOKEN.is_file() and not handed_off()
 
 
 def event_id(key: str) -> str:
@@ -295,6 +313,87 @@ def _last_scheduling_touch(session: Session, lead: Lead) -> Interaction | None:
                           .order_by(Interaction.occurred_at.desc(), Interaction.id.desc()).limit(1))
 
 
+def _listing_for(session: Session, lead: Lead) -> Any:
+    """The MLS listing behind a lead: the one its STALE_LISTING signal names (a wrong-parcel link included), else the
+    property's newest listing."""
+    from db.models import Listing
+    p = lead.property
+    refs = [sg.source_ref for sg in p.signals if sg.signal_type == "STALE_LISTING" and sg.source_ref]
+    if refs:
+        lst = session.scalar(select(Listing).where(Listing.source_ref.in_(refs)).limit(1))
+        if lst is not None:
+            return lst
+    return max(p.listings, key=lambda x: x.last_seen_at or datetime.min, default=None)
+
+
+_ASKS = {
+    "condo": "what same-size units in the building sold for lately, the monthly HOA and any special assessment, and "
+             "what the seller needs to net",
+    "units": "the rent roll (rents, lease end dates, which units are vacant at closing) and what the seller needs to net",
+    "basics": "bedrooms, baths and square footage, the condition (roof, heating, kitchen, baths), and what the seller "
+              "needs to net",
+}
+
+
+def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Place, *,
+               ask_shown: bool = False) -> list[str]:
+    """The script and the background on every call event (2026-11-03: the operator handles calls only and wants both
+    on the event): the house, our numbers or why there's no price yet, what to say and ask, what happens after.
+    Business facts only: the street (or "lead #N" when suppressed), the ask, our numbers, the agent's first name."""
+    from engine import preflight
+    from engine.human_copy import operator
+    from engine.reply_negotiator import fact_check_issue
+    try:
+        pf = preflight.check(lead)
+        fact = fact_check_issue(pf)
+    except Exception:                               # noqa: BLE001 - a brief never breaks the calendar
+        log.exception("call brief: pre-flight failed for lead %s", lead.id)
+        fact = ("basics", "pre-flight didn't run")
+    lst = _listing_for(session, lead)
+    house = []
+    if lst is not None:
+        if lst.beds:
+            house.append(f"{lst.beds:g} bed")
+        if lst.baths:
+            house.append(f"{lst.baths:g} bath")
+        if lst.sqft:
+            house.append(f"{lst.sqft:,} sq ft")
+        if lst.year_built:
+            house.append(f"built {lst.year_built}")
+        if lst.days_on_market:
+            listed = lst.list_date.date() if isinstance(lst.list_date, datetime) else lst.list_date
+            dom = (date.today() - listed).days if isinstance(listed, date) else lst.days_on_market
+            house.append(f"{max(dom, lst.days_on_market)} days on the market")
+    if place.ask and not ask_shown:
+        house.append(f"asking {_money(place.ask)}")
+    v = lead.property.current_valuation
+    written = f"your written offer ({_money(lead.offer_amount)})" if lead.offer_amount else None
+    if fact or v is None or not v.mao_aggressive:
+        kind, issue = fact or ("basics", "no numbers for this house yet")
+        numbers = (f"Don't go above {written} on this call: {issue}." if written else
+                   f"Don't name a price on this call: {issue}.") + " Get the facts first; the desk prices it after."
+    else:
+        kind = "basics"
+        numbers = (f"Your numbers: open at {_money(v.anchor_offer)}, aim for {_money(v.mao_conservative)}, "
+                   f"walk away above {_money(v.mao_aggressive)}."
+                   + (f" Already sent: {written}." if written and not ask_shown else ""))
+    op = operator()
+    first = (_name(agent.name).split() or ["there"])[0] if agent is not None and agent.name else "there"
+    me = op["first"] or "your name"
+    return [
+        "--- Call brief ---",
+        "The house: " + ", ".join(house) + "." if house else None,
+        numbers,
+        f'Say: "Hi {first}, this is {me}. I\'m an investor buying for myself or a partner investor, not a realtor, '
+        f'calling about {place.street}."',
+        f"Ask: {_ASKS.get(kind, _ASKS['basics'])}; any offers so far, and is it empty?",
+        "Never go above the walk-away, never offer to pay the agent, never promise to stop a foreclosure. If they want "
+        "it in writing, say you'll e-mail it today.",
+        f'After the call, tell Claude in the chat what they said (for example "lead {lead.id}: send the offer", or '
+        f"their number and the facts). The desk sends the written offer in their Gmail thread.",
+    ]
+
+
 def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
     due = lead.next_followup_at
     if due is None or lead.status_stage in TERMINAL | CONTRACT_STAGES:
@@ -326,19 +425,24 @@ def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired
                      if asked_call else
                      f"Follow-up call to the listing agent, {hours} hours after your {touch} e-mail ({_when(sent)})."
                      if touch and unmoved and sent else "Follow-up with the listing agent.")
+        nudge = None if asked_call else ("Optional call. If you don't call, the desk e-mails them a short nudge by "
+                                         "itself in its next morning batch.")
         offer = f"Your offer: {_money(lead.offer_amount)}" if touch == "offer" and lead.offer_amount else None
-        lines = [lead_line, *_agent_lines(session, agent), f"Asking price: {_money(place.ask)}" if place.ask else None,
-                 offer, f"Open the lead card: {lead_link(lead.id)}",
-                 "Call 8am-9pm Eastern. If they asked you to stop, don't call: the card checks the do-not-call lists."]
+        card = card_link(lead.id)
+        lines = [lead_line, nudge, *_agent_lines(session, agent),
+                 f"Asking price: {_money(place.ask)}" if place.ask else None, offer,
+                 f"Open the lead card: {card}" if card else None,
+                 "Call 8am-9pm Eastern. If they asked you to stop, don't call: the card checks the do-not-call lists.",
+                 *call_brief(session, lead, agent, place, ask_shown=True)]
         kind = "followup"
     else:
         summary = f"📞 Call back: {place.street}"
         what = (inter.outcome or "").replace("_", " ").lower() if inter else "a scheduled follow-up"
         lines = [f"Scheduled call-back ({what}" + (f", {_when(sent)}" if sent else "") + ").",
                  "The number is on the lead card, behind the do-not-call and calling-hours checks.",
-                 f"Open the lead card: {lead_link(lead.id)}"]
+                 (f"Open the lead card: {lead_link(lead.id)}" if card_link(lead.id) else None)]
         kind = "callback"
-    return [Desired(key, kind, lead.id, _body(kind, summary, lines, s, e, reminders=[10], link=lead_link(lead.id)),
+    return [Desired(key, kind, lead.id, _body(kind, summary, lines, s, e, reminders=[10], link=card_link(lead.id)),
                     start)]
 
 
@@ -379,13 +483,15 @@ def reply_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
                  f"Their number: {_money(row.counter_amount)}" if row.counter_amount else None,
                  f"Your walk-away: {_money(n.get('mao_walkaway'))}" if n.get("mao_walkaway") else None,
                  f"Why it waits for you: {row.note}" if row.note else None, *_agent_lines(session, agent),
-                 "Call them: hear what they need, never go above your walk-away, and if they want it in writing, "
-                 "tell Claude what they said (the desk sends it in their Gmail thread).",
                  (f"Or text back from your phone: {(row.analysis_json or {}).get('sms_text')}"
                   if (row.match_method or "").startswith("voice") and (row.analysis_json or {}).get("sms_text")
-                  else None)]
+                  else None),
+                 f'Or skip the call: say "send #{row.id}" to Claude in the chat and the drafted answer goes out.'
+                 if (row.analysis_json or {}).get("reply_text") and not (row.match_method or "").startswith("voice")
+                 else None,
+                 *(call_brief(session, lead, agent, place) if phone else [])]
         out.append(Desired(f"reply:{lead.id}:r{row.id}", "reply", lead.id,
-                           _body("reply", summary, lines, s, e, reminders=[0], link=lead_link(lead.id)), start))
+                           _body("reply", summary, lines, s, e, reminders=[0], link=card_link(lead.id)), start))
     return out
 
 
@@ -394,7 +500,7 @@ def contract_events(session: Session, lead: Lead, now: datetime) -> list[Desired
     if not lead.contract_date or lead.status_stage in {LeadStage.DEAD, LeadStage.DO_NOT_CONTACT}:
         return []
     place = _place(session, lead)
-    link = lead_link(lead.id)
+    link = card_link(lead.id)
     review_days = int(settings().get("compliance", {}).get("attorney_review_business_days", 3))
     day3 = nj_business_days_after(lead.contract_date, review_days)
     steps = {m.milestone: m for m in milestones(session, lead)}
@@ -410,7 +516,7 @@ def contract_events(session: Session, lead: Lead, now: datetime) -> list[Desired
                  "and nothing is paid for (title, inspection) before it ends with no disapproval.",
                  "Confirm with your attorney that no disapproval was sent, then mark it done in Closing & Money.",
                  f"Contract price: {_money(lead.offer_amount)}" if lead.offer_amount else None,
-                 f"Open the lead card: {link}"]
+                 (f"Open the lead card: {link}" if link else None)]
         out.append(Desired(f"review:{lead.id}:{lead.contract_date:%Y%m%d}", "attorney_review", lead.id,
                            _body("attorney_review", f"⚠️ ATTORNEY REVIEW ENDS: {place.street}", lines, s, e,
                                  reminders=[1440, 180], link=link), start))
@@ -420,7 +526,7 @@ def contract_events(session: Session, lead: Lead, now: datetime) -> list[Desired
             s, e = _timed(start, 30)
             lines = ["The owner's 10-business-day cancellation right under the Foreclosure Rescue Fraud Prevention Act "
                      "runs through today. No deed is signed and nothing is marketed before it ends.",
-                     f"Open the lead card: {link}"]
+                     (f"Open the lead card: {link}" if link else None)]
             out.append(Desired(f"frfpa:{lead.id}:{lead.contract_date:%Y%m%d}", "attorney_review", lead.id,
                                _body("attorney_review", f"⚠️ FRFPA CANCELLATION ENDS: {place.street}", lines, s, e,
                                      reminders=[1440, 180], link=link), start))
@@ -433,7 +539,7 @@ def contract_events(session: Session, lead: Lead, now: datetime) -> list[Desired
             continue                      # overdue steps are flagged in the cockpit and the call queue
         s, e = _timed(start, 15)
         lines = [f"Contract-to-close deadline for {place.street}: {LABELS.get(key, key)}.",
-                 "Mark it done in Closing & Money when it's finished.", f"Open the lead card: {link}"]
+                 "Mark it done in Closing & Money when it's finished.", (f"Open the lead card: {link}" if link else None)]
         out.append(Desired(f"milestone:{lead.id}:{key}", "milestone", lead.id,
                            _body("milestone", f"📋 {LABELS.get(key, key)}: {place.street}", lines, s, e,
                                  reminders=[1440, 15], link=link), start))
@@ -471,11 +577,11 @@ def sale_event(session: Session, lead: Lead, today: date) -> Desired | None:
              "and the seller's attorney.",
              f"CivilView: {md.get('detail_url_at_scrape') or sig.source_url}"
              if (md.get("detail_url_at_scrape") or sig.source_url) and not place.redacted else None,
-             f"Open the lead card: {lead_link(lead.id)}"]
+             (f"Open the lead card: {lead_link(lead.id)}" if card_link(lead.id) else None)]
     s, e = _all_day(d)
     return Desired(f"sale:{lead.id}", "sheriff_sale", lead.id,
                    _body("sheriff_sale", f"🚨 SHERIFF SALE AUCTION: {place.street} ({county} County)", lines, s, e,
-                         reminders=[2340, 900], link=lead_link(lead.id), transparent=True),
+                         reminders=[2340, 900], link=card_link(lead.id), transparent=True),
                    datetime.combine(d, time(0)))
 
 
@@ -524,15 +630,28 @@ def reconnect_event(session: Session, now: datetime) -> Desired | None:
     extra = "" if target_calendar() == "primary" else f" --calendar {target_calendar()}"
     s, e = _timed(start, 15)
     lines = ["Google ends this app's calendar sign-in 7 days after you connect it while the app is in 'Testing'. "
-             "After that, new follow-ups and deadlines stop reaching this calendar until you sign in again.",
-             "Takes one minute in Terminal:",
+             "After that, new calls and deadlines stop reaching this calendar until you sign in again.",
+             "1) So it never ends again (2 minutes, any browser): console.cloud.google.com, signed in as the account "
+             "that made the app → Google Auth platform → Audience → Publish app → Confirm (unverified is fine for "
+             "your own account).",
+             "2) Sign in once more (1 minute, on your Mac): open Claude Code in your realestateauto folder and say "
+             "\"reconnect my calendar\". Or in Terminal:",
              f"cd ~/realestateauto && .venv/bin/python manage.py setup-calendar --account {account}{extra}",
-             "To never do this again: console.cloud.google.com → Google Auth platform → Audience → Publish app "
-             "(unverified is fine for your own account), then run the command above once more and set "
-             "calendar.reconnect_reminder_days: 0."]
+             "Leave the Mac awake about 30 minutes afterwards: it passes the new sign-in to the cloud desk by itself.",
+             "Once the app is published, this reminder can go: tell Claude \"the calendar app is published\"."]
     return Desired(f"reconnect:{connected:%Y%m%d%H%M}", "reconnect", None,
                    _body("reconnect", "🔑 Re-connect Google Calendar sync (sign-in ends tomorrow)", lines, s, e,
-                         reminders=[0, 120], link=f"{dashboard_url()}/"), start)
+                         reminders=[0, 120], link=None if in_cloud() else f"{dashboard_url()}/"), start)
+
+
+def note_reconnected(session: Session, when: datetime) -> None:
+    """The cloud desk got a new sign-in from the Mac (a config bundle): the next 🔑 reminder counts from it."""
+    row = session.get(SwarmState, STATE_KEY)
+    if row is None:
+        row = SwarmState(key=STATE_KEY, value_json={})
+        session.add(row)
+    row.value_json = {**(row.value_json or {}), "connected_at": when.isoformat(timespec="seconds")}
+    session.flush()
 
 
 def daily_goal_event(session: Session, today: date) -> Desired:
@@ -544,8 +663,7 @@ def daily_goal_event(session: Session, today: date) -> Desired:
     s, e = _timed(start, 30)
     lines = [f"Today's outreach: {goal} new listing agents, e-mailed from your Gmail 25-60 seconds apart (urgent "
              "listed foreclosures, then due follow-ups, then stale MLS fixers).",
-             "With the autopilot daemon installed with --daily-openers, your Mac sends them by itself at 10:30 and "
-             "there is nothing to do here. Otherwise open Claude Code in ~/realestateauto and type /daily.",
+             "The desk sends them by itself at 10:30 on weekdays: there is nothing to do here.",
              "Replies that need you and calls to make each get their own event on this calendar."]
     return Desired("daily_goal", "daily_goal", None,
                    _body("daily_goal", f"🎯 Daily outreach: {goal} agent e-mails (autopilot)", lines,
@@ -579,7 +697,7 @@ def desk_status_event(session: Session, now: datetime) -> Desired | None:
     replies_today = sum(1 for r in rows if r["received_at"] and str(r["received_at"])[:10] == now.date().isoformat())
     summary = (f"📊 Deal desk: {len(sent_rows)} sent · {replies_today} repl{'y' if replies_today == 1 else 'ies'} · "
                f"{len(waiting)} waiting on you")
-    lines = [f"Updated {_when(now)} by your Mac.", ""]
+    lines = [f"Updated {_when(now)} by {'the cloud desk' if in_cloud() else 'your Mac'}.", ""]
     if waiting:
         lines.append(f"WAITING ON YOU ({len(waiting)}):")
         for r in waiting:
@@ -986,6 +1104,9 @@ def sync(session: Session, lead_ids: set[int] | None = None, *, cal: CalendarAPI
     the error is reported and the rows stay queued."""
     session.info[WORKER_FLAG] = True
     out = SyncResult()
+    if cal is None and handed_off():
+        out.error = "the cloud desk keeps the calendar now (this computer's copy of the database is out of date)"
+        return out
     with _sync_lock:
         connected = cal is not None or configured()
         try:

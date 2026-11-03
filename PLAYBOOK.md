@@ -199,6 +199,11 @@ three times:
 The next time your Mac is open, it hands its database to the cloud by itself and goes quiet. Calls are on your
 calendar; everything else happens without you.
 
+**Every 📞 event is the call sheet:** the house, your numbers (open / aim / walk away, or "don't name a price" and
+why), the first line to say, what to ask and what never to say. After the call, tell Claude in the chat what they
+said ("lead 1368: send the offer", "they took another offer"): it sends the written offer or closes the reply through
+the cloud desk.
+
 **Google Voice:** in Voice (voice.google.com → ⚙️ Settings, signed in as your business Gmail) turn on Messages →
 "Forward messages to email" and Voicemail → "Get voicemail via email". When an agent texts you or leaves a voicemail,
 the desk reads it, puts a 📞 call on your calendar and drafts the text back for you (texts are sent from your phone:

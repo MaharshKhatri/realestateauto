@@ -11,10 +11,13 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "run | refresh | approve"
+        description: "run | refresh | approve | dismiss | offer"
         default: run
       reply:
-        description: "with approve: the reply # to send"
+        description: "with approve / dismiss: the reply #"
+        default: ""
+      lead:
+        description: "with offer: the lead # whose offer e-mail goes out now"
         default: ""
 
 permissions:
@@ -66,12 +69,12 @@ jobs:
         env:
           TASK: ${{ github.event.schedule == '17 10 * * *' && 'refresh' || github.event.inputs.task || 'run' }}
           REPLY: ${{ github.event.inputs.reply }}
+          LEAD: ${{ github.event.inputs.lead }}
         run: |
-          if [ -n "$REPLY" ]; then
-            python manage.py cloud --run --task "$TASK" --approve "$REPLY" 2>/dev/null
-          else
-            python manage.py cloud --run --task "$TASK" 2>/dev/null
-          fi
+          set -- --task "$TASK"
+          if [ -n "$REPLY" ]; then set -- "$@" --approve "$REPLY"; fi
+          if [ -n "$LEAD" ]; then set -- "$@" --lead "$LEAD"; fi
+          python manage.py cloud --run "$@" 2>/dev/null
       - name: Save the desk's encrypted state
         if: always() && steps.cfg.outputs.ok == 'true' && hashFiles('data/cloud/state.enc') != ''
         uses: actions/cache/save@v4

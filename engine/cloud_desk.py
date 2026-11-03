@@ -318,7 +318,7 @@ def _state_set(**values: Any) -> None:
 
 
 def cloud_run(task: str = "run", *, root: Path = ROOT, now: datetime | None = None, smtp_factory: Any = None,
-              approve_id: int | None = None) -> dict[str, Any]:
+              approve_id: int | None = None, lead_id: int | None = None) -> dict[str, Any]:
     """One GitHub Actions run. Returns counts only (the run log is public)."""
     env = _env()
     if env is None:
@@ -346,13 +346,24 @@ def cloud_run(task: str = "run", *, root: Path = ROOT, now: datetime | None = No
         _state_set(config_stamp=cfg[0])
         _reload(root)
         out["config"] = cfg[0]
+        if (root / "config" / "token.json").exists():
+            # A new calendar sign-in from the Mac: the 7-day 🔑 reminder counts from now, not from the old one.
+            from db.database import session_scope
+            from engine import gcal_sync
+            with session_scope() as s:
+                gcal_sync.note_reconnected(s, gm_now(now))
     try:
-        out.update(_work(task, approve_id=approve_id, now=now, smtp_factory=smtp_factory, user=user, pw=pw,
-                         desk_key=desk_key, root=root))
+        out.update(_work(task, approve_id=approve_id, lead_id=lead_id, now=now, smtp_factory=smtp_factory, user=user,
+                         pw=pw, desk_key=desk_key, root=root))
     finally:
         state.parent.mkdir(parents=True, exist_ok=True)
         state.write_bytes(lock(make_bundle(root, db=True, preset=1), desk_key))     # fast: it's rewritten every run
     return out
+
+
+def gm_now(now: datetime | None) -> datetime:
+    from engine.gmail_autopilot import now_eastern
+    return now_eastern(now)
 
 
 def _reload(root: Path) -> None:
@@ -363,7 +374,7 @@ def _reload(root: Path) -> None:
 
 
 def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_factory: Any, user: str, pw: str,
-          desk_key: str, root: Path) -> dict[str, Any]:
+          desk_key: str, root: Path, lead_id: int | None = None) -> dict[str, Any]:
     from db.database import session_scope
     from engine import gcal_sync
     from engine import gmail_autopilot as gm
@@ -380,6 +391,25 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             out["approved"] = 1
         except (gm.ApprovalError, RuntimeError) as exc:
             out["approve_error"] = type(exc).__name__
+    if task == "dismiss" and approve_id:
+        # After a call that settled it ("they took another offer", "I'll call back"): the reply stops waiting.
+        try:
+            with session_scope() as s:
+                gm.dismiss(s, approve_id, "handled on a call")
+            out["dismissed"] = 1
+        except gm.ApprovalError as exc:
+            out["dismiss_error"] = type(exc).__name__
+    if task == "offer" and lead_id:
+        # After a call ("send it in writing"): the lead's next e-mail, the same one `gmail --send-offer` sends (Touch 2
+        # at the desk's own opening price, with the Offer Summary and the LOI, in the agent's thread). Only ids travel
+        # through the public workflow inputs; the price never does, so nothing here can go above the walk-away.
+        from engine import autopilot
+        try:
+            with session_scope() as s:
+                r = autopilot.send(s, lead_id, "smtp", now=now, smtp_factory=smtp_factory)
+            out["offer_sent"] = 1 if r.get("kind") else 0
+        except (autopilot.AutopilotError, gm.ApprovalError, RuntimeError) as exc:
+            out["offer_error"] = type(exc).__name__
     if 8 <= t.hour < 21:
         r = gm.run_inbox(send=gm.in_send_hours(now), now=now, smtp_factory=smtp_factory)
         p = r.get("poll") or {}
