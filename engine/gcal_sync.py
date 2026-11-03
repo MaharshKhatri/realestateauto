@@ -692,7 +692,13 @@ def desk_status_event(session: Session, now: datetime) -> Desired | None:
     sent_rows = list(session.scalars(select(Interaction).where(
         Interaction.occurred_at >= day0, Interaction.channel.in_(("email_smtp", "email_gmail")),
         Interaction.outcome.in_(tuple(AGENT_TOUCH_WORDS)))))
-    offers = [i for i in sent_rows if i.outcome == "OFFER_SENT_TO_AGENT"]
+    def once(items: list[Any], lead: Callable[[Any], Any]) -> list[Any]:
+        """One line per house: a second reply or a re-sent offer on the same lead isn't a second house."""
+        seen: set[Any] = set()
+        return [x for x in items if not (lead(x) in seen or seen.add(lead(x)))]
+
+    offers = once(sorted((i for i in sent_rows if i.outcome == "OFFER_SENT_TO_AGENT"), key=lambda i: i.occurred_at,
+                         reverse=True), lambda i: i.lead_id)
     openers = sum(1 for i in sent_rows if i.outcome == "AGENT_OPENER_SENT")
     replies_today = sum(1 for r in rows if r["received_at"] and str(r["received_at"])[:10] == now.date().isoformat())
     summary = (f"📊 Deal desk: {len(sent_rows)} sent · {replies_today} repl{'y' if replies_today == 1 else 'ies'} · "
@@ -715,11 +721,12 @@ def desk_status_event(session: Session, now: datetime) -> Desired | None:
         lines.append("OFFERS SENT TODAY: " + "; ".join(
             f"{street(i.lead_id, '')} {_money(i.lead.offer_amount) if i.lead and i.lead.offer_amount else ''}".strip()
             for i in offers[:15]))
-    answered = [r for r in rows if r["status"] in ("auto_sent", "approved") and not r["offer_sent"]]
+    answered = once([r for r in rows if r["status"] in ("auto_sent", "approved") and not r["offer_sent"]],
+                    lambda r: r["lead_id"])
     if answered:
         lines.append("ANSWERED WITHOUT A PRICE: " + "; ".join(f"{street(r['lead_id'], r['address'])} ({r['you_do']})"
                                                             for r in answered[:10]))
-    calls = [r for r in rows if "call them" in r["you_do"]]
+    calls = once([r for r in rows if "call them" in r["you_do"]], lambda r: r["lead_id"])
     if calls:
         lines.append("CALL: " + "; ".join(f"{street(r['lead_id'], r['address'])} {r['phone'] or ''}".strip()
                                           for r in calls))
