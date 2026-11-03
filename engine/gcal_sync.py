@@ -308,15 +308,23 @@ def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired
     minutes = int(cfg().get("followup_minutes", 15))
     sent = inter.occurred_at if inter else None
     unmoved = inter is not None and inter.next_followup_at == due
-    start = callable_slot(sent + timedelta(hours=hours), minutes) if touch and sent and unmoved else due
+    # "Please call me": the answer e-mail set the follow-up to the next call slot, hours (not 48 h) after it went out.
+    # That call is the event, at that time (2026-11-03: two "call me" agents landed on the calendar two days late).
+    # (record_sent's own follow-up is two business days out, never under a day: only a call slot is this close)
+    asked_call = bool(touch and sent and sent < due < sent + timedelta(hours=20))
+    start = callable_slot(sent + timedelta(hours=hours), minutes) if touch and sent and unmoved and not asked_call \
+        else due
     if start < now:
         return []           # an overdue follow-up is on today's call list; a reminder in the past helps no one
     key = f"followup:{lead.id}:i{inter.id}" if inter else f"followup:{lead.id}:{due:%Y%m%d%H%M}"
     place = _place(session, lead)
     s, e = _timed(start, minutes)
     if agent is not None:
-        summary = f"🔥 Follow Up: {place.street} Agent ({_name(agent.name) or 'listing agent'})"
-        lead_line = (f"Follow-up call to the listing agent, {hours} hours after your {touch} e-mail ({_when(sent)})."
+        summary = (f"📞 Call {_name(agent.name) or 'the listing agent'} about {place.street} (they asked you to call)"
+                   if asked_call else f"🔥 Follow Up: {place.street} Agent ({_name(agent.name) or 'listing agent'})")
+        lead_line = (f"They asked you to call. Your e-mail answer went out {_when(sent)}; this is the call."
+                     if asked_call else
+                     f"Follow-up call to the listing agent, {hours} hours after your {touch} e-mail ({_when(sent)})."
                      if touch and unmoved and sent else "Follow-up with the listing agent.")
         offer = f"Your offer: {_money(lead.offer_amount)}" if touch == "offer" and lead.offer_amount else None
         lines = [lead_line, *_agent_lines(session, agent), f"Asking price: {_money(place.ask)}" if place.ask else None,

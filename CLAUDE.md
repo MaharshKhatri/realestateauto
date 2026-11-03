@@ -797,6 +797,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - Signature IDs are not prices: `reply_negotiator._ID_NUMBER` drops "License #: 0897105", "Lic#", "MLS #",
     "NMLS" numbers before amounts are read (a Redfin license number had read as an $897K counter).
   - The 🔑 calendar re-connect event says how to publish the OAuth app, so the 7-day sign-in stops for good.
+  - "Please call me" answered by e-mail: the follow-up the answer set (the call slot, under 20 h after the e-mail) is
+    the calendar event, titled "📞 Call <agent> about <street> (they asked you to call)", not a 48-hour follow-up.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

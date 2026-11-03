@@ -634,3 +634,17 @@ def test_desk_status_event_is_one_all_day_event_per_day_kept_current(db, google,
     gs.sync(db, now=datetime(2026, 11, 4, 9, 0))                       # a new day: a new event, yesterday's stays
     assert ev(google, "desk:20261104")["summary"].startswith("📊 Deal desk: 0 sent")
     assert ev(google, "desk:20261103")["status"] == "confirmed"
+
+
+def test_an_agent_who_asked_for_a_call_gets_the_call_not_a_48_hour_follow_up(db):
+    """2026-11-03: "please call me" was answered by e-mail with the call set ~3 hours out, but the calendar showed the
+    usual 48-hour follow-up, two days late. The call slot is the event."""
+    from db.models import Interaction
+    lead, agent = agent_lead(db)
+    sent, call = datetime(2026, 11, 3, 14, 16), datetime(2026, 11, 3, 17, 15)
+    db.add(Interaction(lead_id=lead.id, contact_id=agent.id, channel="email_smtp", outcome="AGENT_FOLLOWUP_SENT",
+                       occurred_at=sent, next_followup_at=call, debrief_json={"packet": {"kind": "fact_check"}}))
+    lead.next_followup_at = call
+    db.flush()
+    [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
+    assert d.starts_at == call and d.body["summary"].startswith("📞 Call ") and "asked you to call" in d.body["summary"]
