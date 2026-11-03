@@ -93,27 +93,29 @@ def test_green_when_counter_is_under_the_walkaway(db, operator):
 def test_yellow_counters_with_the_cost_math(db, operator):
     lead = listed(db)
     a = rn.analyze(db, lead, "Seller countered at $305,000.")
-    assert a.verdict == "YELLOW" and a.headline.startswith("COUNTER AT $290,000")
-    assert a.numbers["our_counter"] == 290000 and a.numbers["fee_at_our_counter"] == 12000
-    assert "$66,000 of work" in a.reply_text and "$5,000 in taxes" in a.reply_text and "I can do $290,000" in a.reply_text
+    # 2026-11-03: one move only, and it is the best and final (buyer max 302K - the $5K minimum fee)
+    assert a.verdict == "YELLOW" and a.headline.startswith("BEST AND FINAL AT $297,000")
+    assert a.numbers["our_counter"] == 297000 and a.numbers["fee_at_our_counter"] == 5000
+    assert "$66,000 of work" in a.reply_text and "$5,000 in taxes" in a.reply_text and "best and final is $297,000" in a.reply_text
     assert a.style == [] and a.followup_at.hour == 10
 
 
 def test_red_holds_and_sets_the_drip(db, operator):
     lead = listed(db)
     a = rn.analyze(db, lead, "They want 360k, not budging.", now=datetime(2026, 10, 20, 9, 0))
-    assert a.verdict == "RED" and a.headline == "HOLD FIRM AT $292,000 / SET 14-DAY DRIP"
-    assert "$292,000" in a.reply_text and a.followup_at.date().isoformat() == "2026-11-03" and a.style == []
+    assert a.verdict == "RED" and a.headline == "HOLD FIRM AT $297,000 / SET 14-DAY DRIP"
+    assert "$297,000" in a.reply_text and a.followup_at.date().isoformat() == "2026-11-03" and a.style == []
     reject = rn.analyze(db, lead, "Not interested, too low.", now=datetime(2026, 10, 20, 9, 0))
-    assert reject.verdict == "RED" and "$292,000" in reject.reply_text and reject.followup_at.date().isoformat() == "2026-11-03"
+    assert reject.verdict == "RED" and "$297,000" in reject.reply_text and reject.followup_at.date().isoformat() == "2026-11-03"
 
 
 def test_risk_buffers_move_the_numbers_and_add_language(db, operator):
     lead = listed(db)
     a = rn.analyze(db, lead, "Seller would take 285k. Heads up: there is an underground oil tank and it's tenant occupied, "
                              "and the town will want a new CO.")
-    assert a.numbers["risk_buffer"] == 12000 + 9000 + 2500 and a.numbers["adjusted_walkaway"] == 292000 - 23500
-    assert a.verdict == "YELLOW"                     # 285K is above the buffered walk-away (268,500)
+    # tank $3.5K (the offer's terms make the seller remove a found tank), tenants $9K, CO $1.5K
+    assert a.numbers["risk_buffer"] == 3500 + 9000 + 1500 and a.numbers["adjusted_walkaway"] == 297000 - 14000
+    assert a.verdict == "YELLOW"                     # 285K is above the buffered walk-away (283,000)
     assert "tank sweep" in a.reply_text and "46:8-19" in a.reply_text and "5:70-2.3" in a.reply_text
     assert any("TENANT" in x for x in a.actions) and a.style == []
 
@@ -121,7 +123,7 @@ def test_risk_buffers_move_the_numbers_and_add_language(db, operator):
 def test_bidding_war_never_goes_above_the_walkaway(db, operator):
     lead = listed(db)
     a = rn.analyze(db, lead, "We have multiple offers, highest and best by noon tomorrow.")
-    assert a.verdict == "YELLOW" and a.headline == "BEST AND FINAL AT $292,000" and "best and final is $292,000" in a.reply_text
+    assert a.verdict == "YELLOW" and a.headline == "BEST AND FINAL AT $297,000" and "best and final is $297,000" in a.reply_text
     lead.offer_amount = 300000          # we somehow offered more than the walk-away before: hold there, never raise
     a2 = rn.analyze(db, lead, "Highest and best please.")
     assert a2.numbers["our_counter"] == 300000
@@ -131,7 +133,7 @@ def test_available_hands_off_to_touch_two(db, operator):
     lead = listed(db)
     a = rn.analyze(db, lead, "Yes still available, what's your offer?")
     assert a.verdict == "GREEN" and a.headline.startswith("SEND THE OFFER NOW") and "--- Offer Summary ---" in a.reply_text
-    assert "$245,300" in a.reply_text and a.stage_to == "CONTACTED" and a.style == []
+    assert "$292,000" in a.reply_text and a.stage_to == "CONTACTED" and a.style == []      # buyer max 302K - $10K
 
 
 def test_under_contract_and_question_and_accept(db, operator):

@@ -60,8 +60,8 @@ OPENER_BODIES = (
 )
 OPENER_SUBJECTS = ("{st}", "question on {st}", "{st} - still available?", "{place}")
 OPENER_OPT_OUT = 'If you\'d rather not hear from me, reply "no more".'
-LOI_LATER_LINE = "Let me know if that range is workable and I'll send over the written offer today."
-LOI_ATTACHED_LINE = "The 1-page written offer is attached; let me know if that range is workable."
+LOI_LATER_LINE = "Let me know if that works and I'll send over the written offer today."
+LOI_ATTACHED_LINE = "The 1-page written offer is attached; let me know if that works for the seller."
 OUTREACH_DIR = DEALS_DIR / "agent_blast"
 log = logging.getLogger(__name__)
 
@@ -134,9 +134,15 @@ def eligible(lead: Lead) -> tuple[bool, str]:
     from engine.scoring import valuation_suspect
     if valuation_suspect(v):
         return False, "outlier-capped or non-residential valuation — re-check comps before offering"
-    # An offer far below ask burns the agent relationship: only listings our 75% ceiling can reach.
-    if (gap.get("list_to_mao_75") or 0) < float(_cfg().get("min_list_to_mao_75", 0.75)):
-        return False, "too far from ask"
+    # An offer far below ask burns the agent relationship (engine/offer_math.py): a firm number only when our final
+    # reaches 80% of the ask with every certainty check passing; 65-80% gets a no-price "what does the seller need?".
+    from sqlalchemy.orm import object_session
+
+    from engine.offer_math import firm_offer
+    f = firm_offer(lead, object_session(lead))
+    if f.tier == "skip":
+        return False, ("too far from ask" if any("of the ask" in r for r in f.reasons)
+                       else "; ".join(f.reasons) or "no offer")
     if agent_contact(lead) is None:
         return False, "no listing-agent contact"
     return True, "ok"
@@ -169,27 +175,12 @@ def _operator() -> dict[str, str]:
 
 
 def offer_prices(lead: Lead) -> tuple[float | None, float | None]:
-    from engine.contracts import default_price
-    v = lead.property.current_valuation
-    anchor = default_price(lead)
-    basis = _cfg().get("max_offer_basis", "mao_70")
-    best = (v.mao_aggressive if basis == "mao_75" else v.mao_conservative) if v else None
-    a = (v.assumptions_json or {}) if v else {}
-    if v and v.verdict == "WORKABLE_82_PCT_FLOOR":
-        best = a.get("compliant_offer") or anchor
-    ask = listing_gap(lead).get("list_price")
-    if ask:
-        # Never offer more than the seller is asking; open meaningfully below ask.
-        best = min(best, ask) if best else best
-        anchor = min(anchor, round(ask * 0.90, -2)) if anchor else anchor
-        # ...but not insultingly far below it (2026-11-03: openings averaged 50% of ask and agents ignored them): the
-        # first number is at least `min_open_pct_of_ask` of the ask, never above our own target.
-        floor = float(_cfg().get("min_open_pct_of_ask", 0) or 0)
-        if floor and anchor and best:
-            anchor = max(anchor, min(best, round(ask * floor, -3)))
-    if anchor and best and best < anchor:
-        best = anchor
-    return anchor, best
+    """(offer, offer): one firm number (engine/offer_math.py), never a range. (None, None) when no price goes out."""
+    from sqlalchemy.orm import object_session
+
+    from engine.offer_math import firm_offer, locked
+    f = locked(lead, firm_offer(lead, object_session(lead)))
+    return (f.offer, f.offer) if f.priced else (None, None)
 
 
 def price_math(lead: Lead) -> str | None:
@@ -200,7 +191,9 @@ def price_math(lead: Lead) -> str | None:
     if v is None or not v.arv_estimate:
         return None
     comps = [c for c in (v.comps_json or []) if c.get("sold_price") and c.get("address")]
-    comps.sort(key=lambda c: (c.get("bucket") != "renovated", -(c.get("sold_price") or 0)))
+    # the sales that support the value: renovated ones first, closest to the ARV (2026-11-03 audit: the line quoted two
+    # sales far below the value it claimed)
+    comps.sort(key=lambda c: (c.get("bucket") != "renovated", abs(float(c["sold_price"]) - float(v.arv_estimate))))
     near = [f"{street(c['address'].split(',')[0])} sold for {money(c['sold_price'])}" for c in comps[:2]]
     line = f"How I got there: fixed-up, it should be worth about {money(v.arv_estimate)}"
     line += f" ({'; '.join(near)})" if near else ""
@@ -279,7 +272,13 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
     first = hc.first_name(agent.name)
     anchor, best = offer_prices(lead)
     gate = contract_gate(lead, "loi", anchor)
-    kind = "offer" if gate.allowed and anchor else "inquiry"
+    from engine.offer_math import FOLLOW_TERMS, firm_offer
+    firm = firm_offer(lead, session)
+    occupancy_first = any("FRFPA" in r for r in firm.reasons) or (anchor and not gate.allowed)
+    # one firm number; a no-price "what does the seller need?" when the numbers aren't certain or the gap is wide
+    # (engine/offer_math.py); the occupancy question when FRFPA could apply
+    kind = ("offer" if gate.allowed and anchor else
+            "ask_first" if firm.tier == "ask_first" and not occupancy_first else "inquiry")
     dom = f.get("dom")
     reasons: list[str] = []
     if dom:
@@ -289,7 +288,6 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
     if f.get("keywords"):
         reasons.append("the listing's own words: " + ", ".join(f'"{k}"' for k in f["keywords"][:3]))
     addr, st, town = f["address"], hc.street(f["address"]), f.get("town") or ""
-    fast, std = int(cfg.get("fast_close_days", 21)), int(cfg.get("standard_close_days", 45))
     ask = gap.get("list_price")
     subject = hc.pick([f"question on {st}", f"{st} - still available?"], lead.id)
     if reply_flags is None and session is not None:
@@ -313,7 +311,7 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
             first_line = f"Thanks for getting back to me on {st.rstrip('.')}. "
         else:
             first_line = f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". "
-        ask_line = (f"{_why_now(f)} think the seller would look at a clean, as-is cash offer around {price_range(anchor, best)} "
+        ask_line = (f"{_why_now(f)} think the seller would look at a clean, as-is cash offer of {price_range(anchor, best)} "
                "with no mortgage contingency and a quick close? ")
         if "BACKUP" in flags:
             ask_line = (f"I can do {price_range(anchor, best)} cash, as-is, no mortgage or appraisal contingency, so the seller "
@@ -325,17 +323,27 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
                        "during the inspection period once the seller is in that range. ")
             who = "I'm an investor buying for myself or a partner investor, with no buyer's agent. " if who else ""
         paragraphs = [first_line + ask_line + who + showing + (LOI_ATTACHED_LINE if attach else LOI_LATER_LINE)]
-        terms = [(f"Option 1: {hc.money(anchor)} cash, as-is, no mortgage or appraisal contingency, close in about "
-                  f"{fast} days.")]
-        if best and anchor and best > anchor:
-            terms.append(f"Option 2: {hc.money(best)} cash, as-is, with a 10-business-day inspection period, close in "
-                         f"about {std} days.")
+        # One firm number and one set of terms, the same as the attached LOI (2026-11-03 audit: "Option 1" had no
+        # inspection and a 21-day close while the LOI said a 10-day inspection and 30 days).
+        terms = [f"Offer: {hc.money(anchor)} cash, as-is." + (" A 1-page written offer is attached." if attach else "")]
         math = price_math(lead)
         if math:
             terms.append(math)
-        terms += ["No repairs, cleanout or credits requested; the seller picks the closing date.",
-                  "The agreement of sale includes a 3-business-day attorney review."
-                  + (" A 1-page written offer is attached." if attach else "")]
+        terms += list(FOLLOW_TERMS)
+    elif kind == "ask_first":
+        if "ASKS_ROLE" in flags:
+            first_line = ("I'm the buyer: an investor buying for myself or a partner investor, not a realtor, and I'm not "
+                          "working with a buyer's agent. ")
+        elif answered:
+            first_line = f"Thanks for getting back to me on {st.rstrip('.')}. "
+        else:
+            first_line = f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". "
+        paragraphs = [first_line + "What would the seller need to net for a clean, as-is cash sale with a quick close? "
+                      + ("" if "ASKS_ROLE" in flags else
+                         "I'm an investor buying for myself or a partner investor, with no buyer's agent. ")
+                      + "If it's a number I can do, I'll send the written offer the same day."]
+        terms = ["No price from me yet: I'd rather hear the seller's number than send one that misses.",
+                 "Cash, as-is, no mortgage or appraisal contingency; attorney review and an inspection period."]
     else:
         paragraphs = [
             f"Quick question on your listing at {st}" + (f" in {town}" if town else "") + ". "
@@ -351,14 +359,19 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
                        summary_title=hc.DIVIDER if kind == "offer" else hc.DETAILS)
     me = " ".join(x for x in (op["first"], "with " + op["company"] if op["company"] else "") if x) or "an investor"
     sms = (f"Hi {first}, it's {me}. Is {st} still available? I'm an investor (no buyer's agent) and could do a clean "
-           f"as-is cash offer around {hc.money(anchor)} with a quick close. OK to e-mail you the details? "
+           f"as-is cash offer of {hc.money(anchor)} with a quick close. OK to e-mail you the details? "
            if kind == "offer" else
+           f"Hi {first}, it's {me}. Quick question on {st}: what would the seller need to net for a cash, as-is sale "
+           "with a quick close? I'm an investor (no buyer's agent). "
+           if kind == "ask_first" else
            f"Hi {first}, it's {me}. Quick question on {st}: is the seller living there, or is it vacant or rented? "
            "I'm an investor looking at a cash offer. ")
     sms += "Reply STOP to opt out."
     phone = [f"Hi {first}, this is {me}; I'm an investor calling about your listing at {st}.",
-             (f"{_why_now(f)} think the seller would look at a clean as-is cash offer around "
+             (f"{_why_now(f)} think the seller would look at a clean as-is cash offer of "
               f"{price_range(anchor, best)} with a quick close?" if kind == "offer" else
+              "What would the seller need to net for a clean, as-is cash sale with a quick close?"
+              if kind == "ask_first" else
               "Is the seller living there, or is it vacant or rented? That decides how I can structure an offer."),
              "I'm not working with a buyer's agent, so you can handle both sides if your listing agreement allows it; "
              "can I e-mail you the written offer today?" if kind == "offer" else

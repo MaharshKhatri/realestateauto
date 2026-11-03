@@ -58,6 +58,7 @@ outreach:
   # Offers far below ask get ignored (learned 2026-11-03: openings averaged 50% of ask across 1,149 stale listings).
   min_list_to_mao_75: 0.80           # contact a listing only when our walk-away reaches 80% of its ask
   min_open_pct_of_ask: 0.75          # the first number is at least 75% of ask (never above our target)
+  ask_first_min_reach: 0.65          # 65-80%: no number from us; ask what the seller needs (engine/offer_math.py)
   fast_close_days: 21
   standard_close_days: 45
 
@@ -168,6 +169,10 @@ harvest:
   max_parcels_per_municipality: 250  # cap per run so a run stays polite and fast
   out_of_state_priority: [FL, NY, PA, NC, CA, GA, SC, TX, VA, MD, AZ, DE, CT]
 
+firm:
+  # engine/offer_math.py: a price goes out only when every certainty check passes.
+  max_comp_age_months: 12            # median comparable sale at most this old (MOD-IV lags; prices are time-adjusted)
+
 deal:
   pricing_model: quant               # quant = engine/quant_pricing.py buyer-implied solve (alpha + 15% ROI / $45K);
                                      # fixed_pct = the classic 70% / 75% rule below
@@ -175,7 +180,7 @@ deal:
   striking_distance_report_pct: 0.78 # the stricter share reported by `manage.py recalibrate`
   mao_pct_conservative: 0.70         # fixed_pct model (and the FRFPA / fallback math)
   mao_pct_aggressive: 0.75
-  anchor_discount_pct: 0.12          # opening offer = MAO * (1 - this)
+  anchor_discount_pct: 0.0           # opening offer = target (2026-11-03: one firm number, no lowball anchor)
   min_assignment_fee: 10000
   target_assignment_fee_min: 15000
   target_assignment_fee_max: 35000
@@ -208,10 +213,12 @@ deal:
     non_residential_confidence_cap: 20
 
 rehab:
-  light_per_sqft: 25
-  medium_per_sqft: 50
-  heavy_per_sqft: 85
+  # 2025-2026 NJ figures (2026-11-03 research): cosmetic $22-38, mid $45-65 (kitchen + baths + floors), gut $85-140.
+  light_per_sqft: 30
+  medium_per_sqft: 55
+  heavy_per_sqft: 110
   heavy_roof_hvac_buffer: 15000
+  extra_contingency: {LIGHT: 0.0, MEDIUM: 0.05, HEAVY: 0.10}   # on top of the end buyer's 10%: 10% / 15% / 20% in all
   age_bumps:                          # extra $/sqft by build year (older NJ stock: knob & tube, lead, oil tanks)
     - {before: 1940, add_per_sqft: 10}
     - {before: 1960, add_per_sqft: 6}

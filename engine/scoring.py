@@ -487,7 +487,13 @@ def strategy_brief(lead: Lead, sc: Score) -> str:
         parts.append("No compliant wholesale offer at today's numbers — offer a listing-agent referral, or revisit "
                      "if the repair estimate drops after a walkthrough.")
     elif val and val.mao_conservative:
-        parts.append(f"Open at {_fmt_money(val.anchor_offer)}, walk-away {_fmt_money(val.mao_conservative)} "
-                     f"(aggressive ceiling {_fmt_money(val.mao_aggressive)}).")
+        from sqlalchemy.orm import object_session
+
+        from engine.offer_math import firm_offer
+        firm = firm_offer(lead, object_session(lead), check_certainty=False)
+        if firm.priced:
+            parts.append(f"Offer {_fmt_money(firm.offer)}, best and final {_fmt_money(firm.final)} (never above it).")
+        elif firm.tier == "ask_first":
+            parts.append(f"No price first: ask what the seller needs; a deal at or under {_fmt_money(firm.final)}.")
     parts.append("Disclose: investor, not an agent; may assign the contract; seller should have an attorney review.")
     return " ".join(parts)

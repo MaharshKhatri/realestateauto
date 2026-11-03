@@ -48,7 +48,7 @@ def test_calculator_quant_model_exposes_buyer_math(client):
                                        "mun_code": "1205", "county": "Middlesex", "pricing_model": "quant"}).json()
     q = r["quant"]
     assert r["pricing_model"] == "quant" and q["buyer_max"] == r["buyer_purchase_price"]
-    assert q["mao_walkaway"] == r["mao_aggressive"] == q["buyer_max"] - 10000
+    assert q["mao_walkaway"] == r["mao_aggressive"] == (q["buyer_max"] - 5000) // 100 * 100   # best and final = $5K fee
     assert r["mao_conservative"] == q["mao_target"] < q["mao_walkaway"]
     assert r["anchor_offer"] == q["opening_offer"] <= 0.90 * 400000
     assert q["buyer"]["roi"] >= 0.15 - 1e-9 and q["buyer"]["profit"] >= 45000 - 1 or q["binding"] == "local_alpha"

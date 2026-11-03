@@ -142,13 +142,16 @@ def offer_numbers(lead: Lead) -> tuple[float | None, float | None, float | None]
     pct = float(settings().get("compliance", {}).get("frfpa_min_pct_fmv", 0.82))
     fmv = ((v.assumptions_json or {}).get("frfpa_fmv") or v.as_is_value) if v else None
     floor = round(fmv * pct, -2) if fmv and frfpa_decision(lead.property).applies else None
-    anchor, best = offer_prices(lead)
+    anchor, best = offer_prices(lead)        # the firm number (payoff and FRFPA floor already applied)
     if v is not None and v.verdict == "SHORT_SALE_ONLY":
-        anchor, best = v.anchor_offer, v.mao_conservative
+        # a short sale goes to the lender as our best and final (2026-11-03 audit: it used to be the lower target)
+        from engine.offer_math import fees
+        buyer_max = ((v.assumptions_json or {}).get("quant") or {}).get("buyer_max") or ((v.mao_aggressive or 0) + fees()[0])
+        final = round(float(buyer_max) - fees()[0], -2) if buyer_max else None
         ask = (_listing(lead.property).raw_metadata_json or {}).get("list_price") if _listing(lead.property) else None
-        if ask:
-            best = min(best, ask) if best else best
-            anchor = min(anchor, round(ask * 0.90, -2)) if anchor else anchor
+        if ask and final:
+            final = min(final, round(ask * 0.90, -2))
+        anchor = best = final if final and final > 0 else None
     from engine.underwriter import known_debt
     payoff = known_debt(lead.property)            # payoff estimate + liens the sale is subject to
     walk = v.mao_aggressive if v is not None else None
@@ -189,6 +192,13 @@ def listed_foreclosure(session: Session, lead: Lead, today: date | None = None) 
         reasons = [f"our best ({money(best)}) is only {best / ask:.0%} of the {money(ask)} ask — re-check comps "
                    "and the listing before calling with a number"]
         anchor = best = floor = None
+    elif track == "CASH_OFFER" and not anchor:
+        # no firm number (engine/offer_math.py): too far from the ask, or the inputs aren't certain enough to write
+        from engine.offer_math import firm_offer
+        why = firm_offer(lead, session).reasons
+        track, anchor, best, floor = "NO_OFFER", None, None, None
+        reasons = [f"no firm number ({'; '.join(why) or 'no price'}) — re-check comps and the listing before calling "
+                   "with a number"]
     agent = agent_contact(lead)
     sent = session.scalar(select(Interaction).where(
         Interaction.lead_id == lead.id,

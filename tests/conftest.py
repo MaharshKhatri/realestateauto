@@ -33,6 +33,8 @@ def _classic_offer_gates(monkeypatch, request):
     monkeypatch.setitem(settings()["deal"], "striking_distance_pct", 0.75)
     monkeypatch.setitem(settings()["outreach"], "min_list_to_mao_75", 0.75)
     monkeypatch.setitem(settings()["outreach"], "min_open_pct_of_ask", 0)
+    monkeypatch.setitem(settings()["outreach"], "ask_first_min_reach", 0.75)
+    monkeypatch.setitem(settings(), "firm", {**dict(settings().get("firm") or {}), "enforce": False})
 
 
 @pytest.fixture()

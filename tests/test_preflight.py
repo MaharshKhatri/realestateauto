@@ -23,7 +23,7 @@ def test_go_verify_and_talking_point(db):
     pf = preflight.check(lead)
     assert pf.status in ("GO", "VERIFY") and "4 comps" in pf.checks[0]
     assert pf.comps[0]["address"].startswith("12 Comp St") and pf.comps[0]["price"] == 510000   # top nearby sale first
-    assert "$270,000" in pf.talking_point and "$60,000 of work plus a 10% cushion" in pf.talking_point
+    assert "my written offer is $290,000" in pf.talking_point and "$60,000 of work plus a 10% cushion" in pf.talking_point
     est = listed(db, a={"sqft_source": "estimated_from_building_description"})
     assert any("living area" in x for x in preflight.check(est).issues)
 

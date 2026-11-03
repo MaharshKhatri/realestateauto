@@ -28,31 +28,43 @@ def test_offer_prices_never_exceed_ask(db):
     assert best <= 240_000 and anchor <= round(240_000 * 0.90, -2) and anchor <= best
     lead2, _ = listed(db, list_price=360_000)
     anchor2, best2 = ao.offer_prices(lead2)
-    assert best2 == 260_000 and anchor2 == 228_800       # walk-away MAO and the anchor, both under ask
+    assert best2 == anchor2 == 280_000                   # one firm number: buyer max (290K) - the $10K fee
 
 
 @pytest.mark.production_gates
-def test_no_insulting_openings_and_no_offers_out_of_reach(db):
-    """2026-11-03: across 1,149 stale listings the first number averaged 50% of ask and agents ignored it. Now a
-    listing is contacted only when our walk-away reaches 80% of ask, the first number is at least 75% of ask (never
-    above our target), and the offer says how we got there."""
-    lead, _ = listed(db, list_price=360_000)            # walk-away 285K = 79% of ask: out of reach now
-    ok, why = ao.eligible(lead)
-    assert not ok and why == "too far from ask"
-    lead2, _ = listed(db, list_price=340_000)           # 285K = 84%: in reach; 75% of ask = 255K
-    assert ao.eligible(lead2)[0]
-    anchor, best = ao.offer_prices(lead2)
-    assert anchor == 255_000 and best == 260_000        # opens at 75% of ask, not at the 228.8K (67%) anchor
-    lead3, _ = listed(db, list_price=300_000)           # 75% of ask = 225K is below the anchor: unchanged
-    assert ao.offer_prices(lead3) == (228_800, 260_000)
-    v = lead2.property.current_valuation
-    v.comps_json = [{"address": "15 Sample Ave, Newark 07105", "sold_price": 500000, "bucket": "renovated"},
-                    {"address": "29 Example St, Newark 07105", "sold_price": 445000, "bucket": "as_is"}]
+def test_one_firm_number_the_ask_first_band_and_the_certainty_gate(db):
+    """2026-11-03: offers averaged 50% of ask and agents ignored them; the operator wants every number final. One
+    number (buyer max - $10K), a best and final (buyer max - $5K), a price only when the final reaches 80% of the ask
+    and the inputs are certain; 65-80% asks what the seller needs; below 65% nobody is contacted."""
+    from engine.offer_math import firm_offer, locked
+    rec = {"sqft_source": "record"}
+    far, _ = listed(db, list_price=500_000, assumptions=rec)      # final 285K = 57% of ask
+    assert ao.eligible(far) == (False, "too far from ask")
+    mid, _ = listed(db, list_price=360_000, assumptions=rec)      # 79%: no number from us, ask theirs
+    assert ao.eligible(mid)[0] and ao.offer_prices(mid) == (None, None)
+    p = ao.build_packet(mid, generate_loi=False)
+    assert p.kind == "ask_first" and "What would the seller need to net" in p.email_body and "$280,000" not in p.email_body
+    near, _ = listed(db, list_price=340_000, assumptions=rec)     # 84%: firm
+    f = firm_offer(near, db)
+    assert (f.tier, f.offer, f.final, f.fee_at(f.offer), f.fee_at(f.final)) == ("firm", 280_000, 285_000, 10_000, 5_000)
+    assert ao.offer_prices(near) == (280_000, 280_000)
+    near.property.current_valuation.comps_json = [
+        {"address": "15 Sample Ave, Newark 07105", "sold_price": 500000, "bucket": "renovated", "sold_date": "2026-09-01"},
+        {"address": "29 Example St, Newark 07105", "sold_price": 445000, "bucket": "as_is", "sold_date": "2026-08-01"},
+        {"address": "31 Example St, Newark 07105", "sold_price": 505000, "bucket": "renovated", "sold_date": "2026-07-01"}]
     db.flush()
-    line = ao.price_math(lead2)
-    assert line.startswith("How I got there: fixed-up, it should be worth about $") and "15 Sample Ave sold for $500,000" in line
-    packet = ao.build_packet(lead2, generate_loi=False)
-    assert line in packet.email_body and "$255,000" in packet.email_body
+    line = ao.price_math(near)
+    assert line.startswith("How I got there: fixed-up, it should be worth about $500,000 (15 Sample Ave sold for $500,000")
+    body = ao.build_packet(near, generate_loi=False).email_body
+    assert "Offer: $280,000 cash, as-is." in body and line in body and "oil-tank sweep" in body
+    assert "Option 2" not in body and " to $" not in body
+    # an estimated living area is not certain enough for a written number
+    est, _ = listed(db, list_price=340_000)
+    fe = firm_offer(est, db)
+    assert fe.tier == "ask_first" and fe.offer is None and any("living area" in r for r in fe.reasons)
+    # no re-trade: once 282K went out in writing, nothing later states less, and nothing ever exceeds the final
+    near.offer_amount = 282_000
+    assert locked(near, firm_offer(near, db)).offer == 282_000
 
 
 def test_packet_wording_and_loi(db, tmp_path, postal):
@@ -60,7 +72,7 @@ def test_packet_wording_and_loi(db, tmp_path, postal):
     p = ao.build_packet(lead, session=db, out_root=tmp_path)
     assert p.kind == "offer" and p.agent_contact_id == agent.id and p.agent_first == "Pat"
     body = p.email_body
-    assert "$228,800 to $260,000" in body and "on the market about 140 days" in body
+    assert "cash offer of $280,000" in body and "on the market about 140 days" in body
     assert "not represented by a buyer's agent" in body and "not asking for any part of it" in body
     assert "may assign the contract" in body and "not licensed agents" in body
     assert "attorney review" in body and "PO Box 10" in body and "no more" in body

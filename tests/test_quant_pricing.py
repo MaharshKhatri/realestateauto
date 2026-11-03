@@ -108,10 +108,20 @@ def test_quant_offer_alpha_bound_in_a_thin_market(monkeypatch):
     assert q.buyer.roi > 0.15     # the empirical cap leaves the buyer more margin than the floor
 
 
-def test_fee_target_bands_and_frfpa_floor_lifts_opening():
-    assert qp.fee_target_for(250000) == 15000 and qp.fee_target_for(450000) == 20000 and qp.fee_target_for(900000) == 25000
+def test_flat_fees_one_number_no_negatives_and_the_frfpa_floor_never_above_the_walkaway():
+    """2026-11-03: the operator takes $5K-$10K so offers are as high as the buyer math allows: target = buyer max -
+    $10K, walk-away = buyer max - $5K, opening = target (no anchor discount)."""
+    assert qp.fee_target_for(250000) == qp.fee_target_for(900000) == 10000
+    q = qp.quant_offer(arv=474000, repairs=70000, annual_taxes=9000)
+    assert q.mao_walkaway == q.buyer_max - 5000 and q.mao_target == q.buyer_max - 10000 == q.opening_offer
     q = qp.quant_offer(arv=474000, repairs=70000, annual_taxes=9000, frfpa_floor=200100)
-    assert q.opening_offer >= 200100
+    assert q.opening_offer >= 200100 and q.opening_offer <= q.mao_walkaway
+    # a floor above the walk-away never pushes the opening past it (the audit found 460 such stored valuations)
+    q = qp.quant_offer(arv=400000, repairs=50000, annual_taxes=8000, frfpa_floor=390000)
+    assert q.opening_offer == q.mao_walkaway
+    # no buyer price -> nothing to offer, never negative numbers
+    q = qp.quant_offer(arv=60000, repairs=90000, annual_taxes=3000)
+    assert q.mao_walkaway == q.mao_target == q.opening_offer == 0
 
 
 def test_counter_economics():

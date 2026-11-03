@@ -397,11 +397,13 @@ class Underwriter:
                               sqft=sqft, sqft_known=sqft_known)
         result.arv, result.as_is = guard.arv, guard.as_is
         signals = {s.signal_type for s in prop.active_signals}
-        sheriff = next((s for s in prop.active_signals if s.signal_type == SignalType.SHERIFF_SALE), None)
-        debt = sheriff.amount_owed if sheriff and sheriff.amount_owed else None
+        # payoff + prior liens, the same figure reprice() and the outlier guard use (2026-11-03 audit: the first valuation
+        # used the payoff only, so every lead with prior liens was re-underwritten on every run)
+        debt = known_debt(prop)
         tenure = years_owned(prop.last_sale_date)
+        from engine.offer_math import listing_text
         rehab = rehab_model.estimate(
-            sqft, prop.year_built,
+            sqft, prop.year_built, listing_text=listing_text(session, prop.lead) if prop.lead else None,
             vacant=SignalType.VACANT in signals,
             estate=bool(prop.is_estate_owned) or SignalType.ESTATE_OWNER in signals,
             foreclosure=SignalType.SHERIFF_SALE in signals or SignalType.LIS_PENDENS in signals,
@@ -573,7 +575,16 @@ def reprice(session: Session, prop: Property) -> Valuation | None:
                         non_residential=bool(g.get("non_residential")), benchmark=g.get("benchmark"),
                         original_arv=g.get("original_arv"),
                         flags=[f for f in (a.get("flags") or []) if f.startswith(("OUTLIER_CAPPED", "NON_RESIDENTIAL"))])
-    om, _, fields = decide_offer(prop, arv=arv, repairs=cur.est_repair_cost or 0, as_is=cur.as_is_value, debt=debt,
+    # Repairs follow the current rehab costs and the listing's own words (2026-11-03): a re-price after a cost change
+    # or a "fully renovated" / "bring your vision" description moves the repairs, not just the fees.
+    repairs, tier = cur.est_repair_cost or 0, cur.rehab_tier
+    if cur.sqft_used and cur.rehab_tier and not a.get("repairs_confirmed"):
+        from engine.offer_math import listing_text
+        tier, why = rehab_model.apply_description(cur.rehab_tier, listing_text(session, prop.lead) if prop.lead else None)
+        repairs = rehab_model.priced_cost(tier, int(cur.sqft_used), prop.year_built)
+        if why:
+            a["rehab_from_listing"] = why
+    om, _, fields = decide_offer(prop, arv=arv, repairs=repairs, as_is=cur.as_is_value, debt=debt,
                                  cfg=cfg, guard=guard, equalized=a.get("subject_equalized"))
     for k in FRFPA_FIELDS:
         a.pop(k, None)
@@ -584,7 +595,7 @@ def reprice(session: Session, prop: Property) -> Valuation | None:
     cur.is_current = False
     val = Valuation(
         property=prop, arv_estimate=om.arv, as_is_value=cur.as_is_value, est_repair_cost=om.repairs,
-        rehab_tier=cur.rehab_tier, target_assignment_fee=om.assignment_fee, mao_conservative=om.mao_conservative,
+        rehab_tier=tier, target_assignment_fee=om.assignment_fee, mao_conservative=om.mao_conservative,
         mao_aggressive=om.mao_aggressive, anchor_offer=om.anchor_offer, confidence_score=cur.confidence_score,
         comps_json=cur.comps_json, comp_count=cur.comp_count, comp_source=cur.comp_source, sqft_used=cur.sqft_used,
         effective_tax_rate=om.effective_tax_rate, tax_drag_adjustment=om.tax_drag_adjustment, debt_estimate=debt,

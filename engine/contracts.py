@@ -108,15 +108,13 @@ def property_legal(lead: Lead) -> dict[str, str]:
 
 
 def default_price(lead: Lead) -> float | None:
-    v = lead.property.current_valuation
-    if v is None:
-        return None
-    a = v.assumptions_json or {}
-    if v.verdict == "WORKABLE_82_PCT_FLOOR":
-        return a.get("compliant_offer")
-    if a.get("frfpa_applies") and a.get("frfpa_floor"):
-        return max(v.anchor_offer or 0, a["frfpa_floor"])
-    return v.anchor_offer
+    """The one firm number (engine/offer_math.py): the same figure the e-mail, the call script and the negotiator
+    state. None when the numbers aren't certain enough to put in writing."""
+    from sqlalchemy.orm import object_session
+
+    from engine.offer_math import firm_offer, locked
+    f = locked(lead, firm_offer(lead, object_session(lead)))
+    return f.offer if f.priced else None
 
 
 def end_buyer_price(lead: Lead) -> float | None:
@@ -126,7 +124,9 @@ def end_buyer_price(lead: Lead) -> float | None:
     a = v.assumptions_json or {}
     if v.verdict == "WORKABLE_82_PCT_FLOOR":
         return a.get("track_buyer_price")
-    return (a.get("quant") or {}).get("buyer_max") or v.mao_aggressive    # quant: the end buyer's max; else the 75% ceiling
+    from engine.offer_math import fees
+    # quant: the end buyer's max; else the walk-away plus our minimum fee (the same buyer max engine/offer_math.py uses)
+    return (a.get("quant") or {}).get("buyer_max") or ((v.mao_aggressive + fees()[0]) if v.mao_aggressive else None)
 
 
 def in_foreclosure(lead: Lead) -> bool:

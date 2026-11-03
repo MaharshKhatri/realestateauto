@@ -39,7 +39,7 @@ def test_hotzones_need_two_buyers_cap_bulk_buys_and_list_our_deals(db):
     a = buyer(db, "A", purchases=bulk)
     b = buyer(db, "B", "SUNRISE HOMES LLC", purchases=[buy(450_000), buy(5, when="2026-06-02")])   # $5 = not arm's length
     buyer(db, "C", purchases=[buy(420_000, town="PATERSON CITY", county="Passaic")])   # lone buyer: no pocket
-    deal = make_lead(db, dwellings=2)          # 2-family; buyer price (75% MAO) $285K → the $200K–350K band
+    deal = make_lead(db, dwellings=2)          # 2-family; buyer price (walk-away 285K + $5K fee) $290K → the $200K–350K band
     zones = dp.build_hotzones(dp.buyer_purchases(db, TODAY), {x.id: x for x in (a, b)}, TODAY)
     assert len(zones) == 1
     z = zones[0]
@@ -47,13 +47,13 @@ def test_hotzones_need_two_buyers_cap_bulk_buys_and_list_our_deals(db):
     assert z.buyers == 2 and z.purchases == 11
     assert z.score == pytest.approx((400_009 + 400_008 + 400_007 + 450_000) / 1000, abs=0.2)   # bulk capped at 3
     dp.attach_leads(zones, [deal])
-    assert z.leads == []                                  # $285K deal is not in the $350K–500K pocket
+    assert z.leads == []                                  # $290K deal is not in the $350K–500K pocket
     mid = buyer(db, "D", purchases=[buy(300_000), buy(310_000, when="2026-07-01")])
     e = buyer(db, "E", "PINE LLC", purchases=[buy(290_000)])
     zones = dp.build_hotzones(dp.buyer_purchases(db, TODAY), {x.id: x for x in (a, b, mid, e)}, TODAY)
     pocket = next(z for z in zones if z.band == "$200K–350K")
     dp.attach_leads([pocket], [deal])
-    assert pocket.leads[0]["lead_id"] == deal.id and pocket.leads[0]["headroom"] == 300_000 - 285_000
+    assert pocket.leads[0]["lead_id"] == deal.id and pocket.leads[0]["headroom"] == 300_000 - 290_000
     assert pocket.top_buyers[0]["name"].startswith("unnamed buyer")        # Daniel's Law: no owner name on record
 
 
@@ -120,7 +120,7 @@ def test_accept_requires_a_named_assignee_and_no_loss(db, tmp_path):
 
 def test_asking_price_and_find_buyer(db):
     lead = make_lead(db, sheriff_days=None, absentee=True)
-    assert dp.asking_price(lead) == 285_000
+    assert dp.asking_price(lead) == 290_000                       # the end buyer's max (walk-away + $5K)
     lead.offer_amount = 270_000                                   # contract + $30K target fee beats the 75% price
     assert dp.asking_price(lead) == 300_000
     b = buyer(db, "F1", "MAPLE CAPITAL LLC")

@@ -41,7 +41,7 @@ realty_transfer_fee:
 end_buyer:
   # Operating assumptions for a local rehabber's resale. The solve requires BOTH constraints at the buyer's max price.
   min_roi: 0.15                 # net profit / total cash invested over the hold (>= 15%)
-  target_roi: 0.16              # mao_target is set where the buyer still clears this
+  target_roi: 0.15              # mao_target = buyer max - fees.target_fee (2026-11-03: no extra 1% squeeze)
   min_profit: 45000             # net profit floor in dollars
   resale_commission_pct: 0.05   # listing + buyer-agent commission on the resale
   seller_closing_pct: 0.005     # attorney, payoff / recording, misc. seller costs on the resale
@@ -70,8 +70,10 @@ alpha:
   thin_market_share: 0.005      # below this: -0.01 (few local buyers to assign to)
 
 fees:
-  min_fee: 10000                # mao_walkaway = buyer_max - min_fee
-  target_by_arv:                # mao_target = buyer price at target_roi - this fee
+  # 2026-11-03: the operator takes $5K-$10K so offers can be as high as the buyer math allows.
+  min_fee: 5000                 # mao_walkaway (our best and final) = buyer_max - min_fee
+  target_fee: 10000             # mao_target (the one number in writing) = buyer_max - target_fee
+  target_by_arv:                # legacy: used only when target_fee is unset
     - {up_to: 300000, fee: 15000}
     - {up_to: 600000, fee: 20000}
     - {up_to: null, fee: 25000}
@@ -89,10 +91,11 @@ double_close:
 
 negotiation:
   # engine/reply_negotiator.py: what a seller's counter leaves everyone, and the risk buffers the agent's reply triggers.
-  oil_tank_buffer: 12000        # tank sweep (~$500) plus a reserve toward removal / NJDEP closure or an escrow holdback
+  oil_tank_buffer: 3500         # NJDEP UST Fund pays $1,500 for a <=550-gal tank; clean removals run $1.6-3.5K. Every
+                                # offer also says a found tank is removed by the seller or escrowed (price stays)
   tenant_buffer: 9000           # holdover / turnover reserve: 2-3 months of carry and notice time (Anti-Eviction Act)
-  co_buffer: 2500               # smoke / CO / fire-extinguisher certificate (N.J.A.C. 5:70-2.3) plus typical municipal CCO repairs
-  counter_fee_floor: 12000      # YELLOW: our counter keeps at least this fee for us
+  co_buffer: 1500               # smoke / CO / fire-extinguisher certificate (N.J.A.C. 5:70-2.3, ~$100-150) plus small CCO fixes
+  counter_fee_floor: 5000       # our one counter is the best and final (= buyer_max - min_fee)
   counter_within_pct: 0.92      # YELLOW only when our counter is at least this share of their number; otherwise hold (RED)
   drip_days: 14                 # RED: come back in two weeks
   yellow_followup_days: 2

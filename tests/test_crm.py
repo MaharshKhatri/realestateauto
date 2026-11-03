@@ -37,7 +37,7 @@ def test_log_call_updates_stage_followup_and_history(db):
     r = crm.log_call(db, lead, "SPOKE_NEEDS_OFFER", contact=c, notes="Wants 300k. Roof leaks.",
                      debrief={"asking_price": "300k"}, now=NOON)
     assert r.stage == "INTERESTED" and r.suggested_docs == ["loi", "deal_sheet"]
-    assert r.coach["offer"]["gap_to_ask"] == 300000 - 260000
+    assert r.coach["offer"]["gap_to_ask"] == 300000 - 285000       # their 300K vs our best and final
     assert db.query(Interaction).filter_by(lead_id=lead.id).count() == 2
 
 

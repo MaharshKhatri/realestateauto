@@ -262,7 +262,10 @@ def local_alpha(mun_code: str | None = None, county: str | None = None, cfg: dic
 
 
 def fee_target_for(arv: float, cfg: dict[str, Any] | None = None) -> float:
-    for band in (cfg or costs())["fees"]["target_by_arv"]:
+    fees = (cfg or costs())["fees"]
+    if fees.get("target_fee") is not None:              # 2026-11-03: one flat fee, so the offer is as high as possible
+        return float(fees["target_fee"])
+    for band in fees["target_by_arv"]:
         if band.get("up_to") is None or arv <= float(band["up_to"]):
             return float(band["fee"])
     return float((cfg or costs())["fees"]["target_by_arv"][-1]["fee"])
@@ -330,15 +333,18 @@ def quant_offer(*, arv: float, repairs: float, annual_taxes: float | None = None
                                   min_roi=float(eb["target_roi"] if target_roi is None else target_roi),
                                   min_profit=min_profit, cfg=cfg)
     fee_target, min_fee = fee_target_for(arv, cfg), float(fees["min_fee"])
-    mao_walkaway = round(buyer_max - min_fee, -2)
-    mao_target = min(math.floor((min(p_target, p_alpha) - fee_target) / 100) * 100.0, mao_walkaway)
-    discount = float(settings().deal.get("anchor_discount_pct", 0.12) if anchor_discount is None else anchor_discount)
+    # Never negative (2026-11-03 audit: 114 PASS valuations stored -$10K walk-aways): no buyer price = nothing to offer.
+    mao_walkaway = max(math.floor((buyer_max - min_fee) / 100) * 100.0, 0.0)
+    mao_target = max(min(math.floor((min(p_target, p_alpha) - fee_target) / 100) * 100.0, mao_walkaway), 0.0)
+    discount = float(settings().deal.get("anchor_discount_pct", 0.0) if anchor_discount is None else anchor_discount)
     opening = mao_target * (1 - discount)
     if ask:
         opening = min(opening, 0.90 * ask)
     if frfpa_floor:
-        opening = max(opening, frfpa_floor)
-    opening = round(opening, -2)
+        # the FRFPA floor raises the opening, but never above the walk-away (the audit found 460 valuations whose stored
+        # opening sat above their own walk-away): a floor above it means no offer, and the verdict says so
+        opening = min(max(opening, frfpa_floor), mao_walkaway)
+    opening = max(round(opening, -2), 0.0)
     econ = buyer_economics(buyer_max, arv=arv, repairs=repairs, annual_taxes=annual_taxes, cfg=cfg)
     h = _hold_inputs(arv, repairs, annual_taxes, cfg)
     alpha_eff = round((buyer_max + repairs) / arv, 3) if arv else 0.0

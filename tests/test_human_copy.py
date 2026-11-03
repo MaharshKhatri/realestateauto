@@ -76,12 +76,12 @@ def test_stale_listing_offer_follows_the_template(db, tmp_path):
     assert p.subject in (f"question on {st}", f"{st} - still available?")
     head, tail = check_email(p.email_body)
     assert head.startswith("Hi Pat,\n\nQuick question on your listing at") and "in Newark" in head
-    assert "on the market about 140 days" in head and "$228,800 to $260,000" in head
+    assert "on the market about 140 days" in head and "cash offer of $280,000" in head
     assert "not working with a buyer's agent" in head and "handle both sides if your listing agreement allows" in head
     # The PDF was generated, so the note says it is attached (not "I'll send it later").
     assert "The 1-page written offer is attached" in head and p.loi_files.get("pdf")
     # Everything required, under the line: terms, unrepresented-buyer wording, may-assign, postal address, opt-out.
-    for needed in ("Option 1: $228,800 cash", "Option 2: $260,000", "3-business-day attorney review",
+    for needed in ("Offer: $280,000 cash, as-is.", "oil-tank sweep", "3-business-day attorney review",
                    "not asking for any part of it", "not licensed agents", "may assign the contract",
                    "PO Box 10, Newark", 'Reply "no more"'):
         assert needed in tail, needed

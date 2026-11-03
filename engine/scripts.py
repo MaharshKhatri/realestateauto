@@ -92,6 +92,10 @@ def lead_facts(lead: Lead) -> dict[str, Any]:
     tenure = (date.today() - p.last_sale_date).days / 365.25 if p.last_sale_date else None
     debt = sheriff.amount_owed if sheriff else None
     fmv = v.as_is_value if v else p.estimated_value
+    from sqlalchemy.orm import object_session
+
+    from engine.offer_math import firm_offer, locked
+    firm = locked(lead, firm_offer(lead, object_session(lead), check_certainty=False)) if v else None
     return {
         "address": f"{postal_title(p.street_address)}, {postal_title(p.city or p.municipality)}",
         "town": postal_title(p.city or p.municipality), "county": p.county, "zip": p.zip_code,
@@ -103,8 +107,9 @@ def lead_facts(lead: Lead) -> dict[str, Any]:
         "upset": debt, "adjournments": smeta.get("adjournments_total"),
         "defendant_adjournments": smeta.get("defendant_adjournments"), "docket": sheriff.case_number if sheriff else None,
         "arv": v.arv_estimate if v else None, "fmv": fmv, "repairs": v.est_repair_cost if v else None,
-        "rehab_tier": v.rehab_tier if v else None, "anchor": v.anchor_offer if v else None,
-        "walkaway": v.mao_conservative if v else None, "ceiling": v.mao_aggressive if v else None,
+        # one firm number and one final (engine/offer_math.py), the same as the e-mail, LOI and call script
+        "rehab_tier": v.rehab_tier if v else None, "anchor": firm.offer if firm and firm.priced else None,
+        "walkaway": firm.final if firm else None, "ceiling": firm.final if firm else None,
         "fee": v.target_assignment_fee if v else None, "verdict": v.verdict if v else None,
         "frfpa_track": a.get("frfpa_track") or lead.frfpa_track, "frfpa_applies": a.get("frfpa_applies"),
         "frfpa_floor": a.get("frfpa_floor"), "compliant_offer": a.get("compliant_offer"),
@@ -277,8 +282,7 @@ def offer_block(f: dict[str, Any]) -> dict[str, Any]:
                        "nobody (or only tenants) lives there — then record it and re-run underwriting."}
     return {"type": "standard", "anchor": f.get("anchor"), "walkaway": f.get("walkaway"),
             "ceiling": f.get("ceiling"), "fee": f.get("fee"),
-            "say": f"Open at {money(f.get('anchor'))}. Walk away above {money(f.get('walkaway'))}; "
-                   f"{money(f.get('ceiling'))} only if the buyer side is confirmed."}
+            "say": f"Offer {money(f.get('anchor'))}. Best and final {money(f.get('walkaway'))}: never above it."}
 
 
 def build_battle_card(lead: Lead, contact: Contact | None = None) -> BattleCard:

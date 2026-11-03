@@ -62,20 +62,25 @@ def test_offers_capped_floor_respected_and_far_below_ask_demoted(db):
 def test_offer_never_opens_below_the_payoff_it_can_cover(db, operator, tmp_path):
     """An opening under a $250,000 payoff 12 days before the sale is a short-sale request the lender won't approve in
     time. Open at the payoff instead (our walk-away is $285,000, so we can cover it)."""
-    lead = listed(db, absentee=True, upset=250_000)
-    crm.confirm_occupancy(db, lead, "VACANT", "agent")
-    low = listed(db, absentee=True, upset=150_000)          # payoff already under our opening: nothing changes
+    from engine.offer_math import firm_offer
+    low = listed(db, absentee=True, upset=150_000)          # payoff already under our offer: nothing changes
     crm.confirm_occupancy(db, low, "VACANT", "agent")
-    base_anchor, base_best, _ = ft.offer_numbers(low)
-    assert base_anchor < 250_000
+    base = firm_offer(low, db)
+    assert ft.offer_numbers(low)[:2] == (base.offer, base.offer) and base.final == base.offer + 5000
+    payoff = base.offer + 2_500                             # between our offer and our best and final
+    lead = listed(db, absentee=True, upset=payoff)
+    crm.confirm_occupancy(db, lead, "VACANT", "agent")
+    opening = -(-payoff // 1000) * 1000                     # the payoff, to the next $1,000, never above the final
     anchor, best, floor = ft.offer_numbers(lead)
-    assert anchor == 250_000 and best == base_best and floor is None
+    assert anchor == best == opening <= base.final and floor is None
     p = ft.build_packet(db, lead, out_root=tmp_path)        # e-mail, text and the attached written offer agree
-    assert p.kind == "offer" and p.anchor == 250_000 and "$250,000 cash" in p.email_body and "$250,000" in p.sms_text
+    money = f"${opening:,.0f}"
+    assert p.kind == "offer" and p.anchor == opening and f"{money} cash" in p.email_body and money in p.sms_text
     assert p.loi_files["pdf"].endswith("loi.pdf")
-    over = listed(db, absentee=True, upset=300_000)         # payoff above our walk-away: not ours to cover
+    over = listed(db, absentee=True, upset=base.final + 20_000)   # payoff above our best and final: a lender short sale
     crm.confirm_occupancy(db, over, "VACANT", "agent")
-    assert ft.offer_numbers(over)[0] == base_anchor
+    assert firm_offer(over, db).tier == "skip" and ft.deal_track(over)[0] == "SHORT_SALE"
+    assert ft.offer_numbers(over)[0] == base.final           # the lender gets our best and final, nothing above it
 
 
 def test_queue_order_countdown_and_script(db, operator):

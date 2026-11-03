@@ -73,6 +73,15 @@ def listing_parcel_miles(lead: Any) -> tuple[float, str, str] | None:
     return (haversine_miles(p.lat, p.lon, lst.lat, lst.lon), lst.city or "listing", (p.municipality or "parcel").title())
 
 
+def _firm_number(lead: Any) -> float | None:
+    """The one number in writing (engine/offer_math.py); the talking point never reveals the buyer's ceiling."""
+    from sqlalchemy.orm import object_session
+
+    from engine.offer_math import firm_offer
+    f = firm_offer(lead, object_session(lead), check_certainty=False)
+    return f.offer if f.tier == "firm" else None
+
+
 def check(lead: Any, today: date | None = None) -> Preflight:
     from engine.listing_comps import listing_type
     from engine.scoring import valuation_suspect
@@ -172,8 +181,8 @@ def check(lead: Any, today: date | None = None) -> Preflight:
         rng = f"{money(min(prices))}-{money(max(prices))}" if len(prices) > 1 else money(prices[0])
         tp = (f"The best comparable sales near it closed at {rng}. With about {money(b.get('rehab'))} of work plus a 10% "
               f"cushion, {money(b.get('taxes_held'))} of taxes and {money((b.get('carry') or 0) + (b.get('capital_cost') or 0))} "
-              f"to carry and finance it for {b.get('holding_months') or 6} months, a cash buyer tops out near "
-              f"{money(q['buyer_max'])}, so my number is {money(q.get('mao_target'))}.")
+              f"to carry and finance it for {b.get('holding_months') or 6} months, my written offer is "
+              f"{money(_firm_number(lead) or q.get('mao_target'))}.")
     else:
         tp = ""
     status = "HOLD" if hold else ("VERIFY" if issues else "GO")

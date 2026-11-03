@@ -98,7 +98,7 @@ def test_generate_package_writes_md_html_pdf(db, tmp_path):
     assert g.paths[2].read_bytes().startswith(b"%PDF")
     assert db.query(GeneratedDocument).filter_by(lead_id=lead.id, doc_type="psa").count() == 1
     loi = generate(db, lead, "loi", out_root=tmp_path)
-    assert loi.price == 228800 and "not a binding contract" in loi.paths[0].read_text()
+    assert loi.price == 280000 and "not a binding contract" in loi.paths[0].read_text()   # firm offer: buyer max - $10K
     with pytest.raises(ContractBlocked):
         generate(db, lead, "assignment", out_root=tmp_path)
 

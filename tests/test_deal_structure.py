@@ -26,7 +26,7 @@ def test_rider_generates_three_files_with_every_section(db, tmp_path):
                    "resell the Property or assign this Agreement for a profit", "Nothing about this Property is marketed"):
         assert needle in md, needle
     assert "Friday, October 23, 2026" in md                 # 3 NJ business days after Tuesday 10/20
-    assert g.price == 228800 and any("VERIFY" in w for w in g.warnings)
+    assert g.price == 280000 and any("VERIFY" in w for w in g.warnings)
     for phrase in ("drive by", "stop the foreclosure", "postpone"):
         assert phrase not in md.lower()
 
@@ -108,6 +108,7 @@ def test_structure_for_lead_uses_the_leads_numbers(db):
     lead = make_lead(db, sheriff_days=None, upset=None, vacant=True, verdict="STRONG")
     add_contact(db, lead, name="Quinn Sample", phone="9735551234")
     c = ds.structure_for_lead(lead)
-    assert c.contract_price == 228800 and c.buyer_price == 285000 and c.spread == 56200 and c.recommended == "double_close"
-    c2 = ds.structure_for_lead(lead, buyer_price=250000)
-    assert c2.spread == 21200 and c2.recommended == "assignment"
+    # the firm offer (buyer max 290K - $10K) and the end buyer at buyer max: a $10K spread, assigned
+    assert c.contract_price == 280000 and c.buyer_price == 290000 and c.spread == 10000 and c.recommended == "assignment"
+    c2 = ds.structure_for_lead(lead, buyer_price=320000)
+    assert c2.spread == 40000 and c2.recommended == "double_close"

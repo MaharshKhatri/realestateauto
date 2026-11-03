@@ -261,11 +261,19 @@ def deal_numbers(lead: Lead) -> dict[str, Any] | None:
     q = a.get("quant") or {}
     buyer = q.get("buyer") or {}
     buyer_max = q.get("buyer_max") or a.get("buyer_purchase_price") or ((v.mao_aggressive or 0) + (v.target_assignment_fee or 0))
+    # The same final / offer every other surface states (engine/offer_math.py), locked to what already went out: no
+    # re-trade below a written offer, nothing above the final (2026-11-03).
+    from sqlalchemy.orm import object_session
+
+    from engine.offer_math import firm_offer, locked
+    firm = locked(lead, firm_offer(lead, object_session(lead), check_certainty=False))
+    walk = float(firm.final or q.get("mao_walkaway") or v.mao_aggressive or 0)
+    opening = float(firm.offer or lead.offer_amount or q.get("opening_offer") or v.anchor_offer or 0)
     return {
         "arv": v.arv_estimate, "repairs": v.est_repair_cost or 0.0, "annual_taxes": lead.property.annual_taxes,
-        "buyer_max": float(buyer_max), "mao_walkaway": float(q.get("mao_walkaway") or v.mao_aggressive or 0),
-        "mao_target": float(q.get("mao_target") or v.mao_conservative or 0),
-        "opening_offer": float(q.get("opening_offer") or v.anchor_offer or 0), "fee_target": q.get("fee_target") or v.target_assignment_fee,
+        "buyer_max": float(buyer_max), "mao_walkaway": walk,
+        "mao_target": float(firm.offer or q.get("mao_target") or v.mao_conservative or 0),
+        "opening_offer": opening, "fee_target": q.get("fee_target") or v.target_assignment_fee,
         "verdict": v.verdict, "frfpa_floor": a.get("frfpa_floor") if a.get("frfpa_applies") else None,
         "compliant_offer": a.get("compliant_offer"), "quant": bool(q),
         "rehab_total": (buyer.get("rehab") or v.est_repair_cost or 0) + (buyer.get("rehab_contingency") or 0),
@@ -470,7 +478,10 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
     buffer, why = risk_buffer(intents)
     if nums:
         nums["risk_buffer"], nums["risk_reasons"] = buffer, why
-        nums["adjusted_walkaway"] = _floor100(nums["mao_walkaway"] - buffer)
+        # A risk found after our written offer doesn't lower it (no re-trading): the offer's own terms cover a found
+        # tank or open permits (removed by the seller or escrowed); the buffer only trims a final not yet stated.
+        nums["adjusted_walkaway"] = min(nums["mao_walkaway"], max(_floor100(nums["mao_walkaway"] - buffer),
+                                                                 float(nums.get("last_offer") or 0)))
         nums["adjusted_buyer_max"] = _floor100(nums["buyer_max"] - buffer)
         an.numbers = nums
     risk_lines = _risk_lines(intents)
@@ -586,16 +597,18 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
             an.sms_text = f"Hi {first}, it's {me}. {hc.money(c)} works on {st}; written offer coming today." + sms_tail
             an.followup_at = ao._eastern(now)
         else:
-            x = _floor100(adj_max - float(ncfg.get("counter_fee_floor", 12000)))
-            if x > 0 and x >= float(ncfg.get("counter_within_pct", 0.92)) * c:
-                an.verdict, an.headline = "YELLOW", f"COUNTER AT {hc.money(x)} (keeps a {hc.money(_floor100(adj_max - x))} fee)"
+            # One move only (2026-11-03: offers are final and on the record): our counter IS the best and final.
+            x = adj_walk
+            final_said = bool(last_offer and float(last_offer) >= adj_walk and nums.get("last_offer"))
+            if x > 0 and not final_said and x >= float(ncfg.get("counter_within_pct", 0.92)) * c:
+                an.verdict, an.headline = "YELLOW", f"BEST AND FINAL AT {hc.money(x)} (keeps a {hc.money(_floor100(adj_max - x))} fee)"
                 nums.update({"our_counter": x, "fee_at_our_counter": _floor100(adj_max - x)})
                 sentences = [f"I ran it again with the real costs, {cost_line}, and that's what keeps me from {hc.money(c)}.",
-                             f"I can do {hc.money(x)} cash, as-is, with a quick close.",
+                             f"My best and final is {hc.money(x)} cash, as-is, with a quick close.",
                              "If that works for the seller I'll send the written offer today."]
                 priced_reply(x, sentences, [])
-                an.sms_text = f"Hi {first}, it's {me}. Closest I can get on {st} is {hc.money(x)} cash, as-is; details by e-mail." + sms_tail
-                an.actions = [f"Counter at {hc.money(x)}; if they come back under {hc.money(adj_walk)} it's a GREEN."] + an.actions
+                an.sms_text = f"Hi {first}, it's {me}. My best and final on {st} is {hc.money(x)} cash, as-is; details by e-mail." + sms_tail
+                an.actions = [f"Best and final at {hc.money(x)}: nothing above it, ever."] + an.actions
                 an.followup_at = _followup(now, int(ncfg.get("yellow_followup_days", 2)))
             else:
                 an.verdict, an.headline = "RED", f"HOLD FIRM AT {hc.money(adj_walk)} / SET {int(ncfg.get('drip_days', 14))}-DAY DRIP"

@@ -37,3 +37,6 @@ deals/
 # Generated inbound-site config / static build (operator contact details)
 site/config.js
 site_dist/
+
+# agent worktrees (local only)
+.claude/worktrees/
