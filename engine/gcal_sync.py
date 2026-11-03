@@ -515,16 +515,74 @@ def daily_goal_event(session: Session, today: date) -> Desired:
     first = parse_start((row.body_json or {}).get("start")) if row and row.body_json else None
     start = datetime.combine(first.date() if first else today, _clock("daily_goal_time", "10:00"))
     s, e = _timed(start, 30)
-    lines = [f"Open the dashboard ({dashboard_url()}/) and press 🚀 RUN TODAY'S AI AUTOPILOT: {goal} distinct deals "
-             "contacted today from your Gmail, 25-60 seconds apart. Listed foreclosures come first, then due "
-             "follow-ups, then stale MLS fixers.",
-             "Agent replies show up under 🔥 Action Needed (the inbox is checked every few minutes); a plain "
-             "'still available' gets your offer by itself.",
-             "Texts go from your phone; every e-mail keeps your postal address and the opt-out line."]
+    lines = [f"Today's outreach: {goal} new listing agents, e-mailed from your Gmail 25-60 seconds apart (urgent "
+             "listed foreclosures, then due follow-ups, then stale MLS fixers).",
+             "With the autopilot daemon installed with --daily-openers, your Mac sends them by itself at 10:30 and "
+             "there is nothing to do here. Otherwise open Claude Code in ~/realestateauto and type /daily.",
+             "Replies that need you and calls to make each get their own event on this calendar."]
     return Desired("daily_goal", "daily_goal", None,
-                   _body("daily_goal", f"🎯 Send {goal} Daily Wholesaling Outreach Emails (Open Dashboard)", lines,
-                         s, e, reminders=[0], link=f"{dashboard_url()}/",
-                         recurrence=[str(cfg().get("daily_goal_rrule") or "RRULE:FREQ=DAILY")]), start)
+                   _body("daily_goal", f"🎯 Daily outreach: {goal} agent e-mails (autopilot)", lines,
+                         s, e, reminders=[0], recurrence=[str(cfg().get("daily_goal_rrule") or "RRULE:FREQ=DAILY")]),
+                   start)
+
+
+def desk_status_event(session: Session, now: datetime) -> Desired | None:
+    """📊 One all-day event per day that your Mac keeps current: what went out, what came back and exactly what waits
+    on you (with the command). It is how the deal desk reports when you only read the calendar (and how a Claude
+    chat in the cloud, which can't reach the Mac, reads the day). Streets and numbers only: no agent message text,
+    no homeowner names; a Daniel's Law / stop address shows as "lead #<id>"."""
+    if not cfg().get("desk_status_event", True):
+        return None
+    from engine import agent_outreach as ao
+    from engine import gmail_autopilot as gm
+    day0 = datetime.combine(now.date(), time(0, 0))
+    rows = gm.inbox_rows(session, now, days=1)
+
+    def street(lead_id: int | None, fallback: str) -> str:
+        lead = session.get(Lead, lead_id) if lead_id else None
+        return _place(session, lead).street if lead is not None else (fallback or "agent reply")
+
+    waiting = [r for r in rows if r["status"] == "needs_approval"]
+    queued = [r for r in rows if r["status"] in ("auto_queued", "sending")]
+    sent_rows = list(session.scalars(select(Interaction).where(
+        Interaction.occurred_at >= day0, Interaction.channel.in_(("email_smtp", "email_gmail")),
+        Interaction.outcome.in_(tuple(AGENT_TOUCH_WORDS)))))
+    offers = [i for i in sent_rows if i.outcome == "OFFER_SENT_TO_AGENT"]
+    openers = sum(1 for i in sent_rows if i.outcome == "AGENT_OPENER_SENT")
+    replies_today = sum(1 for r in rows if r["received_at"] and str(r["received_at"])[:10] == now.date().isoformat())
+    summary = (f"📊 Deal desk: {len(sent_rows)} sent · {replies_today} repl{'y' if replies_today == 1 else 'ies'} · "
+               f"{len(waiting)} waiting on you")
+    lines = [f"Updated {_when(now)} by your Mac.", ""]
+    if waiting:
+        lines.append(f"WAITING ON YOU ({len(waiting)}):")
+        for r in waiting:
+            st = street(r["lead_id"], r["address"])
+            lines.append(f"- {st}: {r['light']} -> Claude Code: /inbox, or "
+                         f"`.venv/bin/python manage.py gmail --approve \"{st}\"` (or --dismiss)")
+        lines.append("")
+    if queued:
+        lines.append("GOING OUT ON THE NEXT CHECK: " + ", ".join(street(r["lead_id"], r["address"]) for r in queued))
+    stuck = [r for r in rows if str(r.get("note") or "").startswith("not sent yet")]
+    if stuck:
+        lines.append("GMAIL DIDN'T TAKE IT (retries by itself): " + ", ".join(street(r["lead_id"], r["address"])
+                                                                            for r in stuck))
+    if offers:
+        lines.append("OFFERS SENT TODAY: " + "; ".join(
+            f"{street(i.lead_id, '')} {_money(i.lead.offer_amount) if i.lead and i.lead.offer_amount else ''}".strip()
+            for i in offers[:15]))
+    answered = [r for r in rows if r["status"] in ("auto_sent", "approved") and not r["offer_sent"]]
+    if answered:
+        lines.append("ANSWERED WITHOUT A PRICE: " + "; ".join(f"{street(r['lead_id'], r['address'])} ({r['you_do']})"
+                                                            for r in answered[:10]))
+    calls = [r for r in rows if "call them" in r["you_do"]]
+    if calls:
+        lines.append("CALL: " + "; ".join(f"{street(r['lead_id'], r['address'])} {r['phone'] or ''}".strip()
+                                          for r in calls))
+    lines += ["", f"Openers today: {openers}. Cold e-mails in the last 24 hours: {ao.sent_last_24h(session, now, cold_only=True)}"
+              f" of {int((settings().get('outreach', {}) or {}).get('daily_email_limit', 25))}."]
+    s, e = _all_day(now.date())
+    return Desired(f"desk:{now:%Y%m%d}", "desk", None,
+                   _body("desk", summary, lines, s, e, reminders=[], transparent=True), day0)
 
 
 def desired_events(session: Session, lead_ids: set[int] | None = None, now: datetime | None = None
@@ -552,6 +610,10 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
                                                             Lead.id.in_(on_calendar), Lead.id.in_(waiting)))))
         sale_ids = {lead.id for lead in priority_sale_leads(session, today)}
         put([daily_goal_event(session, today), reconnect_event(session, now)])
+        try:
+            put([desk_status_event(session, now)])
+        except Exception:                                # noqa: BLE001 - a status line never blocks the real events
+            log.exception("calendar: desk status event skipped")
     else:
         leads = [lead for lead in (session.get(Lead, i) for i in sorted(lead_ids)) if lead is not None]
         # A lead's sale event is refreshed here only when it is already on the calendar; which sales make the

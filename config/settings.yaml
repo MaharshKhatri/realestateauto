@@ -109,6 +109,7 @@ calendar:                            # Google Calendar sync (engine/gcal_sync.py
     daily_goal: "10"
     reconnect: "3"                   # grape
     reply: "2"                       # sage: an agent answered, the deal waits on your click
+    desk: "8"                        # graphite: the daily 📊 deal-desk status (all day, shows as free)
 
 crm:
   # Days until the next touch, by call outcome (business-hours follow-up queue).

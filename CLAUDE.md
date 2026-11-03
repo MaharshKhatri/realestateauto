@@ -749,6 +749,19 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - `autopilot-daemon --daily-openers N [--openers-at 10:30]` (and `install-daemon` with the same flags) sends the 🚀
     batch once per weekday after that time, inside send hours, under the 25 / 24 h cap; the day is claimed in
     swarm_state (`daemon_daily_openers`) before the first e-mail. Off unless the flag is given.
+- **Hands-off operation** (learned 2026-11-03, the operator wants no dashboard and updates in the cloud chat):
+  - `manage.py set-gmail [--email]` saves a new app password typed at a hidden prompt in the operator's own Terminal
+    (never pasted into a chat), keeps the rest of .env (DB_SYNC_KEY), and tests both Gmail servers.
+  - 📊 `desk:<YYYYMMDD>` (gcal_sync.desk_status_event, `calendar.desk_status_event`, color graphite, all day, free, no
+    reminder): the Mac's daily report on the calendar, rebuilt on every full sync (the daemon kicks one each cycle):
+    sent / replies / waiting counts in the title; WAITING ON YOU with the exact `gmail --approve "<street>"` command,
+    going out next, Gmail failures, offers sent, answered without a price, calls, cold e-mails in 24 h. Streets and
+    numbers only (no agent message text, no homeowner names; suppressed addresses as "lead #<id>"). A cloud Claude
+    session can't reach the Mac, so its scheduled check-ins read this event (and the 🔥 reply / follow-up events) through
+    the Google Calendar connector and report in the chat.
+  - The daily-goal event no longer points at the dashboard ("🎯 Daily outreach: N agent e-mails (autopilot)").
+  - The daemon reads the inbox 8 AM-9 PM but sends only inside `send_hours` (8 AM-8 PM): run_inbox(send=in_send_hours()).
+  - `inbox` prints progress on stderr while it paces the sends ("next one in 14 s"), so a pause never looks like a hang.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

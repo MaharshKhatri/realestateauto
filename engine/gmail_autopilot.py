@@ -709,11 +709,18 @@ def send_queued(ids: list[int], *, now: datetime | None = None, smtp_factory: An
     row) stops the rest; they stay queued for the next check. Returns (sent, the stopping sentence or None)."""
     lo, hi = (float(x) for x in _cfg().get("reply_pace_seconds", [8, 20]))
     sent, error = 0, None
+    if ids:
+        log.info("%d answer(s) to agents to send, %.0f-%.0f seconds apart", len(ids), lo, hi)
     for rid in ids:
         if sent:
-            _sleep(random.uniform(lo, hi))
+            wait = random.uniform(lo, hi)
+            log.info("next one in %.0f s", wait)
+            _sleep(wait)
         try:
-            sent += int(_send_auto(rid, now=now, smtp_factory=smtp_factory))
+            ok = _send_auto(rid, now=now, smtp_factory=smtp_factory)
+            sent += int(ok)
+            if ok:
+                log.info("sent %d of %d", sent, len(ids))
         except GmailSendError as exc:                     # fatal: the next one would fail the same way
             error = str(exc)
             log.warning("gmail autopilot: stopped sending offers: %s", exc)

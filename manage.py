@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import os
 import sys
 from collections import Counter
 from datetime import date, datetime, timedelta
@@ -540,12 +541,53 @@ def _print_inbox(rows: list[dict]) -> None:
     console.print(t)
 
 
+def cmd_set_gmail(args: argparse.Namespace) -> None:
+    """Save a new Gmail app password without the dashboard. It's typed at a hidden prompt in your own Terminal
+    (never shown, never pasted into a chat), written to .env (chmod 600), then both Gmail servers are tested."""
+    import getpass
+    import re as _re
+    from core.config import write_env
+    from core.mail import clean_app_password
+    from engine import gmail_autopilot as gm
+    from engine import operator_setup
+    init_db()
+    operator_setup.sync_from_disk()
+    user = (args.email or os.environ.get("SMTP_USER") or "").strip()
+    if not user:
+        user = input("Gmail address you send from: ").strip()
+    if not operator_setup.EMAIL_RE.fullmatch(user):
+        console.print(f"[red]'{user}' isn't an e-mail address[/red]")
+        raise SystemExit(1)
+    console.print(f"Gmail: {user}. Create the app password at https://myaccount.google.com/apppasswords "
+                  "(signed in as that account), then paste it here.")
+    pw = clean_app_password(getpass.getpass("New app password (what you type stays hidden): "))
+    if not _re.fullmatch(r"[A-Za-z0-9]{16}", pw):
+        console.print("[red]A Gmail app password is 16 letters (spaces are fine). Nothing was saved.[/red]")
+        raise SystemExit(1)
+    write_env({"SMTP_USER": user, "SMTP_APP_PASSWORD": pw}, operator_setup.ENV_FILE)
+    os.environ.update({"SMTP_USER": user, "SMTP_APP_PASSWORD": pw})
+    console.print("[green]saved[/green] to .env. Testing it with Gmail…")
+    r = gm.test_connection()
+    for side in ("smtp", "imap"):
+        console.print(f"  {'[green]✓' if r[side]['ok'] else '[red]✗'} {side.upper()}[/]: {r[side]['detail']}")
+    if not r["ok"]:
+        raise SystemExit(1)
+    console.print("All set. Now delete the OLD app password on that same Google page.")
+
+
 def cmd_inbox(args: argparse.Namespace) -> None:
     """/inbox: import what you sent from Gmail, read new agent replies, send every "still available" offer now,
     and print one table (--json for Claude)."""
     import json as _json
+    import logging
     from engine import gmail_autopilot as gm
     init_db()
+    h = logging.StreamHandler(sys.stderr)        # progress while it sends (stdout stays clean for --json)
+    h.setFormatter(logging.Formatter("  · %(message)s"))
+    for name in ("engine.gmail_autopilot", "engine.agent_outreach"):
+        lg = logging.getLogger(name)
+        lg.addHandler(h)
+        lg.setLevel(logging.INFO)
     r = gm.run_inbox(send=not args.no_send)     # every commit queues its calendar events; they push before exit
     if args.json:
         print(_json.dumps(r, default=str, indent=1))
@@ -586,7 +628,7 @@ def cmd_autopilot_daemon(args: argparse.Namespace) -> None:
         hour = _dt.now(TZ).hour
         if 8 <= hour < 21:
             try:
-                r = gm.run_inbox(send=True)
+                r = gm.run_inbox(send=gm.in_send_hours())   # read until 9 PM; send only 8 AM-8 PM
                 p = r.get("poll") or {}
                 lg.info("cycle: sent-import %s, new %s, matched %s, offers %s, waiting %s",
                         (r.get("sent_import") or {}).get("imported"), p.get("checked"), p.get("matched"),
@@ -596,6 +638,7 @@ def cmd_autopilot_daemon(args: argparse.Namespace) -> None:
                     lg.warning("inbox: %s", r.get("error"))
                 if r.get("send_error"):
                     lg.warning("inbox stopped sending: %s", r["send_error"])
+                gcal_sync.kick(full=True)          # the 📊 desk status on the calendar stays current
                 d = gm.daily_openers(args.daily_openers, at=args.openers_at, background=not args.once)
                 if d is not None:
                     lg.info("daily openers: %s", d["message"] or f"{d['total']} e-mails, 25-60 s apart")
@@ -1824,6 +1867,8 @@ def main(argv: list[str] | None = None) -> None:
                     "inbox table, or the street)")
     gm.add_argument("--dismiss", metavar="REPLY", help="drop a reply from Action Needed (its # or the street)")
     gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
+    sg = sub.add_parser("set-gmail", help="save a new Gmail app password at a hidden prompt (no dashboard) and test it")
+    sg.add_argument("--email", help="the Gmail address (default: the one already saved)")
     ib = sub.add_parser("inbox", help="/inbox: import Gmail Sent, read agent replies, send 'still available' offers now")
     ib.add_argument("--no-send", action="store_true", help="read and analyze only")
     ib.add_argument("--json", action="store_true", help="machine-readable result (for Claude)")
@@ -1977,7 +2022,7 @@ def main(argv: list[str] | None = None) -> None:
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
      "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "db-sync": cmd_db_sync, "setup-calendar": cmd_setup_calendar,
-     "sync-calendar": cmd_sync_calendar, "gmail": cmd_gmail, "inbox": cmd_inbox,
+     "sync-calendar": cmd_sync_calendar, "gmail": cmd_gmail, "inbox": cmd_inbox, "set-gmail": cmd_set_gmail,
      "autopilot-daemon": cmd_autopilot_daemon, "install-daemon": cmd_install_daemon, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
      "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,

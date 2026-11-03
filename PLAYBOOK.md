@@ -183,6 +183,13 @@ between 8 AM and 9 PM, your Mac:
 
 Its log is `logs/daemon.log`; `install-daemon --uninstall` stops it.
 
+**New Gmail app password without the dashboard:** create it at https://myaccount.google.com/apppasswords, then run
+`.venv/bin/python manage.py set-gmail` and paste it at the prompt (what you type stays hidden; it is tested right away).
+Then delete the old one on the same Google page.
+
+**Your calendar is the report:** every day an all-day "📊 Deal desk" event says what went out, what came back and
+exactly what waits on you (with the command to run). Replies that need you get a 🔥 event, calls a 📞 / 🔥 follow-up.
+
 Commands take the street instead of an id: `gmail --approve "108 S Park"`, `gmail --send-offer "54 N 4th"`,
 `gmail --reply "22 Grand" --text "..."`, `gmail --dismiss "12 Juliette"`.
 

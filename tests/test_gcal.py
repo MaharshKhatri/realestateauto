@@ -117,6 +117,14 @@ class FakeService:
         return [e for e in self.store.values() if e["status"] == "confirmed"]
 
 
+@pytest.fixture(autouse=True)
+def _no_desk_event(monkeypatch):
+    """The daily 📊 desk status has its own test (test_desk_status_event_*): the event counts below leave it out."""
+    from core.config import Section, settings
+    monkeypatch.setitem(settings(), "calendar", Section({**dict(settings().get("calendar") or {}),
+                                                         "desk_status_event": False}))
+
+
 @pytest.fixture
 def google(monkeypatch, tmp_path):
     svc = FakeService()
@@ -261,7 +269,7 @@ def test_sheriff_sale_event_moves_with_an_adjournment_and_never_duplicates(db, g
 def test_daily_goal_is_one_recurring_10am_event(db, google):
     gs.sync(db, now=datetime(2026, 11, 2, 7, 0))
     e = ev(google, "daily_goal")
-    assert e["summary"] == "🎯 Send 15 Daily Wholesaling Outreach Emails (Open Dashboard)"
+    assert e["summary"] == "🎯 Daily outreach: 15 agent e-mails (autopilot)"
     assert e["recurrence"] == ["RRULE:FREQ=DAILY"] and e["colorId"] == "10"
     assert e["start"] == {"dateTime": "2026-11-02T10:00:00", "timeZone": "America/New_York"}
     calls = google.calls
@@ -489,7 +497,7 @@ def test_switching_accounts_moves_every_event_to_the_new_calendar(db, setup_file
     r = gs.sync(db, now=datetime(2026, 11, 3, 14, 20))
     assert r.error is None and r.pushed["created"] == 3 and len(new.live()) == 3
     assert {e["summary"].split(":")[0] for e in new.live()} == {
-        "🔥 Follow Up", "🎯 Send 15 Daily Wholesaling Outreach Emails (Open Dashboard)",
+        "🔥 Follow Up", "🎯 Daily outreach",
         "🔑 Re-connect Google Calendar sync (sign-in ends tomorrow)"}
     assert gs.status(db)["account"] == "school@example.edu"
     again = gs.connect(db, account="school@example.edu", flow_factory=fake_flow("school@example.edu"))
@@ -609,3 +617,20 @@ def test_end_to_end_commit_reaches_google_through_the_background_thread(db, goog
     e = next(e for e in google.live() if "Follow Up" in e["summary"])
     assert e["start"]["dateTime"] == (sent + timedelta(hours=48)).replace(tzinfo=None).isoformat(timespec="seconds") \
         or (sent + timedelta(hours=48)).weekday() == 6
+
+
+def test_desk_status_event_is_one_all_day_event_per_day_kept_current(db, google, monkeypatch):
+    from core.config import settings
+    monkeypatch.setitem(settings()["calendar"], "desk_status_event", True)
+    gs.sync(db, now=datetime(2026, 11, 3, 9, 0))
+    e = ev(google, "desk:20261103")
+    assert e["summary"].startswith("📊 Deal desk: 0 sent") and e["start"] == {"date": "2026-11-03"}
+    assert e["transparency"] == "transparent" and e["reminders"]["overrides"] == []
+    lead, agent = agent_lead(db)
+    ao.record_sent(db, lead, offer_packet(lead, agent), "email_smtp", now=datetime(2026, 11, 3, 9, 30, tzinfo=ET))
+    gs.sync(db, now=datetime(2026, 11, 3, 9, 31))
+    e = ev(google, "desk:20261103")
+    assert e["summary"].startswith("📊 Deal desk: 1 sent") and "OFFERS SENT TODAY" in e["description"]
+    gs.sync(db, now=datetime(2026, 11, 4, 9, 0))                       # a new day: a new event, yesterday's stays
+    assert ev(google, "desk:20261104")["summary"].startswith("📊 Deal desk: 0 sent")
+    assert ev(google, "desk:20261103")["status"] == "confirmed"

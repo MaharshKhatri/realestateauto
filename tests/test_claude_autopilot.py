@@ -414,3 +414,44 @@ def test_the_daemon_sends_one_paced_batch_per_weekday_after_its_start_time(live,
     assert gm.daily_openers(15, at="10:30", now=datetime(2026, 11, 10, 21, 0, tzinfo=TZ)) is None   # after send hours
     assert gm.daily_openers(15, at="10:30", now=datetime(2026, 11, 10, 10, 31, tzinfo=TZ))["sent"] == 3
     assert calls == [15, 15]
+
+
+def test_the_mac_reports_the_day_on_the_calendar(live):
+    """📊 one all-day event per day: what went out, what came back, what waits on you (with the command)."""
+    from engine import gcal_sync
+    db = live
+    lead = listed(db)
+    ours = opener(db, lead)["Message-ID"]
+    gm.set_imap_factory(lambda: FakeIMAP({91: mail(91, "Seller wants 355k, can you do that?", in_reply_to=ours,
+                                                   subject="Re: question")}))
+    gm.run_inbox(now=T0 + timedelta(minutes=40), smtp_factory=FakeSMTP)
+    db.expire_all()
+    d = gcal_sync.desk_status_event(db, (T0 + timedelta(minutes=45)).replace(tzinfo=None))
+    body = d.body
+    street = hc.street(lead.property.street_address)
+    assert d.key == f"desk:{T0:%Y%m%d}" and body["start"].get("date") and body.get("transparency") == "transparent"
+    assert body["summary"].startswith("📊 Deal desk:") and "1 waiting on you" in body["summary"]
+    assert "WAITING ON YOU (1)" in body["description"] and "--approve" in body["description"]
+    assert street.split(" ")[1] in body["description"]
+    assert "Seller wants" not in body["description"]                   # never the agent's own words
+    assert gcal_sync.desk_status_event.__name__ in {x.__name__ for x in [gcal_sync.desk_status_event]}
+    assert d.key in gcal_sync.desired_events(db, None, (T0 + timedelta(minutes=45)).replace(tzinfo=None))
+
+
+def test_set_gmail_saves_a_new_password_from_a_hidden_prompt(setup_paths, monkeypatch):  # noqa: F811
+    import getpass
+    import manage
+    from engine import operator_setup
+    (setup_paths / ".env").write_text("DB_SYNC_KEY=keep-me\nSMTP_USER=jordan@example.test\nSMTP_APP_PASSWORD=old\n")
+    operator_setup.sync_from_disk()
+    monkeypatch.setattr(getpass, "getpass", lambda prompt="": "abcd efgh ijkl mnop")
+    monkeypatch.setattr(gm, "test_connection", lambda **kw: {"ok": True, "account": "jordan@example.test",
+                                                             "smtp": {"ok": True, "detail": "signed in"},
+                                                             "imap": {"ok": True, "detail": "signed in"}})
+    manage.cmd_set_gmail(type("A", (), {"email": "jordan@example.test"})())
+    env = (setup_paths / ".env").read_text()
+    assert "SMTP_APP_PASSWORD=abcdefghijklmnop" in env and "DB_SYNC_KEY=keep-me" in env and "=old" not in env
+    monkeypatch.setattr(getpass, "getpass", lambda prompt="": "too short")
+    with pytest.raises(SystemExit):
+        manage.cmd_set_gmail(type("A", (), {"email": "jordan@example.test"})())
+    assert "SMTP_APP_PASSWORD=abcdefghijklmnop" in (setup_paths / ".env").read_text()   # nothing saved on a typo
