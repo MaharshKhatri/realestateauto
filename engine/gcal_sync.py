@@ -462,6 +462,10 @@ def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired
         else due
     if start < now:
         return []           # an overdue follow-up is on today's call list; a reminder in the past helps no one
+    if inter is not None and inter.outcome == REPLY_OUTCOME and session.scalar(
+            select(InboundReply.id).where(InboundReply.lead_id == lead.id,
+                                          InboundReply.status == "needs_approval").limit(1)):
+        return []           # the waiting reply's own 📞 event is the call (2026-11-03: the same reply showed twice)
     key = f"followup:{lead.id}:i{inter.id}" if inter else f"followup:{lead.id}:{due:%Y%m%d%H%M}"
     place = _place(session, lead)
     s, e = _timed(start, minutes)

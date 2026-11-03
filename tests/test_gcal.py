@@ -699,3 +699,18 @@ def test_a_mac_that_handed_off_never_writes_to_the_calendar(db, google, monkeypa
     assert gs.configured() is False
     r = gs.sync(db, now=datetime(2026, 11, 3, 14, 16))
     assert "cloud desk" in (r.error or "") and google.calls == 0 and not google.live()
+
+
+def test_a_reply_waiting_on_the_operator_is_one_call_event_not_two(db):
+    """2026-11-03: Jon's "still available" showed as a 🔥 Follow Up at 5:26 and a 📞 call at 5:36 for the same reply."""
+    from db.models import InboundReply, Interaction
+    lead, agent = agent_lead(db)
+    now = datetime(2026, 11, 3, 17, 25)
+    db.add(Interaction(lead_id=lead.id, contact_id=agent.id, channel="email_in", outcome="AGENT_REPLIED",
+                       occurred_at=now, next_followup_at=now + timedelta(minutes=1)))
+    lead.next_followup_at = now + timedelta(minutes=1)
+    db.add(InboundReply(message_id="<twice@b.test>", lead_id=lead.id, status="needs_approval", verdict="GREEN",
+                        headline="SEND THE OFFER NOW (Touch 2)", received_at=now))
+    db.flush()
+    assert gs.followup_events(db, lead, now) == []
+    assert len(gs.reply_events(db, lead, now)) == 1
