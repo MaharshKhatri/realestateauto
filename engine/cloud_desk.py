@@ -22,6 +22,7 @@ The handoff from the Mac (no command, no file to move):
 """
 from __future__ import annotations
 
+import base64
 import email
 import hashlib
 import io
@@ -318,14 +319,15 @@ def _state_set(**values: Any) -> None:
 
 
 def cloud_run(task: str = "run", *, root: Path = ROOT, now: datetime | None = None, smtp_factory: Any = None,
-              approve_id: int | None = None, lead_id: int | None = None) -> dict[str, Any]:
+              approve_id: int | None = None, lead_id: int | None = None, note: str | None = None) -> dict[str, Any]:
     """One GitHub Actions run. Returns counts only (the run log is public)."""
     env = _env()
     if env is None:
         return {"state": "not_configured"}
     user, pw, desk_key = env
     state = root / STATE_DIR.relative_to(ROOT) / "state.enc"
-    out: dict[str, Any] = {"state": "ok"}
+    # The public key is safe to print: a Claude chat seals its notes to it (see open_note).
+    out: dict[str, Any] = {"state": "ok", "pub": public_hex(desk_key)}
     if state.exists():
         apply_bundle(unlock(state.read_bytes(), desk_key), root)
     if not (root / DB_NAME).exists():
@@ -354,7 +356,7 @@ def cloud_run(task: str = "run", *, root: Path = ROOT, now: datetime | None = No
                 gcal_sync.note_reconnected(s, gm_now(now))
     try:
         out.update(_work(task, approve_id=approve_id, lead_id=lead_id, now=now, smtp_factory=smtp_factory, user=user,
-                         pw=pw, desk_key=desk_key, root=root))
+                         pw=pw, desk_key=desk_key, root=root, note=note))
     finally:
         state.parent.mkdir(parents=True, exist_ok=True)
         state.write_bytes(lock(make_bundle(root, db=True, preset=1), desk_key))     # fast: it's rewritten every run
@@ -366,6 +368,65 @@ def gm_now(now: datetime | None) -> datetime:
     return now_eastern(now)
 
 
+# -- notes from the operator's Claude chat -------------------------------------------------------------------------
+def seal_note(items: list[dict[str, Any]] | dict[str, Any], public_key_hex: str) -> str:
+    """What a Claude chat sends after the operator's calls: JSON sealed to the desk's public key, base64 for the
+    workflow input. The public run page shows only ciphertext, and only repository writers can dispatch a run."""
+    data = json.dumps(items if isinstance(items, list) else [items]).encode()
+    return base64.b64encode(seal(data, public_key_hex)).decode()
+
+
+def open_note(blob: str, desk_key: str) -> list[dict[str, Any]]:
+    data = json.loads(unseal(base64.b64decode(blob), desk_key))
+    return data if isinstance(data, list) else [data]
+
+
+def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_factory: Any = None) -> dict[str, Any]:
+    """Each item names a lead and what the operator said or wants, applied through the normal gates:
+
+    - "reply": text for the agent, sent in their Gmail thread with the signature, mailing address and opt-out
+      (`send_custom_reply`); "price" attaches the 1-page offer at that price (refused above the walk-away unless
+      "over_walkaway", which only the operator decides, e.g. when the stored valuation is for the wrong parcel);
+    - "call": a call outcome (NO_ANSWER, LEFT_VM, SPOKE_WARM_FOLLOWUP, SPOKE_NEEDS_OFFER, SPOKE_NOT_INTERESTED, ...)
+      with "notes" and "followup_at" (Eastern, ISO), logged with `crm.log_call` after any reply, so its follow-up
+      (the next call on the calendar) wins.
+    Counts only come back: the run log is public."""
+    from db.database import session_scope
+    from db.models import Lead
+    from engine import agent_outreach as ao
+    from engine import crm
+    from engine import gmail_autopilot as gm
+    try:
+        items = open_note(blob, desk_key)
+    except Exception:                              # noqa: BLE001 - a bad note is reported, never printed
+        return {"note_error": "unreadable"}
+    done, errors = 0, []
+    for item in items:
+        try:
+            lead_id = int(item["lead"])
+            with session_scope() as s:
+                lead = s.get(Lead, lead_id)
+                if lead is None:
+                    raise ValueError("no such lead")
+                if (item.get("reply") or "").strip():
+                    gm.send_custom_reply(s, lead_id, item["reply"], price=item.get("price") or None, now=now,
+                                         smtp_factory=smtp_factory,
+                                         allow_over_walkaway=bool(item.get("over_walkaway")))
+                if item.get("call"):
+                    when = datetime.fromisoformat(item["followup_at"]) if item.get("followup_at") else None
+                    crm.log_call(s, lead, str(item["call"]), notes=str(item.get("notes") or "")[:600],
+                                 contact=ao.agent_contact(lead) or next(
+                                     (x for x in lead.contacts if x.contact_type == "LISTING_AGENT"), None),
+                                 followup_at=when, debrief={"source": "chat_note"})
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - one bad item never stops the rest
+            errors.append(type(exc).__name__)
+    out: dict[str, Any] = {"note_done": done}
+    if errors:
+        out["note_errors"] = ",".join(errors)
+    return out
+
+
 def _reload(root: Path) -> None:
     from core import config
     from engine import operator_setup
@@ -374,7 +435,7 @@ def _reload(root: Path) -> None:
 
 
 def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_factory: Any, user: str, pw: str,
-          desk_key: str, root: Path, lead_id: int | None = None) -> dict[str, Any]:
+          desk_key: str, root: Path, lead_id: int | None = None, note: str | None = None) -> dict[str, Any]:
     from db.database import session_scope
     from engine import gcal_sync
     from engine import gmail_autopilot as gm
@@ -399,6 +460,8 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             out["dismissed"] = 1
         except gm.ApprovalError as exc:
             out["dismiss_error"] = type(exc).__name__
+    if task == "note" and note:
+        out.update(apply_note(note, desk_key, now=now, smtp_factory=smtp_factory))
     if task == "offer" and lead_id:
         # After a call ("send it in writing"): the lead's next e-mail, the same one `gmail --send-offer` sends (Touch 2
         # at the desk's own opening price, with the Offer Summary and the LOI, in the agent's thread). Only ids travel

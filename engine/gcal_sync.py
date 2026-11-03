@@ -431,6 +431,8 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
         'inspection period."',
         '8) Anything else: "Good question. Let me check and get back to you."',
         f'9) End: "Thanks, {first}. I\'ll send it over in writing. Have a good one."',
+        f'No answer? Leave this voicemail: "Hi {first}, this is {full}, {phone}, about {place.street}. Please give me a '
+        f'call back at {phone}. Thanks." Then tell Claude "no answer, left a voicemail".',
         "Never: go above the walk-away, offer the agent money, promise to stop a foreclosure, or say you're a realtor.",
         f'After the call, tell Claude in the chat what they said (for example "lead {lead.id}: seller needs 450, '
         f'needs a roof, send the offer"). The desk sends the written offer in their Gmail thread.',
@@ -461,14 +463,30 @@ def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired
     place = _place(session, lead)
     s, e = _timed(start, minutes)
     if agent is not None:
-        summary = (f"📞 Call {_name(agent.name) or 'the listing agent'} about {place.street} (they asked you to call)"
-                   if asked_call else f"🔥 Follow Up: {place.street} Agent ({_name(agent.name) or 'listing agent'})")
+        who = _name(agent.name) or "the listing agent"
+        # A call the operator logged from the chat (cloud_desk.apply_note): the next step is that call again.
+        called = inter is not None and inter.channel == "call" and not touch
+        missed = called and inter.outcome in ("NO_ANSWER", "LEFT_VM", "WRONG_NUMBER")
+        # Only notes written through the chat channel reach the calendar: Claude keeps them to business facts (no
+        # homeowner names or phones); notes typed elsewhere might name a seller.
+        chat_note = called and (inter.debrief_json or {}).get("source") == "chat_note"
+        if asked_call:
+            summary = f"📞 Call {who} about {place.street} (they asked you to call)"
+        elif called:
+            summary = (f"📞 Try {who} again about {place.street} (no answer last time)" if missed else
+                       f"📞 Call {who} back about {place.street} (check in)")
+        else:
+            summary = f"🔥 Follow Up: {place.street} Agent ({who})"
         lead_line = (f"They asked you to call. Your e-mail answer went out {_when(sent)}; this is the call."
                      if asked_call else
+                     f"You called {_when(sent)} and they didn't pick up. Try once more; if it goes to voicemail, "
+                     "leave the voicemail below." if missed else
+                     f"You spoke {_when(sent)}" + (f": {inter.notes}" if inter.notes and chat_note else "") + "."
+                     if called else
                      f"Follow-up call to the listing agent, {hours} hours after your {touch} e-mail ({_when(sent)})."
                      if touch and unmoved and sent else "Follow-up with the listing agent.")
-        nudge = None if asked_call else ("Optional call. If you don't call, the desk e-mails them a short nudge by "
-                                         "itself in its next morning batch.")
+        nudge = None if asked_call or called else ("Optional call. If you don't call, the desk e-mails them a short "
+                                                   "nudge by itself in its next morning batch.")
         offer = f"Your offer: {_money(lead.offer_amount)}" if touch == "offer" and lead.offer_amount else None
         card = card_link(lead.id)
         lines = [lead_line, nudge, *_agent_lines(session, agent),

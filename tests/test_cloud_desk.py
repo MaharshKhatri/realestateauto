@@ -10,6 +10,7 @@ from datetime import datetime
 from email import policy
 
 import pytest
+from sqlalchemy import select
 from cryptography.exceptions import InvalidTag
 
 from engine import cloud_desk as cd
@@ -195,3 +196,33 @@ def test_a_new_calendar_sign_in_on_the_mac_goes_to_the_cloud_at_once_asking_for_
     monkeypatch.setattr(manage, "cmd_set_gmail", lambda args: asked.append(args))
     manage._hand_calendar_to_cloud()
     assert len(asked) == 1
+
+
+def test_a_sealed_note_from_the_chat_logs_the_calls_and_sends_the_replies(db, monkeypatch):
+    """2026-11-03: the operator reports calls in the cloud chat ("Carlo picked up: seller needs 497 net...").
+    Claude seals a note to the desk's public key; only the desk opens it; replies go through send_custom_reply and
+    calls through crm.log_call, whose follow-up becomes the next call on the calendar."""
+    from db.models import Interaction
+    from engine import gcal_sync
+    from tests.factories import add_contact, make_lead
+    from db.models import ContactType
+    lead = make_lead(db, sheriff_days=None, stale_listing=True)
+    add_contact(db, lead, contact_type=ContactType.LISTING_AGENT, name="PAT AGENT", phone="9735550100",
+                email="pat@brokerage.example")
+    db.commit()
+    sent = []
+    monkeypatch.setattr(gm, "send_custom_reply", lambda s, lead_id, text, **kw: sent.append((lead_id, text, kw)))
+    note = cd.seal_note([{"lead": lead.id, "reply": "Hi Pat, thanks for the call.", "call": "SPOKE_WARM_FOLLOWUP",
+                          "notes": "seller needs about 497K net; tank sweep clean", "followup_at": "2026-12-03T11:00"},
+                         {"lead": 999999, "call": "NO_ANSWER"}], cd.public_hex(KEY))
+    assert "seller" not in note                                       # ciphertext only
+    r = cd.apply_note(note, KEY)
+    assert r == {"note_done": 1, "note_errors": "ValueError"}
+    assert sent[0][0] == lead.id and sent[0][2]["allow_over_walkaway"] is False
+    db.expire_all()
+    call = db.scalars(select(Interaction).where(Interaction.lead_id == lead.id, Interaction.channel == "call")).one()
+    assert call.outcome == "SPOKE_WARM_FOLLOWUP" and call.next_followup_at == datetime(2026, 12, 3, 11, 0)
+    [ev] = gcal_sync.followup_events(db, db.get(type(lead), lead.id), datetime(2026, 11, 3, 18, 0))
+    assert ev.body["summary"].startswith("📞 Call Pat Agent back about") and "497K net" in ev.body["description"]
+    assert "Optional call" not in ev.body["description"] and "voicemail" in ev.body["description"]
+    assert cd.apply_note("not a note", KEY) == {"note_error": "unreadable"}

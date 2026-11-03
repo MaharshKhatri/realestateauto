@@ -582,7 +582,7 @@ def cmd_cloud(args: argparse.Namespace) -> None:
         logging.basicConfig(level=logging.WARNING, handlers=[logging.FileHandler(Path(tempfile.gettempdir()) / "desk.log")],
                             force=True)
         try:
-            r = cloud_desk.cloud_run(args.task, approve_id=args.approve, lead_id=args.lead)
+            r = cloud_desk.cloud_run(args.task, approve_id=args.approve, lead_id=args.lead, note=args.note)
         except Exception as exc:               # noqa: BLE001 - one line, no message text (it may hold addresses)
             print(_json.dumps({"state": "error", "error": type(exc).__name__}))
             raise SystemExit(1) from None
@@ -591,6 +591,10 @@ def cmd_cloud(args: argparse.Namespace) -> None:
     if args.handoff:
         init_db()
         console.print(cloud_desk.mac_handoff())
+        return
+    if args.seal:
+        # A Claude chat: JSON note on stdin -> the sealed text for the workflow's `note` input.
+        print(cloud_desk.seal_note(_json.loads(sys.stdin.read()), args.seal))
         return
     console.print({"handed_off_to_cloud": cloud_desk.FLAG.exists(),
                    "flag": _json.loads(cloud_desk.FLAG.read_text()) if cloud_desk.FLAG.exists() else None})
@@ -2010,7 +2014,9 @@ def main(argv: list[str] | None = None) -> None:
     gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
     cl = sub.add_parser("cloud", help="the cloud desk (GitHub Actions): --run (the workflow), --handoff (Mac), status")
     cl.add_argument("--run", action="store_true", help="one cloud run (what .github/workflows/desk.yml calls)")
-    cl.add_argument("--task", default="run", choices=["run", "refresh", "approve", "dismiss", "offer"])
+    cl.add_argument("--task", default="run", choices=["run", "refresh", "approve", "dismiss", "offer", "note"])
+    cl.add_argument("--note", help="with --task note: a sealed note (manage.py cloud --seal PUBKEY < note.json)")
+    cl.add_argument("--seal", metavar="PUBKEY", help="seal the JSON note on stdin to the desk's public key")
     cl.add_argument("--approve", type=int, metavar="REPLY_ID",
                     help="with --task approve: send this drafted answer; with --task dismiss: stop it waiting")
     cl.add_argument("--lead", type=int, metavar="LEAD_ID", help="with --task offer: send this lead's offer e-mail now")
