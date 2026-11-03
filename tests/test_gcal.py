@@ -668,6 +668,7 @@ def test_every_call_event_carries_the_script_and_the_background(db, monkeypatch)
     assert "--- Call script (word for word) ---" in text and f"walk away above ${v.mao_aggressive:,.0f}" in text
     assert "Hi Pat," in text and "not a realtor" in text and "what the seller needs to walk away with" in text
     assert "Will you assign it?" in text and "proof of funds" in text and "That might work" in text
+    assert "We don't work with wholesalers" in text and "don't promise to close in your own name" in text
     assert f"lead {lead.id}: seller needs" in text and "promise to stop a foreclosure" in text
     # A pre-flight HOLD (a wrong parcel): no price on the call, only the facts to get.
     monkeypatch.setattr(preflight, "check", lambda lead, today=None: preflight.Preflight(

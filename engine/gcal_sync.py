@@ -426,6 +426,9 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
         *offer,
         '5) "Are you a wholesaler?" / "Will you assign it?": "I\'m an investor. I may buy it myself or assign the '
         'contract to a partner investor. That\'s in writing, and the seller\'s attorney reviews everything."',
+        '   "We don\'t work with wholesalers" / "the seller won\'t accept an assignment": "Understood, thanks for '
+        'telling me. I\'d rather be upfront about how I buy. If anything changes, I\'d still be glad to make an '
+        'offer." Then end the call politely; don\'t argue and don\'t promise to close in your own name.',
         '6) "Do you have proof of funds?": "Yes, it comes with the written offer."',
         '7) "Do you want to see it?": "Photos or a short video first, please. My partner can walk it during the '
         'inspection period."',
