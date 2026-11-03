@@ -18,10 +18,13 @@ step 3, and report in a few lines at the end. Use `.venv/bin/python` (plain `pyt
    - On yes, run `.venv/bin/python manage.py gmail --approve-all --yes`.
    - If they want one changed, send that one with `gmail --reply "<street>" --text "..."` first, then approve the rest.
    - Never price above the walk-away (`manage.py lead <id>`).
-4. **Hands-free from now on:** if `~/Library/LaunchAgents/com.khatri.wholesale.autopilot.plist` doesn't exist, run
-   `.venv/bin/python manage.py install-daemon --daily-openers 15`. From then on, every 5 minutes 8 AM-9 PM, the Mac
-   reads replies, sends the safe answers and keeps the calendar current, and it sends up to 15 new openers each
-   weekday at 10:30.
+4. **Hands-free from now on:** run `.venv/bin/python manage.py install-daemon --daily-openers 15` (safe to repeat;
+   it restarts the daemon on the current code). From then on the Mac does all of this by itself:
+   - every 5 minutes, 8 AM-9 PM: reads replies, sends the safe answers, keeps the calendar current;
+   - each weekday at 10:30: up to 15 new openers;
+   - while replies wait, the unattended desk agent (`/autopilot`, Claude Code headless) answers them, at most every
+     90 minutes;
+   - every 30 minutes: pulls new commits from GitHub and restarts on them.
 5. **New e-mails today:** only between 8 AM and 8 PM Eastern, and only if the daemon hasn't already sent today's
    batch:
    - `.venv/bin/python manage.py gmail --dry-run`: show the list;

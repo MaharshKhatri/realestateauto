@@ -571,6 +571,11 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
         session.flush()
         for c in hit:
             _drop_email(session, c, f"bounce {when:%Y-%m-%d}")
+            lead = session.get(Lead, c.lead_id) if c.lead_id else None
+            if lead is not None and c.phone and c.dnc_status != "dnc":
+                from engine import reply_negotiator as rn
+                lead.next_followup_at = rn._call_slot(now)      # their e-mail is dead: the call lands on the calendar
+        session.flush()
         return row
     lead_id, method = match(known, mail)
     if lead_id is None:
@@ -1378,6 +1383,7 @@ def inbox_rows(session: Session, now: datetime | None = None, days: int = 2) -> 
             todo = f"nothing: it retries on the next inbox check (or `gmail --approve {row.id}` now)"
         out.append({**{k: j[k] for k in ("id", "lead_id", "address", "town", "agent", "from", "status", "note")},
                     "said": (row.body_text or "").replace("\n", " ")[:140], "light": j["light"]["text"],
+                    "message": (row.body_text or "")[:4000],
                     "offer_sent": offer, "you_do": todo, "received_at": j["received_at"],
                     "phone": (j.get("phone") or {}).get("display"),
                     "draft": j["reply_text"] if row.status == "needs_approval" else "",
@@ -1476,8 +1482,8 @@ def daily_openers(limit: int, *, at: str = "10:30", now: datetime | None = None,
 
 
 def send_custom_reply(session: Session, lead_id: int, text: str, *, subject: str | None = None,
-                      price: float | None = None, now: datetime | None = None, smtp_factory: Any = None
-                      ) -> dict[str, Any]:
+                      price: float | None = None, now: datetime | None = None, smtp_factory: Any = None,
+                      allow_over_walkaway: bool = False) -> dict[str, Any]:
     """`/reply <house> <what to say>`: the operator's own words, in the agent's thread, from Gmail, logged.
 
     The signature, mailing address and opt-out are added when missing (CAN-SPAM); price=N attaches the 1-page
@@ -1489,6 +1495,11 @@ def send_custom_reply(session: Session, lead_id: int, text: str, *, subject: str
     agent = ao.agent_contact(lead)
     if agent is None:
         raise ApprovalError("no listing agent on this lead (or they asked to stop)")
+    v = lead.property.current_valuation if lead.property else None
+    walk = float(v.mao_aggressive) if v is not None and v.mao_aggressive else None
+    if price and walk and price > walk and not allow_over_walkaway:
+        # The unattended desk agent can't be talked above the walk-away; only the operator can (--over-walkaway).
+        raise ApprovalError(f"{hc.money(price)} is above your walk-away ({hc.money(walk)}): not sent")
     thread = reply_thread(session, lead_id)
     op = hc.operator()
     body = text.strip()

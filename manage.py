@@ -622,10 +622,23 @@ def cmd_autopilot_daemon(args: argparse.Namespace) -> None:
     logging.getLogger().addHandler(h)
     logging.getLogger().setLevel(logging.INFO)
     lg = logging.getLogger("autopilot-daemon")
+    from engine import mac_desk
     gcal_sync.start_background()
-    lg.info("started (every %ss, 8 AM-9 PM Eastern)", args.interval)
+    claude = mac_desk.find_claude(args.claude) if args.agent_every else None
+    lg.info("started (every %ss, 8 AM-9 PM Eastern; desk agent: %s; self-update every %s min)", args.interval,
+            claude or "off (Claude Code CLI not found)", args.update_every)
+    last_update = 0.0
     while True:
         hour = _dt.now(TZ).hour
+        if args.update_every and _t.time() - last_update >= args.update_every * 60:
+            last_update = _t.time()
+            u = mac_desk.self_update()
+            if u["updated"]:
+                lg.info("self-update: %s new commit(s) (%s); restarting on the new code", u["commits"],
+                        ", ".join(u.get("changed", [])[:8]))
+                os.execv(sys.executable, [sys.executable, *sys.argv])
+            elif u["reason"] not in ("up to date", ""):
+                lg.warning("self-update skipped: %s", u["reason"])
         if 8 <= hour < 21:
             try:
                 r = gm.run_inbox(send=gm.in_send_hours())   # read until 9 PM; send only 8 AM-8 PM
@@ -642,6 +655,17 @@ def cmd_autopilot_daemon(args: argparse.Namespace) -> None:
                 d = gm.daily_openers(args.daily_openers, at=args.openers_at, background=not args.once)
                 if d is not None:
                     lg.info("daily openers: %s", d["message"] or f"{d['total']} e-mails, 25-60 s apart")
+                waiting = sum(1 for x in r.get("rows", []) if x["status"] == "needs_approval" and x.get("draft"))
+                if claude:
+                    with session_scope() as s:
+                        due = mac_desk.agent_due(s, _dt.now(TZ).replace(tzinfo=None), waiting=waiting,
+                                                 every_minutes=args.agent_every)
+                    if due:
+                        lg.info("desk agent: %s repl%s waiting, running Claude", waiting, "y" if waiting == 1 else "ies")
+                        with session_scope() as s:
+                            a = mac_desk.run_agent(s, claude, _dt.now(TZ).replace(tzinfo=None))
+                        lg.info("desk agent %s: %s", "done" if a["ok"] else "failed",
+                                (a["report"] or a["error"] or "")[-400:].replace("\n", " | "))
             except Exception:                      # noqa: BLE001 - the loop must survive anything
                 lg.exception("cycle failed")
         if args.once:
@@ -666,8 +690,11 @@ def cmd_install_daemon(args: argparse.Namespace) -> None:
         plist.unlink(missing_ok=True)
         console.print(f"[green]removed[/green] {plist}")
         return
+    from engine import mac_desk
+    claude = mac_desk.find_claude(args.claude)
     extra = "".join(f"<string>{x}</string>" for x in (
-        ["--daily-openers", str(args.daily_openers), "--openers-at", args.openers_at] if args.daily_openers else []))
+        (["--daily-openers", str(args.daily_openers), "--openers-at", args.openers_at] if args.daily_openers else [])
+        + (["--claude", claude] if claude else [])))
     body = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -700,6 +727,9 @@ def cmd_install_daemon(args: argparse.Namespace) -> None:
     if args.daily_openers:
         console.print(f"It also sends up to {args.daily_openers} paced openers / offers each weekday from "
                       f"{args.openers_at} Eastern (25 cold e-mails per 24 hours at most).")
+    console.print(f"Desk agent (answers replies that need a written answer): "
+                  f"{'Claude Code at ' + claude if claude else 'off: Claude Code CLI not found (install it, then run this again)'}."
+                  " Updates from GitHub are pulled by themselves every 30 minutes.")
 
 
 def cmd_gmail(args: argparse.Namespace) -> None:
@@ -732,7 +762,7 @@ def cmd_gmail(args: argparse.Namespace) -> None:
         with session_scope() as s:
             try:
                 out = gm.send_custom_reply(s, gm.resolve_lead(s, args.reply), text, subject=args.subject,
-                                           price=args.price)
+                                           price=args.price, allow_over_walkaway=args.over_walkaway)
             except gm.ApprovalError as exc:
                 console.print(f"[red]{exc}[/red]")
                 raise SystemExit(1) from None
@@ -1887,6 +1917,8 @@ def main(argv: list[str] | None = None) -> None:
     gm.add_argument("--body-file", help="with --reply: a file holding the message")
     gm.add_argument("--subject", help="with --reply: subject (default: the thread's Re: subject)")
     gm.add_argument("--price", type=float, help="with --reply: attach the 1-page offer at this price (logged as an offer)")
+    gm.add_argument("--over-walkaway", action="store_true",
+                    help="with --reply --price: allow a price above the walk-away (you, never the unattended agent)")
     gm.add_argument("--test", action="store_true", help="sign in to smtp.gmail.com and imap.gmail.com with the saved "
                                                          "app password (nothing is sent)")
     gm.add_argument("--send-test", action="store_true", help="with --test: also send a short note to your own address")
@@ -1912,11 +1944,17 @@ def main(argv: list[str] | None = None) -> None:
     dm.add_argument("--daily-openers", type=int, default=0, metavar="N",
                     help="also send today's paced cold batch (up to N, within 25 / 24 h) once each weekday (default off)")
     dm.add_argument("--openers-at", default="10:30", metavar="HH:MM", help="Eastern time the daily batch starts")
+    dm.add_argument("--claude", metavar="PATH", help="the Claude Code CLI for the desk agent (default: found by itself)")
+    dm.add_argument("--agent-every", type=int, default=90, metavar="MIN",
+                    help="run the unattended desk agent at most this often while replies wait (0 = off)")
+    dm.add_argument("--update-every", type=int, default=30, metavar="MIN",
+                    help="pull new commits from GitHub and restart on them this often (0 = off)")
     idm = sub.add_parser("install-daemon", help="macOS launchd: start autopilot-daemon at login and keep it running")
     idm.add_argument("--uninstall", action="store_true")
     idm.add_argument("--daily-openers", type=int, default=0, metavar="N",
                      help="the daemon also sends the paced cold batch (up to N) once each weekday")
     idm.add_argument("--openers-at", default="10:30", metavar="HH:MM", help="Eastern time the daily batch starts")
+    idm.add_argument("--claude", metavar="PATH", help="the Claude Code CLI for the desk agent (default: found by itself)")
     idm.add_argument("--print", action="store_true", help="print the plist only")
     ds = sub.add_parser("db-sync", help="encrypted database snapshot for another machine (pack here, unpack there)")
     dsm = ds.add_mutually_exclusive_group()

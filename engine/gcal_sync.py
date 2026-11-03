@@ -508,8 +508,9 @@ def reconnect_event(session: Session, now: datetime) -> Desired | None:
              "After that, new follow-ups and deadlines stop reaching this calendar until you sign in again.",
              "Takes one minute in Terminal:",
              f"cd ~/realestateauto && .venv/bin/python manage.py setup-calendar --account {account}{extra}",
-             "(Or open the dashboard: 📅 → Connect Google Calendar.) If you published the app in Google Cloud, set "
-             "calendar.reconnect_reminder_days: 0 and this reminder stops."]
+             "To never do this again: console.cloud.google.com → Google Auth platform → Audience → Publish app "
+             "(unverified is fine for your own account), then run the command above once more and set "
+             "calendar.reconnect_reminder_days: 0."]
     return Desired(f"reconnect:{connected:%Y%m%d%H%M}", "reconnect", None,
                    _body("reconnect", "🔑 Re-connect Google Calendar sync (sign-in ends tomorrow)", lines, s, e,
                          reminders=[0, 120], link=f"{dashboard_url()}/"), start)

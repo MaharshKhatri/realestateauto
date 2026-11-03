@@ -774,6 +774,29 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     approve-all, install the daemon if missing, today's batch, calendar sync, a short report.
   - A cloud session can't use a Mac folder unless the Mac offers it under Remote Control; that isn't available to every
     account yet, so the desk runs in a Claude Code session on the Mac itself.
+- **The Mac runs itself** (learned 2026-11-03, the operator handles calls only; `engine/mac_desk.py`):
+  - **Self-update:** every 30 minutes (`autopilot-daemon --update-every`) the daemon fetches its branch. New commits
+    are pulled with `pull --rebase` (local commits kept), and `pip install -e .` runs when pyproject.toml changed;
+    then the daemon restarts on the new code (os.execv).
+    - Uncommitted edits are parked in a named stash ("autopilot self-update …: local edits parked"), never merged
+      half-way into running code.
+    - A conflict aborts the rebase and the Mac keeps the code it had.
+    - **A Claude session on the Mac commits and pushes its own code fixes right away, without asking** (the
+      operator asked never to be asked to commit), so nothing gets parked.
+  - **Unattended desk agent** (`.claude/commands/autopilot.md`): while replies with a draft wait, inside 9 AM-7 PM,
+    at most every `--agent-every` (90) minutes, the daemon runs `claude -p <the autopilot prompt>`. That is headless
+    Claude Code on the operator's own sign-in, found by `mac_desk.find_claude` or recorded by `install-daemon`.
+    - Its `--allowedTools` are only manage.py inbox / gmail / lead / script and Read: no edits, no other shell.
+    - It approves drafts that fit, writes its own short answer when a draft doesn't fit (`gmail --reply`), and
+      leaves accepts, call requests and legal / tenant / foreclosure questions for the operator (their 🔥 event
+      stays).
+    - Its report goes to logs/agent.log.
+  - `gmail --reply --price N` refuses N above the lead's walk-away (`mao_aggressive`) unless `--over-walkaway`
+    (the operator only), so no unattended run can be talked above it.
+  - A bounced agent e-mail with a phone on the card sets the next call slot, so the call lands on the calendar.
+  - Signature IDs are not prices: `reply_negotiator._ID_NUMBER` drops "License #: 0897105", "Lic#", "MLS #",
+    "NMLS" numbers before amounts are read (a Redfin license number had read as an $897K counter).
+  - The 🔑 calendar re-connect event says how to publish the OAuth app, so the 7-day sign-in stops for good.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

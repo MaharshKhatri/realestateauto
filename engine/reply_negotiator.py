@@ -45,6 +45,10 @@ TOUCH2_FLAGS = ("ASKS_ROLE", "ASKS_SHOWING", "CALL_ME", "BACKUP")
 
 # -- amounts ------------------------------------------------------------------------------------------
 _PHONE = re.compile(r"\(?\b\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b")
+# A signature's "License #: 0897105" / "Lic# 1234567" / "MLS # 3901234" / "NMLS 12345" is an ID, not a price
+# (2026-11-03: a Redfin agent's license number was read as an $897K counter on 8 Manhattan Ave).
+_ID_NUMBER = re.compile(r"\b(?:licen[cs]e|lic|mls|nmls|id|ref(?:erence)?|listing|file|account|acct|order|case|docket)"
+                        r"\.?\s*(?:no\.?|number|num|#)?\s*[#:]?\s*[A-Z]{0,3}\d[\d-]{3,}", re.I)
 _MONEY = re.compile(r"(?<![\w.])(\$)?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k\b|m\b|mm\b|thousand\b|million\b)?", re.I)
 _BAND = re.compile(r"\b(?:(low|lower|mid|middle|high|upper)[\s-]*)?(\d)(\d{2})\s?'?s\b", re.I)
 _UNIT_AFTER = re.compile(r"^\s*(sq\.?\s?ft|square|sqft|/\s?mo\b|a month|per month|monthly|%|percent|days?\b|business day|"
@@ -156,7 +160,7 @@ def parse_reply(text: str) -> ParsedReply:
     """Amounts, the seller's counter and what the message is doing (intents), from plain agent-speak."""
     out = ParsedReply()
     raw = text or ""
-    scrubbed = _PHONE.sub(" ", raw)
+    scrubbed = _ID_NUMBER.sub(" ", _PHONE.sub(" ", raw))
     scored: list[tuple[float, float, int]] = []          # (value, phrase-score, position)
     band_spans = [(b.start(), b.end()) for b in _BAND.finditer(scrubbed)]
     for m in _MONEY.finditer(scrubbed):
