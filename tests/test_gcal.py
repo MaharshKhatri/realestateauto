@@ -714,3 +714,20 @@ def test_a_reply_waiting_on_the_operator_is_one_call_event_not_two(db):
     db.flush()
     assert gs.followup_events(db, lead, now) == []
     assert len(gs.reply_events(db, lead, now)) == 1
+
+
+def test_after_the_written_offer_the_script_asks_about_it_instead_of_promising_one(db, monkeypatch):
+    from db.models import Interaction
+    from engine import preflight
+    lead, agent = agent_lead(db)
+    lead.offer_amount = 350400
+    call = datetime(2026, 11, 4, 11, 45)
+    db.add(Interaction(lead_id=lead.id, contact_id=agent.id, channel="call", outcome="NO_ANSWER",
+                       occurred_at=datetime(2026, 11, 3, 17, 36), next_followup_at=call))
+    lead.next_followup_at = call
+    db.flush()
+    monkeypatch.setattr(preflight, "check", lambda lead, today=None: preflight.Preflight(status="GO"))
+    [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 18, 0))
+    text = d.body["description"]
+    assert d.body["summary"].startswith("📞 Try Pat Agent again") and "Did you get my offer at $350,400?" in text
+    assert "I'll send it in writing today" not in text

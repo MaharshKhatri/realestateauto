@@ -401,9 +401,12 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
     if priced:
         open_at = _money(lead.offer_amount) if lead.offer_amount else _money(v.anchor_offer)
         walk = _money(v.mao_aggressive)
-        offer = [f'4) "What\'s your offer?" (only after your questions): "I\'d be around {open_at}, cash, as is, with '
-                 'attorney review. I know that\'s under the asking price; I\'m buying it as an investor. I\'ll send it '
-                 'in writing today."',
+        offer = [(f'4) Your written offer ({open_at}) already went out by e-mail. Ask: "Did you get my offer at '
+                  f'{open_at}? What did the seller think?" If they ask again: "It\'s {open_at}, cash, as is, with '
+                  'attorney review."') if lead.offer_amount else
+                 (f'4) "What\'s your offer?" (only after your questions): "I\'d be around {open_at}, cash, as is, with '
+                  'attorney review. I know that\'s under the asking price; I\'m buying it as an investor. I\'ll send it '
+                  'in writing today."'),
                  '   Too low? "I understand. What number do you think the seller would actually take?" Write it down, '
                  'agree to nothing, and say "Let me run that and get back to you."',
                  f'   Their number at or under {walk}: "That might work. Let me confirm my numbers and send it in '
