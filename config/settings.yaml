@@ -55,7 +55,9 @@ outreach:
   smtp_retry_waits: [5, 20]          # Gmail hung up / said "try again later": wait, try again (the Sent folder is
                                      # checked first when the line dropped mid-message, so an offer never goes twice)
   max_offer_basis: mao_70            # "best" structure in the e-mail: mao_70 (walk-away) or mao_75 (ceiling)
-  min_list_to_mao_75: 0.75           # include listings whose 75% ceiling is within 25% of ask
+  # Offers far below ask get ignored (learned 2026-11-03: openings averaged 50% of ask across 1,149 stale listings).
+  min_list_to_mao_75: 0.80           # contact a listing only when our walk-away reaches 80% of its ask
+  min_open_pct_of_ask: 0.75          # the first number is at least 75% of ask (never above our target)
   fast_close_days: 21
   standard_close_days: 45
 
@@ -169,7 +171,7 @@ harvest:
 deal:
   pricing_model: quant               # quant = engine/quant_pricing.py buyer-implied solve (alpha + 15% ROI / $45K);
                                      # fixed_pct = the classic 70% / 75% rule below
-  striking_distance_pct: 0.75        # listed leads: our ceiling must reach this share of the ask to be called
+  striking_distance_pct: 0.80        # listed leads: our ceiling must reach this share of the ask to be called
   striking_distance_report_pct: 0.78 # the stricter share reported by `manage.py recalibrate`
   mao_pct_conservative: 0.70         # fixed_pct model (and the FRFPA / fallback math)
   mao_pct_aggressive: 0.75

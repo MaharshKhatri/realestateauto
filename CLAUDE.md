@@ -882,6 +882,19 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     `reply_thread` skips voice rows, so later e-mails never thread onto them.
   - Its calendar event is "📞 Call <agent> about <street>: they texted you / left you a voicemail", with the drafted
     text (`sms_text`) to send by hand.
+- **No more lowballs** (learned 2026-11-03, the operator: "every offer we are giving are complete lowballs"). Across
+  1,149 stale listings, our first number averaged 50% of the ask and the walk-away 60%. Rules now:
+  - a listing is contacted only when our walk-away reaches **80% of the ask** (`outreach.min_list_to_mao_75`,
+    `deal.striking_distance_pct`; was 75%); 130 of the 1,149 qualified that day;
+  - the first number is at least **75% of the ask** (`outreach.min_open_pct_of_ask`) but never above our target
+    (`agent_outreach.offer_prices`);
+  - every priced offer shows how we got there (`price_math`): the fixed-up value, two renovated sales nearby, the
+    repair estimate, and what the price leaves room for;
+  - listings above that line aren't chased: when the daily refresh lowers an ask into reach, they enter the deck by
+    themselves; sellers who named a number get a 30-day check-in call (sealed notes).
+
+  tests/conftest.py pins the old 75% gate and plain anchor for the shared fixtures; `@pytest.mark.production_gates`
+  tests run the live rules.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

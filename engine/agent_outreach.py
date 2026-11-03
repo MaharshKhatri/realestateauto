@@ -182,9 +182,31 @@ def offer_prices(lead: Lead) -> tuple[float | None, float | None]:
         # Never offer more than the seller is asking; open meaningfully below ask.
         best = min(best, ask) if best else best
         anchor = min(anchor, round(ask * 0.90, -2)) if anchor else anchor
+        # ...but not insultingly far below it (2026-11-03: openings averaged 50% of ask and agents ignored them): the
+        # first number is at least `min_open_pct_of_ask` of the ask, never above our own target.
+        floor = float(_cfg().get("min_open_pct_of_ask", 0) or 0)
+        if floor and anchor and best:
+            anchor = max(anchor, min(best, round(ask * floor, -3)))
     if anchor and best and best < anchor:
         best = anchor
     return anchor, best
+
+
+def price_math(lead: Lead) -> str | None:
+    """One line under the offer that shows how we got there, so the agent can take it to the seller: renovated sales
+    nearby, the repair estimate, what the price has to leave room for. Public sale facts only."""
+    from engine.human_copy import money, street
+    v = lead.property.current_valuation
+    if v is None or not v.arv_estimate:
+        return None
+    comps = [c for c in (v.comps_json or []) if c.get("sold_price") and c.get("address")]
+    comps.sort(key=lambda c: (c.get("bucket") != "renovated", -(c.get("sold_price") or 0)))
+    near = [f"{street(c['address'].split(',')[0])} sold for {money(c['sold_price'])}" for c in comps[:2]]
+    line = f"How I got there: fixed-up, it should be worth about {money(v.arv_estimate)}"
+    line += f" ({'; '.join(near)})" if near else ""
+    if v.est_repair_cost:
+        line += f", and I estimate about {money(v.est_repair_cost)} of work"
+    return line + ". The price leaves room for the work, holding and closing costs, and the resale."
 
 
 def price_range(anchor: float | None, best: float | None) -> str:
@@ -308,6 +330,9 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
         if best and anchor and best > anchor:
             terms.append(f"Option 2: {hc.money(best)} cash, as-is, with a 10-business-day inspection period, close in "
                          f"about {std} days.")
+        math = price_math(lead)
+        if math:
+            terms.append(math)
         terms += ["No repairs, cleanout or credits requested; the seller picks the closing date.",
                   "The agreement of sale includes a 3-business-day attorney review."
                   + (" A 1-page written offer is attached." if attach else "")]

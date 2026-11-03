@@ -22,6 +22,19 @@ os.environ["WHOLESALING_IMAP_HOST"] = "127.0.0.1"
 os.environ["WHOLESALING_IMAP_PORT"] = "9"
 
 
+@pytest.fixture(autouse=True)
+def _classic_offer_gates(monkeypatch, request):
+    """The shared fixtures (a $360K listing with a $285K walk-away and a $228.8K anchor) were written for the 75%
+    gate and the plain 12% anchor. Production moved to 80% / a 75%-of-ask opening floor on 2026-11-03; those rules
+    have their own tests (marked `production_gates`), which skip this pin."""
+    if request.node.get_closest_marker("production_gates"):
+        return
+    from core.config import settings
+    monkeypatch.setitem(settings()["deal"], "striking_distance_pct", 0.75)
+    monkeypatch.setitem(settings()["outreach"], "min_list_to_mao_75", 0.75)
+    monkeypatch.setitem(settings()["outreach"], "min_open_pct_of_ask", 0)
+
+
 @pytest.fixture()
 def db(tmp_path, monkeypatch):
     """A fresh database; yields a session."""

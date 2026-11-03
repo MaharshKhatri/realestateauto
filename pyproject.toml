@@ -47,3 +47,4 @@ include = ["core*", "db*", "agents*", "engine*", "swarm*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = ["production_gates: runs with the live 80% outreach gate and the 75%-of-ask opening floor"]

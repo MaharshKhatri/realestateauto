@@ -389,7 +389,9 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
                    f"Don't name a price on this call: {issue}.") + " Get the facts first; the desk prices it after."
     else:
         kind, issue = "basics", ""
-        numbers = (f"Your numbers: open at {_money(v.anchor_offer)}, aim for {_money(v.mao_conservative)}, "
+        from engine.agent_outreach import offer_prices
+        opening = offer_prices(lead)[0] or v.anchor_offer
+        numbers = (f"Your numbers: open at {_money(opening)}, aim for {_money(v.mao_conservative)}, "
                    f"walk away above {_money(v.mao_aggressive)}."
                    + (f" Already sent: {written}." if written and not ask_shown else ""))
     if lst is not None and (lst.property_type or "").startswith("multi") and kind == "basics":
@@ -399,7 +401,7 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
     full = op["name"] or op["first"] or "your name"
     phone = op["phone"] or "your phone number"
     if priced:
-        open_at = _money(lead.offer_amount) if lead.offer_amount else _money(v.anchor_offer)
+        open_at = _money(lead.offer_amount) if lead.offer_amount else _money(opening)
         walk = _money(v.mao_aggressive)
         offer = [(f'4) Your written offer ({open_at}) already went out by e-mail. Ask: "Did you get my offer at '
                   f'{open_at}? What did the seller think?" If they ask again: "It\'s {open_at}, cash, as is, with '

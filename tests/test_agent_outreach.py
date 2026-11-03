@@ -31,6 +31,30 @@ def test_offer_prices_never_exceed_ask(db):
     assert best2 == 260_000 and anchor2 == 228_800       # walk-away MAO and the anchor, both under ask
 
 
+@pytest.mark.production_gates
+def test_no_insulting_openings_and_no_offers_out_of_reach(db):
+    """2026-11-03: across 1,149 stale listings the first number averaged 50% of ask and agents ignored it. Now a
+    listing is contacted only when our walk-away reaches 80% of ask, the first number is at least 75% of ask (never
+    above our target), and the offer says how we got there."""
+    lead, _ = listed(db, list_price=360_000)            # walk-away 285K = 79% of ask: out of reach now
+    ok, why = ao.eligible(lead)
+    assert not ok and why == "too far from ask"
+    lead2, _ = listed(db, list_price=340_000)           # 285K = 84%: in reach; 75% of ask = 255K
+    assert ao.eligible(lead2)[0]
+    anchor, best = ao.offer_prices(lead2)
+    assert anchor == 255_000 and best == 260_000        # opens at 75% of ask, not at the 228.8K (67%) anchor
+    lead3, _ = listed(db, list_price=300_000)           # 75% of ask = 225K is below the anchor: unchanged
+    assert ao.offer_prices(lead3) == (228_800, 260_000)
+    v = lead2.property.current_valuation
+    v.comps_json = [{"address": "15 Sample Ave, Newark 07105", "sold_price": 500000, "bucket": "renovated"},
+                    {"address": "29 Example St, Newark 07105", "sold_price": 445000, "bucket": "as_is"}]
+    db.flush()
+    line = ao.price_math(lead2)
+    assert line.startswith("How I got there: fixed-up, it should be worth about $") and "15 Sample Ave sold for $500,000" in line
+    packet = ao.build_packet(lead2, generate_loi=False)
+    assert line in packet.email_body and "$255,000" in packet.email_body
+
+
 def test_packet_wording_and_loi(db, tmp_path, postal):
     lead, agent = listed(db)
     p = ao.build_packet(lead, session=db, out_root=tmp_path)
