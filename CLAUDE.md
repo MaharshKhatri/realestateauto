@@ -834,8 +834,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
       price, with the Offer Summary and the LOI, in the agent's thread).
   - **After the handoff the Mac never writes to the calendar** (learned 2026-11-03: its background sync overwrote
     the cloud's 📊 report with its stale copy). `gcal_sync.handed_off()` reads `data/runtime_cloud.json`: then
-    `configured()` is False and `sync()` talks to no one. `setup-calendar` on the Mac only saves the new sign-in,
-    and the daemon mails it to the cloud.
+    `configured()` is False and `sync()` talks to no one. `setup-calendar` on the Mac saves the new sign-in and
+    mails it to the cloud at once. When the Mac's Gmail app password no longer works, it first asks for a new one
+    at a hidden prompt (`set-gmail`). The Mac's original password had been pasted into a chat, so it gets revoked.
   - **Every call event carries a call brief** (`gcal_sync.call_brief`): reply calls, "call me" follow-ups and
     48-hour follow-ups. It holds:
     - the house (beds / baths / sqft / year / days on market / ask);

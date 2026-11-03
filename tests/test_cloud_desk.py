@@ -176,3 +176,22 @@ def test_after_a_call_claude_can_send_the_offer_or_close_the_reply_with_ids_only
     db.refresh(row)
     assert row.status == "dismissed" and row.note == "handled on a call"
     assert cd._work("dismiss", approve_id=row.id, **kw)["dismiss_error"] == "ApprovalError"     # only once
+
+
+def test_a_new_calendar_sign_in_on_the_mac_goes_to_the_cloud_at_once_asking_for_a_new_password_if_needed(monkeypatch):
+    """2026-11-03: the Mac's Gmail app password had been pasted into a chat and had to be revoked, so the hand-over of
+    the next calendar sign-in can't count on it: setup-calendar asks for a new one, then hands the sign-in over."""
+    import manage
+    calls = iter([RuntimeError("535 bad credentials"), {"state": "idle", "sent": "config"}])
+
+    def handoff():
+        r = next(calls)
+        if isinstance(r, Exception):
+            raise r
+        return r
+    asked = []
+    monkeypatch.setattr(cd, "mac_handoff", handoff)
+    monkeypatch.setattr(gm, "test_connection", lambda **kw: {"ok": False, "smtp": {"ok": False}, "imap": {"ok": False}})
+    monkeypatch.setattr(manage, "cmd_set_gmail", lambda args: asked.append(args))
+    manage._hand_calendar_to_cloud()
+    assert len(asked) == 1

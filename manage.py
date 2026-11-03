@@ -514,14 +514,39 @@ def cmd_setup_calendar(args: argparse.Namespace) -> None:
     if info.get("cleanup_error"):
         console.print(f"[yellow]{info['cleanup_error']}[/yellow]")
     if gcal_sync.handed_off():
-        # The cloud desk owns the calendar; this Mac's database is a stale copy. The daemon mails the new sign-in
-        # to the cloud within 30 minutes (engine/cloud_desk.mac_handoff).
-        console.print("Saved. Leave this Mac awake for about 30 minutes: it passes the new sign-in to the cloud desk, "
-                      "which keeps your calendar.")
+        # The cloud desk owns the calendar; this Mac's database is a stale copy. Hand the new sign-in over now
+        # (engine/cloud_desk.mac_handoff mails it, sealed), asking for a new Gmail app password when the Mac's old one
+        # was deleted (2026-11-03: the Mac's password had been pasted into a chat and had to be revoked).
+        _hand_calendar_to_cloud()
         return
     with session_scope() as s:
         r = gcal_sync.sync(s)
     _print_calendar_sync(r)
+
+
+def _hand_calendar_to_cloud() -> None:
+    from engine import cloud_desk
+    from engine import gmail_autopilot as gm
+    for attempt in (1, 2):
+        try:
+            h = cloud_desk.mac_handoff()
+        except Exception as exc:                   # noqa: BLE001 - say what happened, never the password
+            h = {"state": "error", "error": type(exc).__name__}
+        if h.get("sent"):
+            console.print("[green]Sent[/green] the new calendar sign-in to the cloud desk: it takes over on its next "
+                          "run (within 15 minutes). Nothing else to do.")
+            return
+        if h["state"] == "idle":
+            console.print("The cloud desk already has this sign-in.")
+            return
+        if attempt == 2 or (h["state"] != "local" and gm.test_connection()["smtp"]["ok"]):
+            console.print(f"[yellow]Couldn't pass it to the cloud desk yet ({h.get('error') or h.get('reason')}). "
+                          "The Mac tries again every 30 minutes while it's awake.[/yellow]")
+            return
+        console.print("This Mac's Gmail app password doesn't work any more (deleted or changed), so it can't mail the "
+                      "sign-in to the cloud desk. Make a new one named \"mac\" at "
+                      "https://myaccount.google.com/apppasswords (business Gmail) and paste it below.")
+        cmd_set_gmail(argparse.Namespace(email=None))
 
 
 def _print_calendar_sync(r) -> None:

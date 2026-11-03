@@ -634,10 +634,11 @@ def reconnect_event(session: Session, now: datetime) -> Desired | None:
              "1) So it never ends again (2 minutes, any browser): console.cloud.google.com, signed in as the account "
              "that made the app → Google Auth platform → Audience → Publish app → Confirm (unverified is fine for "
              "your own account).",
-             "2) Sign in once more (1 minute, on your Mac): open Claude Code in your realestateauto folder and say "
-             "\"reconnect my calendar\". Or in Terminal:",
+             "2) Sign in once more (1 minute, on your Mac): open Terminal, paste this line and press Return:",
              f"cd ~/realestateauto && .venv/bin/python manage.py setup-calendar --account {account}{extra}",
-             "Leave the Mac awake about 30 minutes afterwards: it passes the new sign-in to the cloud desk by itself.",
+             "Google opens: pick that account and click Allow. If it then asks for a Gmail app password (the old one "
+             "was deleted), make one named \"mac\" at myaccount.google.com/apppasswords and paste it at the hidden "
+             "prompt. It hands the sign-in to the cloud desk right away.",
              "Once the app is published, this reminder can go: tell Claude \"the calendar app is published\"."]
     return Desired(f"reconnect:{connected:%Y%m%d%H%M}", "reconnect", None,
                    _body("reconnect", "🔑 Re-connect Google Calendar sync (sign-in ends tomorrow)", lines, s, e,
