@@ -580,8 +580,8 @@ def desk_status_event(session: Session, now: datetime) -> Desired | None:
         lines.append(f"WAITING ON YOU ({len(waiting)}):")
         for r in waiting:
             st = street(r["lead_id"], r["address"])
-            lines.append(f"- {st}: {r['light']} -> Claude Code: /inbox, or "
-                         f"`.venv/bin/python manage.py gmail --approve \"{st}\"` (or --dismiss)")
+            lines.append(f"- #{r['id']} {st}: {r['light']} -> call them (the number is on the 📞 event), or say "
+                         f"\"send #{r['id']}\" to Claude")
         lines.append("")
     if queued:
         lines.append("GOING OUT ON THE NEXT CHECK: " + ", ".join(street(r["lead_id"], r["address"]) for r in queued))

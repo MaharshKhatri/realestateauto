@@ -431,7 +431,7 @@ def test_the_mac_reports_the_day_on_the_calendar(live):
     street = hc.street(lead.property.street_address)
     assert d.key == f"desk:{T0:%Y%m%d}" and body["start"].get("date") and body.get("transparency") == "transparent"
     assert body["summary"].startswith("📊 Deal desk:") and "1 waiting on you" in body["summary"]
-    assert "WAITING ON YOU (1)" in body["description"] and "--approve" in body["description"]
+    assert "WAITING ON YOU (1)" in body["description"] and "call them" in body["description"] and "send #" in body["description"]
     assert street.split(" ")[1] in body["description"]
     assert "Seller wants" not in body["description"]                   # never the agent's own words
     assert gcal_sync.desk_status_event.__name__ in {x.__name__ for x in [gcal_sync.desk_status_event]}
