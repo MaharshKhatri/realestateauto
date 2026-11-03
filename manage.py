@@ -594,6 +594,11 @@ def cmd_autopilot_daemon(args: argparse.Namespace) -> None:
                         sum(1 for x in r.get("rows", []) if x["status"] == "needs_approval"))
                 if not r.get("ok"):
                     lg.warning("inbox: %s", r.get("error"))
+                if r.get("send_error"):
+                    lg.warning("inbox stopped sending: %s", r["send_error"])
+                d = gm.daily_openers(args.daily_openers, at=args.openers_at, background=not args.once)
+                if d is not None:
+                    lg.info("daily openers: %s", d["message"] or f"{d['total']} e-mails, 25-60 s apart")
             except Exception:                      # noqa: BLE001 - the loop must survive anything
                 lg.exception("cycle failed")
         if args.once:
@@ -618,13 +623,15 @@ def cmd_install_daemon(args: argparse.Namespace) -> None:
         plist.unlink(missing_ok=True)
         console.print(f"[green]removed[/green] {plist}")
         return
+    extra = "".join(f"<string>{x}</string>" for x in (
+        ["--daily-openers", str(args.daily_openers), "--openers-at", args.openers_at] if args.daily_openers else []))
     body = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key><string>{label}</string>
   <key>ProgramArguments</key>
-  <array><string>{py}</string><string>{root / "manage.py"}</string><string>autopilot-daemon</string></array>
+  <array><string>{py}</string><string>{root / "manage.py"}</string><string>autopilot-daemon</string>{extra}</array>
   <key>WorkingDirectory</key><string>{root}</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -647,6 +654,9 @@ def cmd_install_daemon(args: argparse.Namespace) -> None:
         r = subprocess.run(["launchctl", "load", "-w", str(plist)], capture_output=True, text=True)
     console.print(f"[green]installed[/green] {plist} → `manage.py autopilot-daemon` runs now and at every login "
                   f"(log: logs/daemon.log){'' if r.returncode == 0 else ' — launchctl said: ' + (r.stderr or r.stdout)}")
+    if args.daily_openers:
+        console.print(f"It also sends up to {args.daily_openers} paced openers / offers each weekday from "
+                      f"{args.openers_at} Eastern (25 cold e-mails per 24 hours at most).")
 
 
 def cmd_gmail(args: argparse.Namespace) -> None:
@@ -664,8 +674,8 @@ def cmd_gmail(args: argparse.Namespace) -> None:
         from engine import autopilot
         with session_scope() as s:
             try:
-                out = autopilot.send(s, args.send_offer, "smtp")
-            except autopilot.AutopilotError as exc:
+                out = autopilot.send(s, gm.resolve_lead(s, args.send_offer), "smtp")
+            except (autopilot.AutopilotError, gm.ApprovalError) as exc:
                 console.print(f"[red]{exc}[/red]")
                 raise SystemExit(1) from None
         console.print(f"[green]sent[/green] {out['kind']} (touch {out['touch']}) to {out['to']}"
@@ -678,7 +688,8 @@ def cmd_gmail(args: argparse.Namespace) -> None:
             raise SystemExit(1)
         with session_scope() as s:
             try:
-                out = gm.send_custom_reply(s, args.reply, text, subject=args.subject, price=args.price)
+                out = gm.send_custom_reply(s, gm.resolve_lead(s, args.reply), text, subject=args.subject,
+                                           price=args.price)
             except gm.ApprovalError as exc:
                 console.print(f"[red]{exc}[/red]")
                 raise SystemExit(1) from None
@@ -707,7 +718,7 @@ def cmd_gmail(args: argparse.Namespace) -> None:
     if args.approve:
         with session_scope() as s:
             try:
-                out = gm.approve(s, args.approve)
+                out = gm.approve(s, gm.resolve_reply(s, args.approve))
             except (gm.ApprovalError, RuntimeError) as exc:
                 console.print(f"[red]{exc}[/red]")
                 raise SystemExit(1) from None
@@ -715,8 +726,12 @@ def cmd_gmail(args: argparse.Namespace) -> None:
                       + (" with the written offer" if out["loi_attached"] else ""))
     if args.dismiss:
         with session_scope() as s:
-            gm.dismiss(s, args.dismiss)
-        console.print(f"reply #{args.dismiss} dismissed")
+            try:
+                gm.dismiss(s, gm.resolve_reply(s, args.dismiss))
+            except gm.ApprovalError as exc:
+                console.print(f"[red]{exc}[/red]")
+                raise SystemExit(1) from None
+        console.print(f"{args.dismiss}: dismissed (nothing sent)")
     if args.run is not None or args.dry_run:
         with session_scope() as s:
             from engine import autopilot
@@ -1790,9 +1805,10 @@ def main(argv: list[str] | None = None) -> None:
     ycal.add_argument("--status", action="store_true", help="connection, queue and the next events")
     gm = sub.add_parser("gmail", help="Gmail autopilot: inbox check, today's paced batch, approve agent replies")
     gm.add_argument("--find", metavar="TEXT", help="leads by street, town, agent name or agent e-mail (JSON)")
-    gm.add_argument("--send-offer", type=int, metavar="LEAD", help="send this lead's next e-mail now (Touch 2 in the "
+    gm.add_argument("--send-offer", metavar="LEAD", help="send this lead's next e-mail now (Touch 2 in the "
                                                                     "agent's thread when they replied)")
-    gm.add_argument("--reply", type=int, metavar="LEAD", help="send your own words in the agent's thread (/reply)")
+    gm.add_argument("--reply", metavar="LEAD", help="send your own words in the agent's thread (/reply); a lead id or "
+                    "the street, e.g. \"73 Palisade\"")
     gm.add_argument("--text", help="with --reply: the message")
     gm.add_argument("--body-file", help="with --reply: a file holding the message")
     gm.add_argument("--subject", help="with --reply: subject (default: the thread's Re: subject)")
@@ -1804,8 +1820,9 @@ def main(argv: list[str] | None = None) -> None:
     gm.add_argument("--run", nargs="?", type=int, const=0, metavar="N",
                     help="send today's batch now (N e-mails, default the daily goal), 25-60 s apart")
     gm.add_argument("--dry-run", action="store_true", help="list today's batch without sending")
-    gm.add_argument("--approve", type=int, metavar="REPLY_ID", help="send the drafted answer to this agent reply")
-    gm.add_argument("--dismiss", type=int, metavar="REPLY_ID", help="drop a reply from Action Needed")
+    gm.add_argument("--approve", metavar="REPLY", help="send the drafted answer to this agent reply (its # from the "
+                    "inbox table, or the street)")
+    gm.add_argument("--dismiss", metavar="REPLY", help="drop a reply from Action Needed (its # or the street)")
     gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
     ib = sub.add_parser("inbox", help="/inbox: import Gmail Sent, read agent replies, send 'still available' offers now")
     ib.add_argument("--no-send", action="store_true", help="read and analyze only")
@@ -1813,8 +1830,14 @@ def main(argv: list[str] | None = None) -> None:
     dm = sub.add_parser("autopilot-daemon", help="hands-free loop: inbox + offers + calendar every few minutes, 8 AM-9 PM")
     dm.add_argument("--interval", type=int, default=300, help="seconds between checks (default 300)")
     dm.add_argument("--once", action="store_true", help="one cycle, then exit")
+    dm.add_argument("--daily-openers", type=int, default=0, metavar="N",
+                    help="also send today's paced cold batch (up to N, within 25 / 24 h) once each weekday (default off)")
+    dm.add_argument("--openers-at", default="10:30", metavar="HH:MM", help="Eastern time the daily batch starts")
     idm = sub.add_parser("install-daemon", help="macOS launchd: start autopilot-daemon at login and keep it running")
     idm.add_argument("--uninstall", action="store_true")
+    idm.add_argument("--daily-openers", type=int, default=0, metavar="N",
+                     help="the daemon also sends the paced cold batch (up to N) once each weekday")
+    idm.add_argument("--openers-at", default="10:30", metavar="HH:MM", help="Eastern time the daily batch starts")
     idm.add_argument("--print", action="store_true", help="print the plist only")
     ds = sub.add_parser("db-sync", help="encrypted database snapshot for another machine (pack here, unpack there)")
     dsm = ds.add_mutually_exclusive_group()

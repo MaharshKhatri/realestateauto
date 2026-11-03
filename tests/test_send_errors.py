@@ -190,7 +190,10 @@ def test_refresh_can_be_stopped_between_steps():
         ran.append(name)
         gate.wait(5)
     runner.trigger("quick", runner=slow)
-    time.sleep(0.1)
+    for _ in range(200):                             # wait for the first step to start (a busy CI box is slow)
+        if ran:
+            break
+        time.sleep(0.01)
     st = runner.stop()
     assert st["running"] and st.get("stopping")
     gate.set()

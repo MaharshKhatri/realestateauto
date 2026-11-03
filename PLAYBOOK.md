@@ -171,13 +171,20 @@ Open the **Claude app → Code**, pick the `realestateauto` folder on your Mac (
 | `/status` | Today's numbers, every warm agent thread, what's waiting on you, the next move. |
 | `/reply 22 Grand Ave tell him I'll call at 5` | Writes it in your style and sends it in the agent's Gmail thread. Say a price ("…and offer 400k") and the 1-page offer at that price is attached. |
 
-**Hands-free:** run `.venv/bin/python manage.py install-daemon` once. From then on, every 5 minutes between 8 AM
-and 9 PM, your Mac:
+**Hands-free:** run `.venv/bin/python manage.py install-daemon --daily-openers 15` once. From then on, every 5 minutes
+between 8 AM and 9 PM, your Mac:
 - reads new replies;
 - sends the "still available" offers;
-- puts counter-offers on your Google Calendar ("🔥 COUNTER-OFFER RECEIVED … Open Claude Chat").
+- answers "still available" with a no-price question when the numbers need one fact first (a condo's size and HOA,
+  a multi-family's rent roll, beds / baths / sqft when the listing matched the wrong house);
+- puts counter-offers on your Google Calendar ("🔥 COUNTER-OFFER RECEIVED … Open Claude Chat");
+- with `--daily-openers 15`: sends up to 15 new openers / offers each weekday from 10:30 AM, 25-60 seconds apart
+  (never more than 25 cold e-mails in 24 hours). Leave the flag off to send them yourself with `/daily`.
 
 Its log is `logs/daemon.log`; `install-daemon --uninstall` stops it.
+
+Commands take the street instead of an id: `gmail --approve "108 S Park"`, `gmail --send-offer "54 N 4th"`,
+`gmail --reply "22 Grand" --text "..."`, `gmail --dismiss "12 Juliette"`.
 
 Replies you type yourself in Gmail (on your phone, say) are picked up too, so nothing is ever sent twice.
 

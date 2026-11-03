@@ -732,6 +732,23 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   away; 25 of 1,410 listings), the card is HOLD, so it is off the deck, never auto-priced, and the negotiator drafts a
   no-price "confirm beds / baths / sqft / condition" note. `stale_listing_distress_agent` no longer links a parcel
   more than `MAX_PARCEL_MILES` (1.0) from the listing (a county-wide fallback hit the same street in another town).
+- **Second-morning replies** (learned 2026-11-03):
+  - "Never happen… We are at 470.00" is a REJECT with a $470,000 counter: a 3-digit number after "we are at" /
+    "wants" / "under contract at" is thousands even with decimals ("469.9" = $469,900); a bare "$150.00" (HOA, fee)
+    stays literal and "HOA is $X" is never a price. When they're under contract with someone else (this reply or an
+    earlier BACKUP), the RED answer keeps us the backup at the walk-away, never above it.
+  - **Facts before a price** (`reply_negotiator.fact_check_issue`): when pre-flight says the price rests on the wrong
+    comps (a condo unit priced off other units' sales, a 3-family off 1- and 2-family sales) or on the wrong house (HOLD:
+    wrong parcel, outlier, low confidence), "still available" gets a no-price answer: it answers their question (buyer
+    or realtor, want to see it, call me, backup) and asks for the one fact (same-size unit sales + HOA; the rent roll;
+    beds / baths / sqft / condition / net). `kind = "fact_check"`, no LOI, logged AGENT_FOLLOWUP_SENT. It goes out by
+    itself (`auto_send_fact_check`, default on) under the Touch 2 conditions, and `approve()` never attaches an offer
+    LOI to it (before this, approving the wrong-parcel note attached an LOI priced off the other house).
+  - `gmail --approve / --dismiss / --send-offer / --reply` take the street ("108 S Park") as well as the id: unique
+    match only, streets that start with the words first, leads we e-mailed first.
+  - `autopilot-daemon --daily-openers N [--openers-at 10:30]` (and `install-daemon` with the same flags) sends the 🚀
+    batch once per weekday after that time, inside send hours, under the 25 / 24 h cap; the day is claimed in
+    swarm_state (`daemon_daily_openers`) before the first e-mail. Off unless the flag is given.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

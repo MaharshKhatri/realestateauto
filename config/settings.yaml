@@ -69,6 +69,8 @@ gmail_autopilot:
   poll_minutes: 5                    # background inbox check while the dashboard runs (and the 📥 button)
   lookback_days: 14                  # the first check reads this far back; later checks only read new messages
   auto_send_touch2: true             # "still available" + nothing else -> the priced offer + LOI go out by themselves
+  auto_send_fact_check: true         # ... or, when the price needs one fact first (condo unit, unit count, wrong parcel),
+                                     # a no-price answer asking for it (no number, no LOI)
   touch2_delay_minutes: [4, 11]      # ... a few minutes after the reply, like a person answering
   pace_seconds: [25, 60]             # the 🚀 batch: random gap between e-mails (never a burst)
   reply_pace_seconds: [8, 20]        # offers to agents who replied, sent in one inbox run: a short gap between them

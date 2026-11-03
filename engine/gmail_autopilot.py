@@ -473,7 +473,8 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
     intents = set(analysis.parsed.intents)
     if analysis.parsed.counter_amount:
         return "they named a number: your call"
-    if not ({"AVAILABLE", "BACKUP"} & intents) or analysis.verdict != "GREEN":
+    fact = getattr(analysis, "kind", "") == "fact_check"
+    if not ({"AVAILABLE", "BACKUP"} & intents) or (analysis.verdict != "GREEN" and not fact):
         return "not a plain 'still available'"
     extra = intents - AUTO_OK_INTENTS
     if extra:
@@ -484,6 +485,15 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
     agent = ao.agent_contact(lead)
     if agent is None:
         return "no listing-agent contact on the lead"
+    if fact:
+        # A no-price question (the unit's size and HOA, the rent roll, beds / baths / sqft on a mismatched parcel):
+        # it answers what they asked and asks for the one fact the price needs. No number, no LOI.
+        if not _cfg().get("auto_send_fact_check", True):
+            return "pre-flight: " + analysis.headline.split(": ", 1)[-1]
+        if agent.dnc_status == "dnc":
+            return "this agent asked to stop"
+        ok, why = ao.smtp_ready()
+        return None if ok else why
     try:
         packet = ao.build_packet(lead, agent=agent, generate_loi=False, session=session)
     except ValueError as exc:
@@ -512,7 +522,7 @@ def _analysis_json(an: Any) -> dict[str, Any]:
     d = an.to_json()
     d.pop("parsed", None)
     return {k: d.get(k) for k in ("verdict", "headline", "numbers", "reply_subject", "reply_text", "sms_text", "actions",
-                                  "followup_at", "warnings", "style", "stage_to")}
+                                  "followup_at", "warnings", "style", "stage_to", "kind")}
 
 
 def reply_price(an: Any) -> float | None:
@@ -597,7 +607,9 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
         lo, hi = (_cfg().get("touch2_delay_minutes") or [4, 11])[:2]
         row.status = "auto_queued"
         row.send_after = max(when, now_eastern(now)) + timedelta(minutes=random.uniform(float(lo), float(hi)))
-        row.note = "still available: the offer goes out by itself in their thread"
+        row.note = ("still available, but the price needs one fact first: a no-price answer asking for it goes out by "
+                    "itself in their thread" if getattr(an, "kind", "") == "fact_check" else
+                    "still available: the offer goes out by itself in their thread")
     else:
         row.status, row.note = "needs_approval", block
     session.flush()
@@ -735,13 +747,17 @@ def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
             row.status, row.note = "needs_approval", block
             return False
         agent = (s.get(Contact, row.contact_id) if row.contact_id else None) or ao.agent_contact(lead)
-        packet = ao.build_packet(lead, agent=agent, generate_loi=True, session=s,
-                                 reply_flags=set(an.parsed.intents) | {"ANSWERED"})
-        if packet.warnings or not packet.loi_files.get("pdf"):
-            row.status = "needs_approval"
-            row.note = "the written offer could not be attached: " + ("; ".join(packet.warnings) or "no PDF")
-            return False
-        packet = replace(packet, subject=reply_subject(row.subject), agent_email=row.from_email or packet.agent_email)
+        fact = an.kind == "fact_check"
+        if not fact:
+            packet = ao.build_packet(lead, agent=agent, generate_loi=True, session=s,
+                                     reply_flags=set(an.parsed.intents) | {"ANSWERED"})
+            if packet.warnings or not packet.loi_files.get("pdf"):
+                row.status = "needs_approval"
+                row.note = "the written offer could not be attached: " + ("; ".join(packet.warnings) or "no PDF")
+                return False
+            packet = replace(packet, subject=reply_subject(row.subject), agent_email=row.from_email or packet.agent_email)
+    if fact:
+        return _send_fact_check(rid, an, now=now, smtp_factory=smtp_factory)
     # Claim the row atomically (a second poller in another process can't send it twice), then go to the network
     # with no transaction open.
     with session_scope() as s:
@@ -783,6 +799,47 @@ def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
     return True
 
 
+def _send_fact_check(rid: int, an: Any, *, now: datetime | None, smtp_factory: Any) -> bool:
+    """The no-price answer goes out by itself in their thread (claimed first, like Touch 2); no LOI, no number."""
+    with session_scope() as s:
+        claimed = s.execute(update(InboundReply).where(InboundReply.id == rid, InboundReply.status == "auto_queued")
+                            .values(status="sending", resolved_at=now_eastern(now))).rowcount
+    if claimed != 1:
+        return False
+    with session_scope() as s:
+        row = s.get(InboundReply, rid)
+        lead = s.get(Lead, row.lead_id)
+        agent = (s.get(Contact, row.contact_id) if row.contact_id else None) or ao.agent_contact(lead)
+        base = _base_packet(s, lead, agent)
+        packet = replace(base, kind="followup", subject=reply_subject(row.subject), email_body=an.reply_text,
+                         agent_email=row.from_email or base.agent_email, loi_files={})
+        try:
+            mid = ao.deliver(packet, session=s, now=now, smtp_factory=smtp_factory, in_reply_to=row.message_id,
+                             references=list(row.references_json or []))
+        except RuntimeError as exc:
+            row.status = "auto_queued" if "limit" in str(exc) else "needs_approval"
+            row.note, row.resolved_at = f"not sent yet: {exc}", None
+            failed = exc
+        else:
+            failed = None
+            when = now_eastern(now)
+            follow = an.followup_at or ao.followup_time(now)
+            s.add(Interaction(lead_id=lead.id, contact_id=agent.id if agent else None, channel="email_smtp",
+                              outcome="AGENT_FOLLOWUP_SENT", notes=f"{packet.subject} (asked for the facts, no price)",
+                              next_followup_at=follow, email_message_id=mid, occurred_at=when,
+                              debrief_json={"packet": {"kind": "fact_check"}, "engaged": True}))
+            lead.last_contact_at, lead.next_followup_at = when, follow
+            ask = {"condo": "what same-size units sold for and the HOA", "units": "the rent roll",
+                   "basics": "beds, baths, sqft and condition"}.get((an.numbers or {}).get("fact_check") or "basics")
+            row.status, row.sent_message_id, row.resolved_at = "auto_sent", mid, when
+            row.note = f"answered in their thread and asked for {ask or 'the facts'} (no price yet)"
+    if failed is not None:
+        if getattr(failed, "fatal", False):
+            raise failed
+        return False
+    return True
+
+
 def approve(session: Session, reply_id: int, *, subject: str | None = None, body: str | None = None,
             now: datetime | None = None, smtp_factory: Any = None) -> dict[str, Any]:
     """The operator's one click: send the drafted answer (and an LOI at its price) in the agent's thread."""
@@ -814,7 +871,10 @@ def approve(session: Session, reply_id: int, *, subject: str | None = None, body
     warnings: list[str] = []
     files: dict[str, str] = {}
     # "Still available" (with a question the operator answered by approving): the drafted note is Touch 2 itself.
-    touch2 = not priced and "AVAILABLE" in intents and base.kind == "offer" and not row.counter_amount
+    touch2 = (not priced and {"AVAILABLE", "BACKUP"} & intents and base.kind == "offer" and not row.counter_amount
+              and an.get("verdict") == "GREEN" and an.get("kind", "touch2") != "fact_check")
+    # (a no-price note, e.g. "confirm the beds / baths / sqft" on a listing matched to the wrong parcel, never gets
+    # an LOI built from the numbers it says it can't trust)
     loi_price = price if priced else (base.anchor if touch2 else None)
     if loi_price:
         try:
@@ -953,7 +1013,9 @@ def refresh_open_replies(session: Session, now: datetime | None = None, *, promo
             block = auto_touch2_block(session, lead, an, row.match_method, text)
             if block is None:
                 row.status, row.send_after = "auto_queued", now_eastern(now)
-                row.note = "re-read: they confirmed it's available, so the offer goes out now"
+                row.note = ("re-read: the price needs one fact first, so a no-price answer asking for it goes out now"
+                            if an.kind == "fact_check" else
+                            "re-read: they confirmed it's available, so the offer goes out now")
             else:
                 row.note = block
         n += 1
@@ -1254,6 +1316,8 @@ def inbox_rows(session: Session, now: datetime | None = None, days: int = 2) -> 
         todo = {"needs_approval": "your call: see the drafted answer", "auto_queued": "goes out on the next check",
                 "sending": "going out now", "opted_out": "nothing (they asked to stop)",
                 "bounce": "find a new e-mail or call", "dismissed": "nothing"}.get(row.status, "nothing")
+        if row.status == "auto_sent" and (row.analysis_json or {}).get("kind") == "fact_check":
+            todo = "wait for their facts, then check the numbers and send the offer"
         if "CALL_ME" in (row.intents_json or []) and row.status in ("auto_sent", "approved"):
             todo = "call them (it's on your calendar)"
         if row.status in ("needs_approval", "auto_queued") and (row.note or "").startswith("not sent yet"):
@@ -1287,6 +1351,73 @@ def find_leads(session: Session, query: str, limit: int = 8) -> list[dict[str, A
         out.append({"lead_id": lid, "address": lead_facts(lead)["address"], "stage": lead.status_stage,
                     "agent": agent.name if agent else None, "agent_email": agent.email if agent else None,
                     "last_touch": ao.last_touch(session, lead), "waiting_reply": waiting.id if waiting else None})
+    return out
+
+
+def resolve_lead(session: Session, ref: Any) -> int:
+    """A lead id from "5951", "73 Palisade" or the agent's name / e-mail: a unique match only. Streets that start with
+    the words win over ones that merely contain them ("73 Palisade" is not "173 Palisade"), and a lead we have
+    e-mailed wins over one we never touched."""
+    ref = str(ref).strip()
+    if ref.isdigit():
+        return int(ref)
+    rows = find_leads(session, ref, limit=25)
+    low = ref.lower().rstrip(".")
+    pool = [r for r in rows if (r["address"] or "").lower().startswith(low)] or rows
+    pool = [r for r in pool if r["waiting_reply"] or r["last_touch"]] or pool
+    if len(pool) == 1:
+        return int(pool[0]["lead_id"])
+    if not pool:
+        raise ApprovalError(f"no lead matches '{ref}' (try `gmail --find` with fewer words)")
+    raise ApprovalError(f"'{ref}' matches {len(pool)} leads: " + "; ".join(
+        f"{r['lead_id']} = {r['address']}" for r in pool[:6]) + ". Use the number.")
+
+
+def resolve_reply(session: Session, ref: Any) -> int:
+    """A waiting reply's id from its own id or the house ("73 Palisade"): the reply still open on that lead."""
+    ref = str(ref).strip()
+    if ref.isdigit():
+        return int(ref)
+    lead_id = resolve_lead(session, ref)
+    row = waiting_reply(session, lead_id)
+    if row is None:
+        raise ApprovalError(f"nothing from the agent is waiting on lead {lead_id} ({ref})")
+    return int(row.id)
+
+
+DAILY_KEY = "daemon_daily_openers"
+
+
+def daily_openers(limit: int, *, at: str = "10:30", now: datetime | None = None, smtp_factory: Any = None,
+                  sleep: Callable[[float], Any] | None = None, background: bool = False) -> dict[str, Any] | None:
+    """The daemon's once-a-weekday cold batch (opt-in: `install-daemon --daily-openers N`). After `at` Eastern on
+    Monday-Friday, inside send hours, once per day: the same picks, gates, 25-60 s pacing and 25-per-24-hours cap as
+    the 🚀 button. The day is claimed before the first e-mail, so a crash or a restart never sends a second batch.
+    None = not due (off, weekend, too early, already done today)."""
+    t = now_eastern(now)
+    try:
+        hh, mm = (int(x) for x in str(at).split(":", 1))
+    except ValueError:
+        hh, mm = 10, 30
+    if limit <= 0 or t.weekday() >= 5 or (t.hour, t.minute) < (hh, mm) or not in_send_hours(now):
+        return None
+    today = t.date().isoformat()
+    with session_scope() as s:
+        row = s.get(SwarmState, DAILY_KEY)
+        if row is not None and (row.value_json or {}).get("date") == today:
+            return None
+        if row is None:
+            row = SwarmState(key=DAILY_KEY, value_json={})
+            s.add(row)
+        row.value_json = {"date": today, "started": t.isoformat(timespec="seconds"), "limit": limit}
+    try:
+        start_campaign(limit, now=now, smtp_factory=smtp_factory, sleep=sleep, background=background)
+        out = {"started": True, "total": campaign.total, "sent": campaign.sent, "message": campaign.message}
+    except CampaignError as exc:
+        out = {"started": False, "total": 0, "sent": 0, "message": str(exc)}
+    with session_scope() as s:
+        row = s.get(SwarmState, DAILY_KEY)
+        row.value_json = {**(row.value_json or {}), **{k: v for k, v in out.items() if k != "started"}}
     return out
 
 

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from core.config import settings
 from db.models import InboundReply, Interaction, Lead
 from engine import agent_outreach as ao
 from engine import gmail_autopilot as gm
@@ -211,7 +212,9 @@ def test_a_listing_matched_to_a_parcel_in_another_town_is_held_and_never_priced(
     an = rn.analyze(db, lead, "Hello Jordan, We are still active. Please call me to discuss.")
     assert an.headline.startswith("NUMBERS ON HOLD") and "bedrooms" in an.reply_text
     assert "$" not in an.reply_text.split("--- Details ---")[0]
-    assert gm.auto_touch2_block(db, lead, an, "thread", "We are still active. Please call me to discuss.")
+    # The no-price note answers them and asks for the facts by itself (2026-11-03): it carries no number and no LOI.
+    assert an.kind == "fact_check" and not an.style, an.style
+    assert gm.auto_touch2_block(db, lead, an, "thread", "We are still active. Please call me to discuss.") is None
 
 
 def test_the_listing_agent_refuses_a_parcel_miles_from_the_listing():
@@ -283,3 +286,131 @@ def test_gmail_hanging_up_stops_the_run_and_the_next_check_sends_it(live):
     assert {r["status"] for r in out["rows"]} == {"auto_sent"}
     out = gm.run_inbox(now=T0 + timedelta(minutes=52), smtp_factory=FakeSMTP)
     assert out["sent_now"] + out["poll"]["sent"] == 0 and len(FakeSMTP.sent) == n + 2
+
+
+# -- 2026-11-03: the second morning's replies (names, phones and addresses replaced) ---------------------------------
+@pytest.mark.parametrize("text, counter, intents", [
+    ("Never happen…\n\nWe are at 470.00 Sorry.", 470000, {"COUNTER", "REJECT"}),
+    ("We're under contract at 469.9", 469900, {"COUNTER", "UNDER_CONTRACT"}),
+    ("Not happening at that price, seller won't go below 455k", 455000, {"COUNTER", "REJECT"}),
+    ("The HOA is $150.00 a month and taxes are $6,200.", None, set()),
+    ("HOA is $220.00, no special assessment.", None, set()),
+])
+def test_agent_shorthand_and_flat_noes_are_read_right(text, counter, intents):
+    p = rn.parse_reply(text)
+    assert p.counter_amount == counter and intents <= p.intents, (p.counter_amount, p.intents, p.notes)
+
+
+def test_a_no_after_our_backup_offer_keeps_us_the_backup_never_above_the_walkaway(live):
+    db = live
+    lead = listed(db)
+    db.add(InboundReply(message_id="<backup-1@broker.test>", lead_id=lead.id, from_email="pat@broker.test",
+                        status="approved", intents_json=["BACKUP"], body_text="We have a contract but not sure"))
+    db.flush()
+    an = rn.analyze(db, lead, gm.strip_quoted("Never happen…\n\nWe are at 470.00 Sorry."))
+    assert an.verdict == "RED" and an.headline.startswith("BACKUP AT")
+    walk = an.numbers["adjusted_walkaway"]
+    body = an.reply_text.split("--- Offer Summary ---")[0]
+    assert "$470,000" in body and "backup spot" in body and hc.money(walk) in body
+    assert an.numbers["our_counter"] == walk <= an.numbers["mao_walkaway"]
+    assert not hc.lint(an.reply_text), hc.lint(an.reply_text)
+
+
+def _pf(status, issue):
+    from engine import preflight
+    return lambda lead, today=None: preflight.Preflight(status=status, issues=[issue])
+
+
+CONDO = ("condo / townhouse unit valued against other units' recorded sales without living area: ask the agent for "
+         "recent sales of same-size units in the building before quoting")
+UNITS = "12 of 18 comps have a different unit count than this 3-unit house: confirm the unit count"
+
+
+@pytest.mark.parametrize("issue, reply, words, answer", [
+    (CONDO, "Yes, it is still available. Are you interested in seeing it?", ["same-size units", "HOA"],
+     "a few photos or a short video would help first"),
+    (UNITS, "Yes it is. Are you a buyer or a realtor looking to show it to someone else?", ["rent roll", "vacant at closing"],
+     "I'm the buyer: an investor"),
+])
+def test_a_price_the_facts_dont_support_yet_becomes_a_question_not_an_offer(live, monkeypatch, issue, reply, words,
+                                                                               answer):
+    from engine import preflight
+    db = live
+    lead = listed(db)
+    ours = opener(db, lead)["Message-ID"]
+    monkeypatch.setattr(preflight, "check", _pf("VERIFY", issue))
+    an = rn.analyze(db, lead, reply)
+    above = an.reply_text.split("--- Details ---")[0]
+    assert an.kind == "fact_check" and an.headline.startswith("CONFIRM THE FACTS FIRST")
+    assert "$" not in above and all(w in above for w in words) and answer in above
+    assert not hc.lint(an.reply_text), hc.lint(an.reply_text)
+    # ... and it goes out by itself in their thread, with no LOI and no price, logged as a follow-up (not an offer).
+    gm.set_imap_factory(lambda: FakeIMAP({81: mail(81, reply, in_reply_to=ours, subject="Re: question")}))
+    n = len(FakeSMTP.sent)
+    out = gm.run_inbox(now=T0 + timedelta(minutes=40), smtp_factory=FakeSMTP)
+    assert out["sent_now"] + out["poll"]["sent"] == 1 and len(FakeSMTP.sent) == n + 1
+    msg = FakeSMTP.sent[-1]
+    assert msg["In-Reply-To"] == "<agent-81@broker.test>" and not list(msg.iter_attachments())
+    assert "$" not in msg.get_content().split("--- Details ---")[0]
+    db.expire_all()
+    row = db.query(InboundReply).one()
+    assert row.status == "auto_sent" and "no price yet" in row.note
+    assert db.query(Interaction).filter_by(lead_id=lead.id, outcome="OFFER_SENT_TO_AGENT").count() == 0
+    assert db.get(Lead, lead.id).offer_amount is None
+    assert "wait for their facts" in next(r for r in out["rows"] if r["id"] == row.id)["you_do"]
+
+
+def test_approving_a_no_price_note_never_attaches_an_offer(live, monkeypatch):
+    """Before 2026-11-03, approving the wrong-parcel note attached an LOI priced off the other house."""
+    from engine import preflight
+    db = live
+    lead = listed(db)
+    ours = opener(db, lead)["Message-ID"]
+    monkeypatch.setattr(preflight, "check", _pf("HOLD", "wrong parcel: the MLS listing (Iselin) and the parcel record "
+                                                        "(Sampletown) are 10.4 miles apart"))
+    monkeypatch.setitem(settings(), "gmail_autopilot", {**settings()["gmail_autopilot"], "auto_send_fact_check": False})
+    gm.set_imap_factory(lambda: FakeIMAP({82: mail(82, "We are still active. Please call me to discuss.",
+                                                   in_reply_to=ours, subject="Re: question")}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=40), smtp_factory=FakeSMTP)
+    db.expire_all()
+    row = db.query(InboundReply).one()
+    assert row.status == "needs_approval" and row.analysis_json["kind"] == "fact_check"
+    r = gm.approve(db, row.id, now=T0 + timedelta(minutes=50), smtp_factory=FakeSMTP)
+    assert r["sent"] and r["price"] is None and not r["loi_attached"]
+    assert not list(FakeSMTP.sent[-1].iter_attachments())
+    assert db.query(Interaction).filter_by(lead_id=lead.id, outcome="OFFER_SENT_TO_AGENT").count() == 0
+
+
+def test_commands_take_the_street_instead_of_an_id(live):
+    db = live
+    a, b = listed(db), listed(db)
+    opener(db, a)
+    street = a.property.street_address
+    assert gm.resolve_lead(db, str(a.id)) == a.id
+    assert gm.resolve_lead(db, street.split(" ")[0] + " " + street.split(" ")[1]) == a.id     # the e-mailed one wins
+    with pytest.raises(gm.ApprovalError, match="no lead matches"):
+        gm.resolve_lead(db, "999 Nowhere Rd")
+    with pytest.raises(gm.ApprovalError, match="nothing from the agent is waiting"):
+        gm.resolve_reply(db, street)
+    assert b.id != a.id
+
+
+def test_the_daemon_sends_one_paced_batch_per_weekday_after_its_start_time(live, monkeypatch):
+    from engine.crm import TZ
+    db = live
+    calls = []
+
+    def fake_campaign(limit, **kw):
+        calls.append(limit)
+        gm.campaign.total, gm.campaign.sent, gm.campaign.message = 3, 3, "Sent 3 of 3"
+        return {}
+    monkeypatch.setattr(gm, "start_campaign", fake_campaign)
+    mon_early, mon = datetime(2026, 11, 9, 9, 0, tzinfo=TZ), datetime(2026, 11, 9, 10, 45, tzinfo=TZ)
+    assert gm.daily_openers(15, at="10:30", now=mon_early) is None                     # before the start time
+    assert gm.daily_openers(0, at="10:30", now=mon) is None                            # off unless asked for
+    assert gm.daily_openers(15, at="10:30", now=mon)["sent"] == 3 and calls == [15]
+    assert gm.daily_openers(15, at="10:30", now=mon + timedelta(hours=2)) is None      # once a day
+    assert gm.daily_openers(15, at="10:30", now=datetime(2026, 11, 14, 11, 0, tzinfo=TZ)) is None   # Saturday
+    assert gm.daily_openers(15, at="10:30", now=datetime(2026, 11, 10, 21, 0, tzinfo=TZ)) is None   # after send hours
+    assert gm.daily_openers(15, at="10:30", now=datetime(2026, 11, 10, 10, 31, tzinfo=TZ))["sent"] == 3
+    assert calls == [15, 15]

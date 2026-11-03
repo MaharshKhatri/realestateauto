@@ -15,6 +15,6 @@ The operator wants to answer a listing agent: `$ARGUMENTS`
    - never "cash buyer", never "off-market" for a listed house, never a promise about a foreclosure.
    Don't add the signature or footer: the command appends the signature, mailing address and opt-out.
 4. Save it to a temp file and send it in the agent's Gmail thread:
-   `.venv/bin/python manage.py gmail --reply <lead_id> --body-file <file>`
+   `.venv/bin/python manage.py gmail --reply <lead_id or "street"> --body-file <file>`
    - Add `--price <N>` when the message states a price: that attaches the 1-page offer at N and logs it as an offer.
 5. Print exactly what was sent (to, subject, body) and the follow-up it scheduled.

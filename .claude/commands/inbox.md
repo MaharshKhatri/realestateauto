@@ -17,12 +17,15 @@ You are the operator's deal desk for this repository (NJ wholesaling engine, see
 3. For every row with `status` = `needs_approval`:
    - Show the agent's words, the light (`light`) and the drafted answer (`draft`).
    - Recommend one action:
-     - `.venv/bin/python manage.py gmail --approve <id>` sends the drafted answer (+ the offer at its price) in
-       their thread;
+     - `.venv/bin/python manage.py gmail --approve <id or street>` sends the drafted answer (+ the offer at its
+       price) in their thread;
      - `--send-offer <lead_id>` sends the standard offer instead (when `offer_ok` is true);
      - `--reply <lead_id> --text "..."` sends the operator's own words;
      - `--dismiss <id>` drops it.
    - Ask before sending any of these.
+   A row whose note says "no price yet" was answered by itself with a question (a condo's same-size sales and HOA,
+   a multi-family's rent roll, beds / baths / sqft on a mismatched parcel): when the agent answers, check the facts
+   against `manage.py lead <lead_id>` and send the offer with `gmail --send-offer <lead_id>`.
 4. For every row whose `you_do` says "call them": run `.venv/bin/python manage.py script <lead_id>` and print a
    3-bullet call cheat sheet built from it:
    - who they are;

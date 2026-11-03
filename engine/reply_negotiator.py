@@ -25,6 +25,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, time, timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.config import settings
@@ -49,11 +50,14 @@ _BAND = re.compile(r"\b(?:(low|lower|mid|middle|high|upper)[\s-]*)?(\d)(\d{2})\s
 _UNIT_AFTER = re.compile(r"^\s*(sq\.?\s?ft|square|sqft|/\s?mo\b|a month|per month|monthly|%|percent|days?\b|business day|"
                          r"bedroom|bath|\bbr\b|\bba\b|years?\b|acres?\b|units?\b|families|family)", re.I)
 _LABEL_BEFORE = re.compile(r"(tax(es)?|rent|hoa|deposit|emd|earnest|commission|fee|mortgage|balance|owed|payoff|"
-                           r"lien|arrears|repairs?|rehab|estimate)\W{0,14}$", re.I)
+                           r"lien|arrears|repairs?|rehab|estimate)\W{0,6}(?:(?:is|are|of|was|were|runs?|about|around|"
+                           r"approx\.?|roughly)\W{0,6})?$", re.I)
 _ASK_WORDS = re.compile(r"(wants?|needs?|is at|would take|will take|would accept|'d take|take less than|counter(ed|offer)?|"
                         r"came back|come back|looking for|looking at|won't go|will not go|not go below|lowest|bottom line|"
                         r"minimum|firm at|has to be|needs to be|no less than|at least|asking|is firm|their number|"
-                        r"the number is|can do|could do|would do|would sell|will sell|sell for|let it go for)", re.I)
+                        r"the number is|can do|could do|would do|would sell|will sell|sell for|let it go for|"
+                        # "We are at 470.00" (the price they're under contract at), "sitting at", "accepted at"
+                        r"are at|we'?re at|sitting at|(?:contract|accepted|deal|offers?) (?:at|for))", re.I)
 _NEG = re.compile(r"\b(not|no|isn't|aren't|haven't|hasn't|never|nope|without|nor)\b", re.I)
 
 PHRASES: dict[str, list[str]] = {
@@ -63,7 +67,8 @@ PHRASES: dict[str, list[str]] = {
                r"you got a deal", r"we'?re good at", r"go ahead and (send|write) (it|the offer)", r"accepted\b(?! an)"],
     "REJECT": [r"not interested", r"no thanks", r"too low", r"won'?t work", r"\bpass\b", r"insult", r"not even close",
                r"no way", r"declined", r"rejected", r"lowball", r"way off", r"not going to work", r"isn'?t going to work",
-               r"nowhere near"],
+               r"nowhere near", r"never (?:going to |gonna |would |will )?happen", r"not happening", r"won'?t happen",
+               r"no chance", r"not a chance", r"seller (?:won'?t|will not|would never|isn'?t going to) (?:go|take|accept|do)"],
     "AVAILABLE": [r"\A\W*(?:hello|hi|hey)?\b[^.!?\n]{0,30}?\b(yes|yep|yup|yeah|absolutely)\b(?![^.!?\n]*\b(but|however|under contract|"
                   r"attorney|pending|sold)\b)",          # "Yes it is." answers our "is it still available?"
                   r"still available", r"(it'?s|it is|yes,? it'?s|yes it is|yes,? still) available", r"\bavailable\b",
@@ -142,8 +147,8 @@ def _amount_value(dollar: str | None, number: str, suffix: str | None, ask_befor
         return n * 1000
     if sfx in ("m", "mm", "million"):
         return n * 1_000_000
-    if "," not in number and "." not in number and 100 <= n < 1000 and (dollar or ask_before):
-        return n * 1000           # "$355" / "seller wants 310" in a text means thousands
+    if "," not in number and 100 <= n < 1000 and (ask_before or (dollar and "." not in number)):
+        return n * 1000           # "$355" / "seller wants 310" / "we are at 470.00" / "wants 469.9" mean thousands
     return n
 
 
@@ -303,6 +308,7 @@ class Analysis:
     warnings: list[str] = field(default_factory=list)
     style: list[str] = field(default_factory=list)
     stage_to: str | None = None
+    kind: str = ""                    # "touch2" (the priced offer), "fact_check" (a no-price question), "" otherwise
 
     def to_json(self) -> dict[str, Any]:
         d = asdict(self)
@@ -365,6 +371,72 @@ def _compose(subject: str, first: str, sentences: list[str], summary: list[str],
     if len(re.findall(r"[.!?](\s|$)", head.split("\n\n", 1)[1] if "\n\n" in head else head)) > 3:
         problems.append("more than three sentences")
     return email.text, problems
+
+
+# Pre-flight findings one fact from the agent settles (2026-11-02: a 1-bedroom condo priced off other units' sales, a
+# 3-family priced off 1- and 2-family sales, a listing linked to a house 10 miles away). Until the fact is in, the answer
+# to "it's available" asks for it instead of quoting a number built on the wrong unit, unit count or house.
+FACT_CHECKS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"condo / townhouse unit", re.I), "condo"),
+    (re.compile(r"unit count", re.I), "units"),
+    (re.compile(r"wrong parcel|above every comp|outlier|confidence [0-4]\d/100|not a 1-4|non-residential", re.I), "basics"),
+)
+_FACT_ASK = {
+    "condo": ["Before I put a number in writing on {st}, what have same-size units in the building sold for lately?",
+              "And what's the monthly HOA, and is any special assessment coming?"],
+    "units": ["Before I put a number in writing on {st}, could you send the rent roll: current rents, lease end dates and "
+              "which units would be vacant at closing?"],
+    "basics": ["Before I put a number in writing on {st}, could you confirm the bedrooms, baths and square footage?",
+               "And roughly what condition is it in, and what does the seller need to net?"],
+}
+_FACT_SMS = {"condo": "what same-size units sold for and the HOA", "units": "the rent roll (rents, leases, vacancies)",
+             "basics": "beds, baths, sqft and condition"}
+
+
+def fact_check_issue(pf: Any) -> tuple[str, str] | None:
+    """(kind, the pre-flight issue) when a fact from the agent must come before a price; a HOLD always needs one."""
+    for issue in pf.issues:
+        for rx, kind in FACT_CHECKS:
+            if rx.search(issue):
+                return kind, issue
+    if pf.status == "HOLD":
+        return "basics", (pf.issues[0] if pf.issues else "re-underwrite first")
+    return None
+
+
+def _fact_note(an: Analysis, kind: str, intents: set[str], st: str, first: str, op: dict[str, str], me: str,
+               now: datetime | None) -> None:
+    """A no-price answer: it answers what they asked (role, showing, call, backup), then asks for the one fact."""
+    lead_in = []
+    if "CALL_ME" in intents:
+        lead_in.append("Thanks, I'll give you a call.")
+    if "ASKS_ROLE" in intents:
+        lead_in.append("I'm the buyer: an investor buying for myself or a partner investor, not a realtor, and I'm not "
+                       "working with a buyer's agent.")
+    if "BACKUP" in intents and len(lead_in) < 2:
+        lead_in.append("Thanks, and yes, I'd be glad to be the backup.")
+    if "ASKS_SHOWING" in intents and len(lead_in) < 2:
+        lead_in.append("Yes, I'm interested; a few photos or a short video would help first, and it can be walked during "
+                       "the inspection period.")
+    if not lead_in:
+        lead_in.append(f"Thanks for getting back to me on {st}.")
+    ask = [x.format(st=st) for x in _FACT_ASK[kind]]
+    close = ["I'll get you the written offer the same day."] if len(lead_in) + len(ask) < 3 else []
+    an.reply_text, an.style = _compose(an.reply_subject, first, lead_in + ask + close, hc.footer_lines(op), op,
+                                       hc.DETAILS)
+    an.sms_text = f"Hi {first}, it's {me}. Thanks on {st}; before I send numbers, can you share {_FACT_SMS[kind]}?" + \
+        " Reply STOP to opt out."
+    an.followup_at = _call_slot(now) if "CALL_ME" in intents else _followup(now, 2)
+    an.kind = "fact_check"
+
+
+def _backup_context(session: Session, lead: Lead, intents: set[str]) -> bool:
+    """They're under contract with someone else and we're the backup (said now, or in an earlier reply)."""
+    if {"BACKUP", "UNDER_CONTRACT"} & intents:
+        return True
+    from db.models import InboundReply
+    return any("BACKUP" in (r or []) for r in session.scalars(
+        select(InboundReply.intents_json).where(InboundReply.lead_id == lead.id)))
 
 
 def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = None) -> Analysis:
@@ -437,12 +509,8 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         # The numbers can't be defended yet (wrong parcel match, failed comps, ...): no price goes out, ask instead.
         an.headline = "NUMBERS ON HOLD: " + (pf.issues[0] if pf.issues else "re-underwrite first")
         an.actions.insert(0, "Don't quote a price yet: " + "; ".join(pf.issues[:2]) + ". Call them or use this no-price note.")
-        sentences = [("Thanks, I'll give you a call. " if "CALL_ME" in intents else "Thanks for getting back to me. ") +
-                     f"Before I put a number in writing on {st}, could you confirm the bedrooms, baths and square footage?",
-                     "And roughly what condition is it in, and what does the seller need to net?"]
-        an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
-        an.sms_text = f"Hi {first}, it's {me}. Thanks on {st}; can you confirm beds, baths, sqft and condition?" + sms_tail
-        an.followup_at = _call_slot(now) if "CALL_ME" in intents else _followup(now, 2)
+        kind = (fact_check_issue(pf) or ("basics", ""))[0]
+        _fact_note(an, kind, intents, st, first, op, me, now)
         return an
     if not nums:
         an.headline = "UNDERWRITE FIRST"
@@ -529,6 +597,14 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
                 sentences = [f"Thanks for the number; {hc.money(c)} doesn't work on this one with {cost_line}.",
                              f"My ceiling is {hc.money(adj_walk)} cash, as-is, and I'll leave that on the table for the seller.",
                              "If anything changes in the next couple of weeks I'm one e-mail away."]
+                if _backup_context(session, lead, intents):
+                    # They're under contract at that number with someone else: stay the clean backup, no chasing.
+                    sentences = ["Understood, thanks for letting me know where it stands.",
+                                 f"{hc.money(c)} is past what I can pay as-is with {cost_line}, so I'll stay in the backup "
+                                 f"spot: my ceiling is {hc.money(adj_walk)} cash, as-is, with no financing or appraisal "
+                                 "contingency.",
+                                 "If the current deal falls through, I can move fast."]
+                    an.headline = f"BACKUP AT {hc.money(adj_walk)}: they're under contract at {hc.money(c)}"
                 priced_reply(adj_walk, sentences, [])
                 an.sms_text = f"Hi {first}, it's {me}. {hc.money(c)} is past me on {st}; my ceiling is {hc.money(adj_walk)} cash, as-is." + sms_tail
                 an.actions = [f"Hold at {hc.money(adj_walk)}; the drip follow-up is scheduled."] + an.actions
@@ -612,6 +688,18 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         an.stage_to = LeadStage.CONTACTED
         packet = ao.build_packet(lead, agent=agent, generate_loi=False, session=session,
                                  reply_flags=set(intents) | {"ANSWERED"}) if agent else None
+        fact = fact_check_issue(pf)
+        if packet is not None and packet.kind == "offer" and fact:
+            kind, issue = fact
+            an.verdict, an.headline = "INFO", f"CONFIRM THE FACTS FIRST: {issue}"
+            an.actions = [f"No price yet ({issue}). This no-price note answers them and asks for exactly that; when they "
+                          f"answer, check the numbers, then send the offer (`gmail --send-offer {lead.id}`)."] + an.actions
+            if "CALL_ME" in intents:
+                an.actions.insert(0, "They asked for a call: call at the follow-up time (it's on your calendar).")
+            _fact_note(an, kind, intents, st, first, op, me, now)
+            an.numbers = dict(nums, fact_check=kind)
+            return an
+        an.kind = "touch2" if packet is not None and packet.kind == "offer" else ""
         if packet is not None:
             an.reply_subject, an.reply_text, an.sms_text = packet.subject, packet.email_body, packet.sms_text
             an.style = hc.lint(packet.email_body)
@@ -631,6 +719,11 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         sentences = ["Understood, and thanks for the quick answer.",
                      f"For what it's worth my ceiling is {hc.money(adj_walk)} cash, as-is, with no financing contingency.",
                      "If the seller's thinking changes I'm glad to put it in writing."]
+        if _backup_context(session, lead, intents):
+            sentences = ["Understood, thanks for letting me know.",
+                         f"If the current deal falls through, my ceiling is {hc.money(adj_walk)} cash, as-is, with no "
+                         "financing or appraisal contingency, and I can move fast."]
+            an.headline = f"BACKUP AT {hc.money(adj_walk)}: they turned it down for now"
         priced_reply(adj_walk, sentences, [])
         an.sms_text = f"Hi {first}, it's {me}. Understood on {st}; my ceiling stays {hc.money(adj_walk)} cash, as-is, if anything changes." + sms_tail
         an.actions = ["Hold; the drip follow-up is scheduled."] + an.actions
