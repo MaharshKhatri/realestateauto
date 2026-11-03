@@ -376,6 +376,45 @@ class Known:
     touched: dict[int, datetime]                   # lead -> our last e-mail / text to its agent
     streets: dict[int, re.Pattern[str]]            # lead -> "30 Rieder" pattern (touched leads only)
     seen: set[str]
+    phones: dict[str, list[int]] = field(default_factory=dict)   # agent phone (10 digits) -> leads (Google Voice)
+
+
+# Google Voice forwards texts and voicemails to the same Gmail (Voice settings: "Forward messages to email",
+# "Get voicemail via email"). Voice has no API for software to send texts or place calls (and automated texts are
+# off-limits here anyway), so the desk READS them: an agent's text or voicemail becomes their reply on the lead, a
+# 📞 call on the calendar and a drafted text the operator can send from their phone.
+_VOICE_TEXT = re.compile(r"@txt\.voice\.google\.com$", re.I)
+_VOICE_MAIL = re.compile(r"^voice-noreply@google\.com$", re.I)
+_PHONE10 = re.compile(r"\(?(\d{3})\)?[\s.-]*(\d{3})[\s.-]*(\d{4})")
+_VOICE_FOOTER = re.compile(r"(?im)^\s*(to respond to this text message|you received this|this email was sent|"
+                           r"your account|help center|help forum|google llc|play message|listen to (the )?message|"
+                           r"view this (message|voicemail)|reply to this email)")
+
+
+def voice_kind(mail: Mail) -> str | None:
+    """"voice_text" / "voice_mail" for a Google Voice notification, else None."""
+    if _VOICE_TEXT.search(mail.from_email or ""):
+        return "voice_text"
+    if _VOICE_MAIL.search(mail.from_email or "") and "voicemail" in (mail.subject or "").lower():
+        return "voice_mail"
+    return None
+
+
+def voice_phone(mail: Mail) -> str | None:
+    for text in (mail.subject or "", mail.from_name or ""):
+        m = _PHONE10.search(text)
+        if m:
+            return "".join(m.groups())
+    return None
+
+
+def strip_voice(text: str) -> str:
+    """The agent's own words from a Voice notification: no footer, links or "Transcript:" label."""
+    m = _VOICE_FOOTER.search(text or "")
+    body = (text or "")[:m.start()] if m else (text or "")
+    body = re.sub(r"https?://\S+|<[^>]+>", " ", body)
+    body = re.sub(r"(?im)^\s*transcript\s*:\s*", "", body)
+    return re.sub(r"[ \t]+", " ", body).strip()
 
 
 def street_pattern(address: str | None) -> re.Pattern[str] | None:
@@ -410,7 +449,13 @@ def load_known(session: Session) -> Known:
         if pat is not None:
             streets[lead.id] = pat
     seen = set(session.scalars(select(InboundReply.message_id)))
-    return Known(own=own, thread=thread, agents=agents, touched=touched, streets=streets, seen=seen)
+    phones: dict[str, list[int]] = {}
+    for phone, lid in session.execute(select(Contact.phone, Contact.lead_id).where(
+            Contact.contact_type == ContactType.LISTING_AGENT, Contact.phone.is_not(None), Contact.lead_id.is_not(None))):
+        digits = re.sub(r"\D", "", phone or "")[-10:]
+        if len(digits) == 10:
+            phones.setdefault(digits, []).append(lid)
+    return Known(own=own, thread=thread, agents=agents, touched=touched, streets=streets, seen=seen, phones=phones)
 
 
 def match(known: Known, mail: Mail) -> tuple[int | None, str | None]:
@@ -418,6 +463,13 @@ def match(known: Known, mail: Mail) -> tuple[int | None, str | None]:
     for mid in [mail.in_reply_to, *reversed(mail.references)]:
         if mid and mid in known.thread:
             return known.thread[mid], "thread"
+    kind = voice_kind(mail)
+    if kind:
+        leads = list(dict.fromkeys(known.phones.get(voice_phone(mail) or "", [])))
+        touched = [lid for lid in leads if lid in known.touched]
+        if touched:
+            return max(touched, key=lambda lid: known.touched[lid]), kind
+        return None, None                         # a text from someone who isn't an agent we contacted: never read
     hay = f"{mail.subject}\n{mail.text}"
     leads = known.agents.get(mail.from_email, [])
     if leads:
@@ -468,6 +520,9 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
     from engine.fast_track import is_listed_foreclosure, listed_foreclosure
     if not _cfg().get("auto_send_touch2", True):
         return "auto-send of the offer is off in settings"
+    if (method or "").startswith("voice"):
+        return ("they texted you" if method == "voice_text" else "they left you a voicemail") + \
+            ": call them back, or text back from your phone (the drafted text is on the lead)"
     if method not in ("thread", "agent_email"):
         return "matched by the street name only: confirm it's about this listing"
     intents = set(analysis.parsed.intents)
@@ -585,10 +640,14 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
         return None
     agent = next((c for c in lead.contacts if c.email and c.email.strip().lower() == mail.from_email), None) \
         or ao.agent_contact(lead)
+    voice = (method or "").startswith("voice")
+    if voice:
+        # The Voice relay address would turn an e-mail into a text from the operator's number: never store it.
+        mail = replace(mail, text=strip_voice(mail.text))
     row = InboundReply(message_id=mail.message_id, lead_id=lead.id, contact_id=agent.id if agent else None,
-                       from_email=mail.from_email, from_name=mail.from_name[:160], subject=mail.subject[:300],
-                       received_at=when, in_reply_to=mail.in_reply_to, references_json=mail.references[-20:],
-                       body_text=mail.text, match_method=method)
+                       from_email=None if voice else mail.from_email, from_name=mail.from_name[:160],
+                       subject=mail.subject[:300], received_at=when, in_reply_to=mail.in_reply_to,
+                       references_json=mail.references[-20:], body_text=mail.text, match_method=method)
     session.add(row)
     session.flush()                            # the unique Message-ID claims this mail before anything else is written
     if mail.auto_reply:
@@ -596,7 +655,10 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
         return row
     an = rn.analyze(session, lead, mail.text, now=now)
     inter = rn.record(session, lead, an, mail.text, now=now)
-    inter.email_message_id = mail.message_id
+    if voice:
+        inter.channel = "sms_in" if method == "voice_text" else "voicemail"     # not an e-mail thread to answer in
+    else:
+        inter.email_message_id = mail.message_id
     row.interaction_id = inter.id
     row.verdict, row.headline = an.verdict, an.headline[:200]
     row.intents_json = sorted(an.parsed.intents)
@@ -864,6 +926,9 @@ def approve(session: Session, reply_id: int, *, subject: str | None = None, body
     lead = session.get(Lead, row.lead_id) if row.lead_id else None
     if lead is None:
         raise ApprovalError("this reply isn't matched to a lead")
+    if (row.match_method or "").startswith("voice"):
+        raise ApprovalError("they texted or called you: call them back, or text back from your phone; to answer by "
+                            "e-mail instead, use gmail --reply")
     an = row.analysis_json or {}
     text = (body if body is not None and body.strip() else an.get("reply_text") or "").strip()
     if not text:
@@ -940,6 +1005,8 @@ def approvable(session: Session) -> tuple[list[InboundReply], list[tuple[Inbound
         agent = session.get(Contact, row.contact_id) if row.contact_id else None
         if not (an.get("reply_text") or "").strip():
             held.append((row, "no drafted answer: call them or dismiss it"))
+        elif (row.match_method or "").startswith("voice"):
+            held.append((row, "they texted or left a voicemail: a call (or a text from your phone)"))
         elif row.match_method not in ("thread", "agent_email"):
             held.append((row, "matched only by the street in the subject: check it's about this listing"))
         elif agent is not None and agent.dnc_status == "dnc":
@@ -1034,7 +1101,8 @@ def resolve_open_replies(session: Session, lead_id: int, note: str) -> int:
 def reply_thread(session: Session, lead_id: int) -> dict[str, Any] | None:
     """Thread headers for answering the agent's latest e-mail on this lead (None when they never e-mailed us)."""
     row = session.scalar(select(InboundReply).where(InboundReply.lead_id == lead_id,
-                                                    InboundReply.status.not_in(("bounce", "auto_reply")))
+                                                    InboundReply.status.not_in(("bounce", "auto_reply")),
+                                                    func.coalesce(InboundReply.match_method, "").not_like("voice%"))
                          .order_by(InboundReply.received_at.desc(), InboundReply.id.desc()).limit(1))
     if row is not None:
         return {"message_id": row.message_id, "references": list(row.references_json or []),
@@ -1406,6 +1474,9 @@ def inbox_rows(session: Session, now: datetime | None = None, days: int = 2) -> 
             todo = "wait for their facts, then check the numbers and send the offer"
         if "CALL_ME" in (row.intents_json or []) and row.status in ("auto_sent", "approved"):
             todo = "call them (it's on your calendar)"
+        if row.status == "needs_approval" and (row.match_method or "").startswith("voice"):
+            sms = (row.analysis_json or {}).get("sms_text") or ""
+            todo = "call them back" + (f", or text: {sms}" if sms else "")
         if row.status in ("needs_approval", "auto_queued") and (row.note or "").startswith("not sent yet"):
             todo = f"nothing: it retries on the next inbox check (or `gmail --approve {row.id}` now)"
         out.append({**{k: j[k] for k in ("id", "lead_id", "address", "town", "agent", "from", "status", "note")},

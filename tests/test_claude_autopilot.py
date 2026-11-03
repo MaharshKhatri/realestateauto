@@ -2,7 +2,9 @@
 never held back by the cold-outreach cap, Gmail's Sent folder as the record, `manage.py inbox`, `/reply`, the daemon."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
+from email import policy
 
 import pytest
 
@@ -506,3 +508,52 @@ def test_the_desk_answers_the_safe_replies_by_itself_and_leaves_the_rest_for_a_c
     assert len(FakeSMTP.sent) == n + len(r["sent"])
     assert db.get(InboundReply, rows[leads[1].id].id).status == "needs_approval"
     assert db.get(InboundReply, rows[leads[2].id].id).status == "needs_approval"
+
+
+def _voice(uid, body, *, number="(973) 555-0100", kind="text"):
+    from email.message import EmailMessage
+    m = EmailMessage()
+    if kind == "text":
+        m["From"] = f'"{number} (SMS)" <17325550000.1{re.sub(r"[^0-9]", "", number)}.Ab12Cd@txt.voice.google.com>'
+        m["Subject"] = f"New text message from {number}"
+        m.set_content(f"{body}\n\nTo respond to this text message, reply to this email or visit Google Voice.\n\n"
+                      "YOUR ACCOUNT <https://voice.google.com> HELP CENTER <https://support.google.com/voice>")
+    else:
+        m["From"] = "Google Voice <voice-noreply@google.com>"
+        m["Subject"] = f"New voicemail from {number} at 3:14 PM"
+        m.set_content(f"Transcript: {body}\n\nPlay message <https://voice.google.com/voicemail>\n\nYOUR ACCOUNT")
+    m["To"], m["Message-ID"] = "jordan@example.test", f"<voice-{uid}@google.com>"
+    m["Date"] = "Wed, 04 Nov 2026 10:20:00 -0500"
+    return m.as_bytes(policy=policy.SMTP)
+
+
+def test_an_agents_google_voice_text_becomes_their_reply_a_call_and_a_drafted_text(live):
+    """2026-11-03: the operator's Google Voice forwards texts and voicemails to the business Gmail. The desk reads
+    those from agents we contacted (by their phone), never sends anything back through the Voice relay address, and
+    turns each into a 📞 call with a drafted text the operator can send from their phone."""
+    from engine import gcal_sync
+    db = live
+    lead = listed(db)                                          # the agent's phone on file: (973) 555-0100
+    opener(db, lead)
+    gm.set_imap_factory(lambda: FakeIMAP({
+        301: _voice(301, "Yes still available, call me when you get a chance"),
+        302: _voice(302, "Hi this is someone else entirely", number="(201) 555-0999"),
+        303: _voice(303, "Hey it's Pat about the listing, seller would take 355", kind="voicemail")}))
+    out = gm.poll_gmail_replies(now=T0 + timedelta(minutes=40), smtp_factory=FakeSMTP)
+    assert out["matched"] == 2                                 # the stranger's text is never read or stored
+    db.expire_all()
+    rows = {r.match_method: r for r in db.query(InboundReply)}
+    text, vm = rows["voice_text"], rows["voice_mail"]
+    assert text.status == "needs_approval" and text.from_email is None and "Google Voice" not in text.body_text
+    assert text.body_text.startswith("Yes still available") and "texted you" in text.note
+    assert vm.body_text.startswith("Hey it's Pat") and vm.counter_amount == 355000
+    n = len(FakeSMTP.sent)
+    with pytest.raises(gm.ApprovalError, match="texted or called"):
+        gm.approve(db, text.id, smtp_factory=FakeSMTP)
+    assert gm.auto_approve(now=T0 + timedelta(minutes=50), smtp_factory=FakeSMTP)["sent"] == []
+    assert len(FakeSMTP.sent) == n                             # nothing went out by itself
+    [ev] = [e for e in gcal_sync.reply_events(db, lead, datetime(2026, 11, 4, 10, 0)) if f"r{text.id}" in e.key]
+    assert "they texted you" in ev.body["summary"] and "text back from your phone" in ev.body["description"]
+    assert gm.reply_thread(db, lead.id) is None or "voice" not in (gm.reply_thread(db, lead.id)["message_id"] or "")
+    rows_out = {r["id"]: r for r in gm.inbox_rows(db, T0 + timedelta(minutes=45))}
+    assert rows_out[text.id]["you_do"].startswith("call them back")

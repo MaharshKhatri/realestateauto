@@ -828,6 +828,22 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
       about <street>: they replied"), since the operator handles calls only.
   - **Approving one reply from a cloud Claude session:** `workflow_dispatch` with task `approve` and the reply #
     (the inputs are public: ids only, never text).
+- **Google Voice** (learned 2026-11-03, the operator's number is Google Voice on the business Gmail):
+  - Voice has no API for software to send texts or place calls; automating its web app would break Google's terms
+    and "never impersonate a browser". Automated texts / AI calls to cell phones are also off-limits (TCPA; texts are
+    never automated here).
+  - So the desk **reads** Voice: with "Forward messages to email" and "Get voicemail via email" on in Voice settings,
+    texts (`…@txt.voice.google.com`, "New text message from (xxx) xxx-xxxx") and voicemails (`voice-noreply@google.com`,
+    "New voicemail from …") land in the inbox the desk already reads.
+  - `gmail_autopilot.voice_kind / voice_phone`: a notification is read only when its number is a listing agent we
+    contacted (`Known.phones`); any other number is never downloaded. `strip_voice` keeps the agent's words (no footer,
+    links or "Transcript:").
+  - The reply is analyzed like an e-mail (`match_method` voice_text / voice_mail, channel sms_in / voicemail) but
+    never answered by itself: `auto_touch2_block` / `approve()` refuse it.
+  - `from_email` is stored empty: replying to the Voice relay address would send an SMS from the operator's number.
+    `reply_thread` skips voice rows, so later e-mails never thread onto them.
+  - Its calendar event is "📞 Call <agent> about <street>: they texted you / left you a voicemail", with the drafted
+    text (`sms_text`) to send by hand.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

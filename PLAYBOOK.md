@@ -199,6 +199,11 @@ three times:
 The next time your Mac is open, it hands its database to the cloud by itself and goes quiet. Calls are on your
 calendar; everything else happens without you.
 
+**Google Voice:** in Voice (voice.google.com → ⚙️ Settings, signed in as your business Gmail) turn on Messages →
+"Forward messages to email" and Voicemail → "Get voicemail via email". When an agent texts you or leaves a voicemail,
+the desk reads it, puts a 📞 call on your calendar and drafts the text back for you (texts are sent from your phone:
+Voice has no way for software to send them, and automated texts aren't allowed here).
+
 **One command for everything:** open Claude Code on the Mac in `~/realestateauto` and type `/go`. It answers every
 agent (you say yes once), makes the Mac hands-free, sends today's new e-mails and tells you what's left. Without
 Claude: `.venv/bin/python manage.py inbox`, then `.venv/bin/python manage.py gmail --approve-all`.

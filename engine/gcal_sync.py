@@ -368,9 +368,10 @@ def reply_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
         # The operator handles calls only (2026-11-03): a reply the desk can't answer by itself is a call.
         phone = agent_phone(session, agent)
         who = _name(agent.name) if agent is not None and agent.name else "the agent"
+        how = {"voice_text": "texted you", "voice_mail": "left you a voicemail"}.get(row.match_method or "", "replied")
         if phone:
             summary = (f"📞 COUNTER-OFFER RECEIVED: call {who} about {place.street}" if row.counter_amount else
-                       f"📞 Call {who} about {place.street}: they replied")
+                       f"📞 Call {who} about {place.street}: they {how}")
         else:
             summary = (f"🔥 COUNTER-OFFER RECEIVED: {place.street} (no phone on file)" if row.counter_amount else
                        f"🔥 Agent replied: {place.street} (no phone on file)")
@@ -379,7 +380,10 @@ def reply_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
                  f"Your walk-away: {_money(n.get('mao_walkaway'))}" if n.get("mao_walkaway") else None,
                  f"Why it waits for you: {row.note}" if row.note else None, *_agent_lines(session, agent),
                  "Call them: hear what they need, never go above your walk-away, and if they want it in writing, "
-                 "tell Claude what they said (the desk sends it in their Gmail thread)."]
+                 "tell Claude what they said (the desk sends it in their Gmail thread).",
+                 (f"Or text back from your phone: {(row.analysis_json or {}).get('sms_text')}"
+                  if (row.match_method or "").startswith("voice") and (row.analysis_json or {}).get("sms_text")
+                  else None)]
         out.append(Desired(f"reply:{lead.id}:r{row.id}", "reply", lead.id,
                            _body("reply", summary, lines, s, e, reminders=[0], link=lead_link(lead.id)), start))
     return out
