@@ -105,8 +105,23 @@ def test_red_holds_and_sets_the_drip(db, operator):
     a = rn.analyze(db, lead, "They want 360k, not budging.", now=datetime(2026, 10, 20, 9, 0))
     assert a.verdict == "RED" and a.headline == "HOLD FIRM AT $297,000 / SET 14-DAY DRIP"
     assert "$297,000" in a.reply_text and a.followup_at.date().isoformat() == "2026-11-03" and a.style == []
+    # we never named a price and our final is 78% of the $380K ask: a "no" gets no number, just a 30-day check-in
+    cold = rn.analyze(db, lead, "Not interested.", now=datetime(2026, 10, 20, 9, 0))
+    assert cold.verdict == "RED" and "$" not in cold.reply_text.split("---")[0] and cold.followup_at.date().isoformat() == "2026-11-19"
+    lead.offer_amount = 285_000                          # after a written offer, the ceiling is on the record
     reject = rn.analyze(db, lead, "Not interested, too low.", now=datetime(2026, 10, 20, 9, 0))
     assert reject.verdict == "RED" and "$297,000" in reject.reply_text and reject.followup_at.date().isoformat() == "2026-11-03"
+
+
+def test_far_apart_counter_names_no_number(db, operator):
+    """2026-11-03: a ceiling far under their number reads as a lowball. Under 80% of it we say we're too far apart."""
+    lead = listed(db)
+    a = rn.analyze(db, lead, "Seller wants 400k firm.", now=datetime(2026, 10, 20, 9, 0))      # 297K = 74% of 400K
+    body = a.reply_text.split("---")[0]
+    assert a.verdict == "RED" and "TOO FAR APART" in a.headline and "$297,000" not in a.reply_text
+    assert "too far from $400,000" in body and a.followup_at.date().isoformat() == "2026-11-19"
+    from engine import human_copy as hc
+    assert hc.lint(a.reply_text) == []
 
 
 def test_risk_buffers_move_the_numbers_and_add_language(db, operator):

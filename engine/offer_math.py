@@ -38,6 +38,9 @@ from sqlalchemy import select
 
 from core.config import settings
 
+# Bump when the pricing rules change (fees, rehab tiers, buyer economics): the cloud desk then re-prices every stored
+# valuation before it sends anything (engine/cloud_desk.py::_work), so no e-mail goes out on numbers from the old rules.
+PRICING_VERSION = "2026-11-03.firm1"
 NO_OFFER_VERDICTS = {"EQUITY_RESCUE_REFERRAL", "FRFPA_BLOCKED", "PASS", "SHORT_SALE_ONLY"}
 RETAIL = re.compile(r"\b(move[- ]in ready|fully renovated|newly renovated|completely renovated|recently renovated|"
                     r"totally renovated|gut renovated|renovated|updated|remodeled|brand new|turn[- ]?key|pristine|"

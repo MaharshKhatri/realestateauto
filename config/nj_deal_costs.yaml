@@ -98,5 +98,8 @@ negotiation:
   counter_fee_floor: 5000       # our one counter is the best and final (= buyer_max - min_fee)
   counter_within_pct: 0.92      # YELLOW only when our counter is at least this share of their number; otherwise hold (RED)
   drip_days: 14                 # RED: come back in two weeks
+  state_ceiling_min_pct: 0.80   # RED names our ceiling only when it is at least this share of their number; under it
+                                # the reply says we're too far apart, with no number (a far-under ceiling reads as a lowball)
+  far_apart_days: 30            # ...and checks back in a month (stale listings cut prices)
   yellow_followup_days: 2
   under_contract_days: 45       # deals fall out of attorney review / inspection: check back then

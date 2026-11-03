@@ -226,3 +226,19 @@ def test_a_sealed_note_from_the_chat_logs_the_calls_and_sends_the_replies(db, mo
     assert ev.body["summary"].startswith("📞 Call Pat Agent back about") and "497K net" in ev.body["description"]
     assert "Optional call" not in ev.body["description"] and "voicemail" in ev.body["description"]
     assert cd.apply_note("not a note", KEY) == {"note_error": "unreadable"}
+
+
+def test_new_pricing_rules_reprice_every_valuation_once_before_anything_is_sent(db, monkeypatch, tmp_path):
+    """2026-11-03: stored valuations carried the old fees and rehab tiers. The first run on new rules re-prices them all."""
+    from engine import offer_math
+    from tests.factories import make_lead
+    make_lead(db, stale_listing=True)
+    db.commit()
+    early = datetime(2026, 11, 3, 7, 0)                        # before the inbox hours: no Gmail
+    kw = dict(now=early, smtp_factory=None, user=ME, pw="p", desk_key=KEY, root=tmp_path)
+    first = cd._work("run", approve_id=None, **kw)
+    assert first["repriced"] >= 1 and first["reprice_errors"] == 0
+    assert "repriced" not in cd._work("run", approve_id=None, **kw)                   # once per rules version
+    monkeypatch.setattr(offer_math, "PRICING_VERSION", "next")
+    assert cd._work("run", approve_id=None, **kw)["repriced"] >= 1
+    assert cd._work("recalibrate", approve_id=None, **kw)["repriced"] >= 1           # on demand (workflow task)

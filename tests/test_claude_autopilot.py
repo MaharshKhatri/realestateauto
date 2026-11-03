@@ -308,6 +308,7 @@ def test_a_no_after_our_backup_offer_keeps_us_the_backup_never_above_the_walkawa
     lead = listed(db)
     db.add(InboundReply(message_id="<backup-1@broker.test>", lead_id=lead.id, from_email="pat@broker.test",
                         status="approved", intents_json=["BACKUP"], body_text="We have a contract but not sure"))
+    lead.offer_amount = 280_000                          # our backup offer went out in writing
     db.flush()
     an = rn.analyze(db, lead, gm.strip_quoted("Never happen…\n\nWe are at 470.00 Sorry."))
     assert an.verdict == "RED" and an.headline.startswith("BACKUP AT")

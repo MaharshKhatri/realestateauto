@@ -279,7 +279,7 @@ def deal_numbers(lead: Lead) -> dict[str, Any] | None:
         "rehab_total": (buyer.get("rehab") or v.est_repair_cost or 0) + (buyer.get("rehab_contingency") or 0),
         "taxes_held": buyer.get("taxes_held"), "carry": buyer.get("carry"), "capital_cost": buyer.get("capital_cost"),
         "holding_months": buyer.get("holding_months") or int(qp.costs()["end_buyer"]["holding_months"]),
-        "last_offer": lead.offer_amount,
+        "last_offer": lead.offer_amount, "ask": firm.ask,
     }
 
 
@@ -586,6 +586,10 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
                                           "buyer_roi_if_paid_counter")})
         if c <= adj_walk:
             an.verdict, an.headline = "GREEN", f"ACCEPT & LOCK UP NOW: {hc.money(c)} leaves a {hc.money(fee_at_counter)} fee"
+            # An accepted number is final (2026-11-03): say what the valuation couldn't verify before it goes in writing.
+            from engine.offer_math import certainty_issues
+            for issue in certainty_issues(lead, session):
+                an.warnings.append(f"Before you accept, confirm: {issue}")
             an.actions = [f"Send the written offer at {hc.money(c)} today (Interested button: the LOI runs through the gates).",
                           "Ask the agent for the seller's contract and attach the attorney-review assignment rider.",
                           "Line up the matched buyer or JV partner for the walkthrough once attorney review ends."] + an.actions
@@ -610,6 +614,28 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
                 an.sms_text = f"Hi {first}, it's {me}. My best and final on {st} is {hc.money(x)} cash, as-is; details by e-mail." + sms_tail
                 an.actions = [f"Best and final at {hc.money(x)}: nothing above it, ever."] + an.actions
                 an.followup_at = _followup(now, int(ncfg.get("yellow_followup_days", 2)))
+            elif adj_walk < float(ncfg.get("state_ceiling_min_pct", 0.80)) * c and not nums.get("last_offer"):
+                # Far apart and we never put a number in writing: naming a ceiling this far under theirs reads as a
+                # lowball and ends the thread (2026-11-03). No number; keep the door open and check back in a month.
+                # (Once an offer is on the record, restating the ceiling is consistent, not an insult.)
+                days = int(ncfg.get("far_apart_days", 30))
+                an.verdict, an.headline = "RED", f"TOO FAR APART AT {hc.money(c)} (our final {hc.money(adj_walk)}): NO NUMBER, CHECK BACK IN {days} DAYS"
+                nums.update({"our_counter": None, "fee_at_our_counter": None})
+                sentences = [f"Thanks for the number on {st}.",
+                             f"As-is, with {cost_line}, I'm too far from {hc.money(c)} to send something worth the seller's "
+                             "time right now.",
+                             f"If the seller's number moves, I can close cash with no financing or appraisal contingency; mind "
+                             f"if I check back in about {days} days?"]
+                if _backup_context(session, lead, intents):
+                    sentences = ["Understood, thanks for letting me know where it stands.",
+                                 "If the current deal falls through, let me know and I'll put a clean cash offer together "
+                                 "the same day."]
+                    an.headline = f"TOO FAR APART (UNDER CONTRACT AT {hc.money(c)}): NO NUMBER, CHECK BACK LATER"
+                an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
+                an.sms_text = f"Hi {first}, it's {me}. Thanks on {st}; I'm too far from {hc.money(c)} as-is. OK if I check back in a few weeks?" + sms_tail
+                an.actions = [f"No number sent (our final {hc.money(adj_walk)} is under {float(ncfg.get('state_ceiling_min_pct', 0.80)):.0%} "
+                              f"of their {hc.money(c)}). Check-in set for {days} days."] + an.actions
+                an.followup_at = _followup(now, days)
             else:
                 an.verdict, an.headline = "RED", f"HOLD FIRM AT {hc.money(adj_walk)} / SET {int(ncfg.get('drip_days', 14))}-DAY DRIP"
                 nums.update({"our_counter": adj_walk, "fee_at_our_counter": _floor100(adj_max - adj_walk)})
@@ -731,6 +757,20 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         if "CALL_ME" in intents:
             an.actions.insert(0, "They asked for a call: the written numbers go first, then call them at the follow-up time "
                                  "(it is on your calendar).")
+        return an
+    ask = nums.get("ask")
+    if "REJECT" in intents and not nums.get("last_offer") and ask and \
+            adj_walk < float(ncfg.get("state_ceiling_min_pct", 0.80)) * float(ask):
+        # We never named a price (ask-first) and our final is far under the ask: a number now would read as a lowball.
+        days = int(ncfg.get("far_apart_days", 30))
+        an.verdict, an.headline = "RED", f"NOT NOW: NO NUMBER, CHECK BACK IN {days} DAYS"
+        sentences = ["Understood, and thanks for the quick answer.",
+                     f"If the seller's thinking changes I can close cash, as-is, with no financing contingency; mind if I "
+                     f"check back in about {days} days?"]
+        an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
+        an.sms_text = f"Hi {first}, it's {me}. Understood on {st}; OK if I check back in a few weeks?" + sms_tail
+        an.actions = [f"No number sent; check-in set for {days} days."] + an.actions
+        an.followup_at = _followup(now, days)
         return an
     if "REJECT" in intents:
         an.verdict, an.headline = "RED", f"HOLD AT {hc.money(adj_walk)} / SET {int(ncfg.get('drip_days', 14))}-DAY DRIP"

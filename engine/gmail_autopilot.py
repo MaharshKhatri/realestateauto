@@ -1019,8 +1019,11 @@ def approvable(session: Session) -> tuple[list[InboundReply], list[tuple[Inbound
 # Answers that go out with no person (learned 2026-11-03: the operator handles calls only). No-price notes always;
 # a priced hold / counter only when the agent's number was stated plainly ("wants 355k", "we are at 470"), never one
 # read out of a signature. Accepts, unclassified questions and anything else stay for a call.
-SAFE_NO_PRICE = ("CONFIRM THE FACTS FIRST", "NUMBERS ON HOLD", "LISTING EXPIRED", "OFF THE TABLE")
-SAFE_PRICED = ("BACKUP AT", "HOLD FIRM AT", "HOLD AT", "COUNTER AT")
+SAFE_NO_PRICE = ("CONFIRM THE FACTS FIRST", "NUMBERS ON HOLD", "LISTING EXPIRED", "OFF THE TABLE", "TOO FAR APART",
+                 "NOT NOW")
+# A priced answer goes out by itself only when the agent stated their number plainly AND the valuation passes every
+# certainty check (engine/offer_math.py): a number we send is final, so it never rests on old comps or a guessed size.
+SAFE_PRICED = ("BACKUP AT", "HOLD FIRM AT", "HOLD AT", "COUNTER AT", "BEST AND FINAL AT")
 
 
 def auto_approve(*, now: datetime | None = None, smtp_factory: Any = None) -> dict[str, Any]:
@@ -1039,7 +1042,10 @@ def auto_approve(*, now: datetime | None = None, smtp_factory: Any = None) -> di
                 ids.append(r.id)
             elif head.startswith(SAFE_PRICED) and (not r.counter_amount
                                                    or rn.parse_reply(r.body_text or "").counter_explicit):
-                ids.append(r.id)
+                from engine.offer_math import certainty_issues
+                lead = s.get(Lead, r.lead_id) if r.lead_id else None
+                if lead is not None and not certainty_issues(lead, s):
+                    ids.append(r.id)
     return approve_all(now=now, smtp_factory=smtp_factory, ids=ids) if ids else empty
 
 

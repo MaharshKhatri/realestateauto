@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "run | refresh | approve | dismiss | offer | note"
+        description: "run | refresh | recalibrate | approve | dismiss | offer | note"
         default: run
       reply:
         description: "with approve / dismiss: the reply #"

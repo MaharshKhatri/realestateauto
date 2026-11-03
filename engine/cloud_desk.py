@@ -445,6 +445,14 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
         r = subprocess.run([sys.executable, "-m", "swarm.orchestrator", "run-all"], cwd=root, timeout=45 * 60,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         out["refresh"] = "ok" if r.returncode == 0 else f"exit {r.returncode}"
+    from engine.offer_math import PRICING_VERSION
+    if task in ("recalibrate", "refresh") or _state_get("pricing_version") != PRICING_VERSION:
+        # New pricing rules (or fresh data): re-price every stored valuation offline (~20 s for 2,000) before any send.
+        from engine import quant_pricing
+        with session_scope() as s:
+            rc = quant_pricing.recalibrate_all(s)
+        _state_set(pricing_version=PRICING_VERSION)
+        out.update(repriced=int(rc.get("repriced") or 0), reprice_errors=int(rc.get("errors") or 0))
     if task == "approve" and approve_id:
         try:
             with session_scope() as s:
