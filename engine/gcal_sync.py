@@ -344,7 +344,14 @@ def reply_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
                                                       InboundReply.status == "needs_approval"))
     place = _place(session, lead)
     for row in rows:
-        start = callable_slot((row.received_at or row.created_at) + timedelta(minutes=10), 15)
+        # Timed from when the Mac READ the reply, not when it was sent: a Mac that was asleep or a daemon that wasn't
+        # running reads it hours later, and an alert timed off the agent's send time would land in the past and never
+        # be created (2026-11-03: two morning replies read at noon got no alert).
+        seen = row.received_at                          # naive Eastern
+        if row.created_at is not None:                  # naive UTC (utcnow): convert before comparing
+            read = row.created_at.replace(tzinfo=timezone.utc).astimezone(ZoneInfo(tz_name())).replace(tzinfo=None)
+            seen = max(seen, read) if seen else read
+        start = callable_slot((seen or now) + timedelta(minutes=10), 15)
         if start < now:
             continue
         agent = session.get(Contact, row.contact_id) if row.contact_id else listing_agent(lead)

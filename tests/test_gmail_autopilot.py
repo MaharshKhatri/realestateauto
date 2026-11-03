@@ -387,6 +387,21 @@ def test_calendar_alert_for_a_reply_waiting_on_the_operator(live):
     assert gcal_sync.reply_events(db, lead, datetime(2026, 11, 4, 11, 1)) == []
 
 
+def test_a_reply_the_mac_reads_hours_late_still_gets_its_alert(live):
+    """2026-11-03: replies sent at 9 AM were read at 11:59 (the daemon wasn't running): the alert, timed off the agent's
+    send time, landed in the past and was never created. It is timed off when the Mac read the reply."""
+    from engine import gcal_sync
+    db = live
+    lead = listed(db)
+    row = InboundReply(message_id="<late@b.test>", lead_id=lead.id, status="needs_approval", verdict="INFO",
+                       headline="ANSWER THEM", received_at=datetime(2026, 11, 4, 9, 0),
+                       created_at=datetime(2026, 11, 4, 16, 59))            # 11:59 AM Eastern, stored in UTC
+    db.add(row)
+    db.flush()
+    ev = gcal_sync.reply_events(db, lead, datetime(2026, 11, 4, 12, 0))
+    assert len(ev) == 1 and ev[0].starts_at == datetime(2026, 11, 4, 12, 9)
+
+
 # -- the simple-home API -------------------------------------------------------------------------------------------
 class FakeSSL(FakeSMTP):
     def __init__(self, *a, **kw):

@@ -762,6 +762,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - The daily-goal event no longer points at the dashboard ("🎯 Daily outreach: N agent e-mails (autopilot)").
   - The daemon reads the inbox 8 AM-9 PM but sends only inside `send_hours` (8 AM-8 PM): run_inbox(send=in_send_hours()).
   - `inbox` prints progress on stderr while it paces the sends ("next one in 14 s"), so a pause never looks like a hang.
+  - A 🔥 reply alert is timed from when the Mac READ the reply (the later of `received_at`, Eastern, and `created_at`,
+    UTC → Eastern), not from when the agent sent it: replies read hours late (Mac asleep, no daemon) used to get no
+    alert at all because it landed in the past.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 
