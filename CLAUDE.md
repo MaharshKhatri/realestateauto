@@ -837,13 +837,19 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     `configured()` is False and `sync()` talks to no one. `setup-calendar` on the Mac saves the new sign-in and
     mails it to the cloud at once. When the Mac's Gmail app password no longer works, it first asks for a new one
     at a hidden prompt (`set-gmail`). The Mac's original password had been pasted into a chat, so it gets revoked.
-  - **Every call event carries a call brief** (`gcal_sync.call_brief`): reply calls, "call me" follow-ups and
-    48-hour follow-ups. It holds:
-    - the house (beds / baths / sqft / year / days on market / ask);
+  - **Every call event carries a word-for-word call script** (`gcal_sync.call_brief`, "--- Call script (word for
+    word) ---"): reply calls, "call me" follow-ups and 48-hour follow-ups. The operator is new to real estate
+    (2026-11-03: "give me full scripts for everything"), so every script, here or in the chat, is spoken lines, not
+    hints. It holds:
+    - the house (multi-family, beds / baths / sqft / year / days on market / ask);
     - our open / aim / walk-away, or "Don't name a price" with the pre-flight reason, never above an offer
       already sent;
-    - the intro line and the questions for that fact kind (condo, units, basics);
-    - the never-say rules;
+    - the exact opener (name, phone, purpose) and a "bad time" line;
+    - who we are, and the questions for that fact kind (condo, units, basics);
+    - the answers to "what's your offer?" (priced, too low, their number under / over the walk-away; or no price),
+      "wholesaler / assign?", "proof of funds?" and "want to see it?";
+    - "let me check and get back to you" for anything else;
+    - the closing line and the never-say rules;
     - "tell Claude in the chat what they said".
 
     48-hour follow-ups say the call is optional (the morning batch e-mails the nudge). From the cloud, events

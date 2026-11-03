@@ -380,7 +380,7 @@ def test_calendar_alert_for_a_reply_waiting_on_the_operator(live):
     assert len(ev) == 1 and ev[0].key == f"reply:{lead.id}:r{row.id}" and ev[0].kind == "reply"
     body = ev[0].body
     assert body["summary"].startswith("📞 COUNTER-OFFER RECEIVED: call Pat Agent about ")
-    assert "$310,000" in body["description"] and "--- Call brief ---" in body["description"]
+    assert "$310,000" in body["description"] and "--- Call script (word for word) ---" in body["description"]
     assert "walk away above" in body["description"] or "Don't name a price" in body["description"]
     assert "Quinn" not in body["description"] and ev[0].starts_at == datetime(2026, 11, 4, 11, 10)
     row.status = "approved"

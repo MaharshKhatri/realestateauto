@@ -199,8 +199,9 @@ three times:
 The next time your Mac is open, it hands its database to the cloud by itself and goes quiet. Calls are on your
 calendar; everything else happens without you.
 
-**Every 📞 event is the call sheet:** the house, your numbers (open / aim / walk away, or "don't name a price" and
-why), the first line to say, what to ask and what never to say. After the call, tell Claude in the chat what they
+**Every 📞 event is a word-for-word call script:** the house, your numbers (open / aim / walk away, or "don't name a
+price" and why), exactly what to say first, the questions, what to answer when the agent asks for your offer, whether
+you're a wholesaler, proof of funds or a showing, how to end the call, and what never to say. After the call, tell Claude in the chat what they
 said ("lead 1368: send the offer", "they took another offer"): it sends the written offer or closes the reply through
 the cloud desk.
 

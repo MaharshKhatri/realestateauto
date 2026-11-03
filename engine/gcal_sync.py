@@ -326,32 +326,46 @@ def _listing_for(session: Session, lead: Lead) -> Any:
     return max(p.listings, key=lambda x: x.last_seen_at or datetime.min, default=None)
 
 
-_ASKS = {
-    "condo": "what same-size units in the building sold for lately, the monthly HOA and any special assessment, and "
-             "what the seller needs to net",
-    "units": "the rent roll (rents, lease end dates, which units are vacant at closing) and what the seller needs to net",
-    "basics": "bedrooms, baths and square footage, the condition (roof, heating, kitchen, baths), and what the seller "
-              "needs to net",
+_QUESTIONS = {
+    "basics": ["Does it need any work: roof, heating, electric, kitchen, bathrooms?",
+               "Do you know what the seller needs to walk away with after everything's paid?",
+               "Any offers so far? Why do you think it hasn't sold?",
+               "Is it empty, or is someone living there?",
+               "Would the seller take a cash offer, as is, with a quick closing?"],
+    "units": ["How many apartments are there? Are they rented, what does each one pay a month, and when do the "
+              "leases end?",
+              "How's the condition: roof, heating, kitchens, bathrooms?",
+              "Do you know what the seller needs to walk away with after everything's paid?",
+              "Any offers so far? Why do you think it hasn't sold?"],
+    "condo": ["What have same-size units in the building sold for lately?",
+              "What's the monthly HOA fee, and is any special assessment coming?",
+              "How's the condition of the unit itself?",
+              "Do you know what the seller needs to walk away with after everything's paid?",
+              "Any offers so far?"],
 }
 
 
 def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Place, *,
                ask_shown: bool = False) -> list[str]:
-    """The script and the background on every call event (2026-11-03: the operator handles calls only and wants both
-    on the event): the house, our numbers or why there's no price yet, what to say and ask, what happens after.
-    Business facts only: the street (or "lead #N" when suppressed), the ask, our numbers, the agent's first name."""
+    """A word-for-word call script on every call event (2026-11-03: the operator handles calls only, is new to real
+    estate and asked for full scripts): the house, our numbers or why there's no price yet, the exact opener, the
+    questions, the answers to what agents ask (offer, wholesaler / assign, proof of funds, a showing), the close and
+    what to tell Claude after. Business facts only: the street (or "lead #N" when suppressed), the ask, our numbers,
+    the agent's first name."""
     from engine import preflight
     from engine.human_copy import operator
     from engine.reply_negotiator import fact_check_issue
     try:
         pf = preflight.check(lead)
         fact = fact_check_issue(pf)
-    except Exception:                               # noqa: BLE001 - a brief never breaks the calendar
-        log.exception("call brief: pre-flight failed for lead %s", lead.id)
+    except Exception:                               # noqa: BLE001 - a script never breaks the calendar
+        log.exception("call script: pre-flight failed for lead %s", lead.id)
         fact = ("basics", "pre-flight didn't run")
     lst = _listing_for(session, lead)
     house = []
     if lst is not None:
+        if (lst.property_type or "").startswith("multi"):
+            house.append("multi-family (several apartments)")
         if lst.beds:
             house.append(f"{lst.beds:g} bed")
         if lst.baths:
@@ -368,31 +382,59 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
         house.append(f"asking {_money(place.ask)}")
     v = lead.property.current_valuation
     written = f"your written offer ({_money(lead.offer_amount)})" if lead.offer_amount else None
-    if fact or v is None or not v.mao_aggressive:
+    priced = not (fact or v is None or not v.mao_aggressive)
+    if not priced:
         kind, issue = fact or ("basics", "no numbers for this house yet")
         numbers = (f"Don't go above {written} on this call: {issue}." if written else
                    f"Don't name a price on this call: {issue}.") + " Get the facts first; the desk prices it after."
     else:
-        kind = "basics"
+        kind, issue = "basics", ""
         numbers = (f"Your numbers: open at {_money(v.anchor_offer)}, aim for {_money(v.mao_conservative)}, "
                    f"walk away above {_money(v.mao_aggressive)}."
                    + (f" Already sent: {written}." if written and not ask_shown else ""))
+    if lst is not None and (lst.property_type or "").startswith("multi") and kind == "basics":
+        kind = "units"
     op = operator()
     first = (_name(agent.name).split() or ["there"])[0] if agent is not None and agent.name else "there"
-    me = op["first"] or "your name"
+    full = op["name"] or op["first"] or "your name"
+    phone = op["phone"] or "your phone number"
+    if priced:
+        open_at = _money(lead.offer_amount) if lead.offer_amount else _money(v.anchor_offer)
+        walk = _money(v.mao_aggressive)
+        offer = [f'4) "What\'s your offer?" (only after your questions): "I\'d be around {open_at}, cash, as is, with '
+                 'attorney review. I know that\'s under the asking price; I\'m buying it as an investor. I\'ll send it '
+                 'in writing today."',
+                 '   Too low? "I understand. What number do you think the seller would actually take?" Write it down, '
+                 'agree to nothing, and say "Let me run that and get back to you."',
+                 f'   Their number at or under {walk}: "That might work. Let me confirm my numbers and send it in '
+                 f'writing." Above {walk}: "That\'s more than I can do. If anything changes, I\'d love to hear from '
+                 'you."']
+    else:
+        offer = ['4) "What\'s your offer?": "I want to give you a real number, not a guess. Let me run what you just '
+                 'told me and I\'ll e-mail it to you in writing." Say no number on this call.']
     return [
-        "--- Call brief ---",
+        "--- Call script (word for word) ---",
         "The house: " + ", ".join(house) + "." if house else None,
         numbers,
-        f'Say: "Hi {first}, this is {me}. I\'m an investor buying for myself or a partner investor, not a realtor, '
-        f'calling about {place.street}."',
-        f"Ask: {_ASKS.get(kind, _ASKS['basics'])}; any offers so far, and is it empty?",
-        "Never go above the walk-away, never offer to pay the agent, never promise to stop a foreclosure. If they want "
-        "it in writing, say you'll e-mail it today.",
-        f'After the call, tell Claude in the chat what they said (for example "lead {lead.id}: send the offer", or '
-        f"their number and the facts). The desk sends the written offer in their Gmail thread.",
+        f'1) Open: "Hi, is this {first}? Hi {first}, this is {full}, {phone}. I\'m following up on my e-mail about '
+        f'{place.street}. Do you have two minutes?"',
+        '   Bad time? "No problem. When\'s a better time to call you back?" Write it down, say thanks, hang up.',
+        '2) Who you are: "I\'m a real estate investor. I buy for myself or with a partner investor. I\'m not a realtor '
+        'and I don\'t have an agent."',
+        "3) Ask one at a time and write every answer down:",
+        *[f'   - "{q}"' for q in _QUESTIONS.get(kind, _QUESTIONS["basics"])],
+        *offer,
+        '5) "Are you a wholesaler?" / "Will you assign it?": "I\'m an investor. I may buy it myself or assign the '
+        'contract to a partner investor. That\'s in writing, and the seller\'s attorney reviews everything."',
+        '6) "Do you have proof of funds?": "Yes, it comes with the written offer."',
+        '7) "Do you want to see it?": "Photos or a short video first, please. My partner can walk it during the '
+        'inspection period."',
+        '8) Anything else: "Good question. Let me check and get back to you."',
+        f'9) End: "Thanks, {first}. I\'ll send it over in writing. Have a good one."',
+        "Never: go above the walk-away, offer the agent money, promise to stop a foreclosure, or say you're a realtor.",
+        f'After the call, tell Claude in the chat what they said (for example "lead {lead.id}: seller needs 450, '
+        f'needs a roof, send the offer"). The desk sends the written offer in their Gmail thread.',
     ]
-
 
 def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired]:
     due = lead.next_followup_at

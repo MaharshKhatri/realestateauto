@@ -665,16 +665,17 @@ def test_every_call_event_carries_the_script_and_the_background(db, monkeypatch)
     [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
     text = d.body["description"]
     v = lead.property.current_valuation
-    assert "--- Call brief ---" in text and f"walk away above ${v.mao_aggressive:,.0f}" in text
-    assert "Hi Pat," in text and "not a realtor" in text and "what the seller needs to net" in text
-    assert f"lead {lead.id}: send the offer" in text and "never promise to stop a foreclosure" in text
+    assert "--- Call script (word for word) ---" in text and f"walk away above ${v.mao_aggressive:,.0f}" in text
+    assert "Hi Pat," in text and "not a realtor" in text and "what the seller needs to walk away with" in text
+    assert "Will you assign it?" in text and "proof of funds" in text and "That might work" in text
+    assert f"lead {lead.id}: seller needs" in text and "promise to stop a foreclosure" in text
     # A pre-flight HOLD (a wrong parcel): no price on the call, only the facts to get.
     monkeypatch.setattr(preflight, "check", lambda lead, today=None: preflight.Preflight(
         status="HOLD", issues=["wrong parcel: the MLS listing is 10.4 miles from the parcel"]))
     [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
     text = d.body["description"]
     assert "Don't name a price on this call: wrong parcel" in text and "walk away above" not in text
-    assert "bedrooms, baths and square footage" in text
+    assert "Does it need any work" in text and "Say no number on this call" in text and "That might work" not in text
 
 
 def test_from_the_cloud_desk_events_carry_no_dead_dashboard_link(db, monkeypatch):
@@ -683,7 +684,7 @@ def test_from_the_cloud_desk_events_carry_no_dead_dashboard_link(db, monkeypatch
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 16))
     assert "127.0.0.1" not in d.body["description"] and "source" not in d.body
-    assert "--- Call brief ---" in d.body["description"]
+    assert "--- Call script (word for word) ---" in d.body["description"]
 
 
 def test_a_mac_that_handed_off_never_writes_to_the_calendar(db, google, monkeypatch, tmp_path):
