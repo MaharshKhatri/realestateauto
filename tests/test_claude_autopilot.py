@@ -613,3 +613,35 @@ def test_a_polite_no_on_a_held_listing_is_a_no_not_another_fact_check(live):
         an = rn.analyze(db, lead, text)
         assert an.kind != "fact_check" and not an.headline.startswith("NUMBERS ON HOLD"), an.headline
         assert "bedrooms" not in an.reply_text
+
+
+def test_a_short_wave_carries_its_unused_openers_to_the_next(live, monkeypatch):
+    """2026-11-04: a wave that finds only a few good deals no longer loses the rest of the day's openers."""
+    from engine.crm import TZ
+    calls = []
+
+    def fake_campaign(limit, **kw):
+        calls.append(limit)
+        sent = 4 if len(calls) == 1 else limit                  # the morning had only 4 deals worth writing to
+        gm.campaign.total, gm.campaign.sent, gm.campaign.message = sent, sent, "ok"
+        return {}
+    monkeypatch.setattr(gm, "start_campaign", fake_campaign)
+    waves = "10:30,14:00,16:30"
+    day = datetime(2026, 11, 9, 10, 40, tzinfo=TZ)
+    assert gm.daily_openers(30, at=waves, now=day)["sent"] == 4
+    assert gm.daily_openers(30, at=waves, now=day.replace(hour=14, minute=5))["sent"] == 13     # (30 - 4) / 2
+    assert gm.daily_openers(30, at=waves, now=day.replace(hour=16, minute=35))["sent"] == 13    # what is left
+    assert calls == [10, 13, 13]
+
+
+def test_a_call_that_went_unanswered_gets_its_email_the_same_day(live):
+    """2026-11-04: leads on the call sheet were held from e-mail all day, even after a no-answer or voicemail."""
+    from engine import crm
+    db = live
+    lead = listed(db)
+    db.flush()
+    day = datetime(2026, 11, 4, 11, 0)
+    assert lead.id not in gm.unanswered_today(db, day.date())
+    crm.log_call(db, lead, "LEFT_VM", contact=lead.contacts[0], now=day.replace(tzinfo=crm.TZ))
+    db.flush()
+    assert lead.id in gm.unanswered_today(db, day.date())

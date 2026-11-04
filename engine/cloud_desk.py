@@ -381,6 +381,29 @@ def open_note(blob: str, desk_key: str) -> list[dict[str, Any]]:
     return data if isinstance(data, list) else [data]
 
 
+OPERATOR_FIELDS = ("phone", "name", "company_name", "mailing_address", "intro")
+
+
+def set_operator(values: dict[str, Any]) -> dict[str, str]:
+    """Change the operator's own details on the desk (a new business phone, 2026-11-04). Only the known fields; the
+    phone must be a 10-digit US number and is stored as (xxx) xxx-xxxx, like My Setup."""
+    from engine import operator_setup
+    clean: dict[str, str] = {}
+    for key, value in values.items():
+        if key not in OPERATOR_FIELDS or value is None or not str(value).strip():
+            continue
+        text = re.sub(r"\s+", " ", str(value)).strip()
+        if key == "phone":
+            d = operator_setup._digits(text)
+            if len(d) != 10:
+                raise ValueError("phone must have 10 digits")
+            text = f"({d[:3]}) {d[3:6]}-{d[6:]}"
+        clean[key] = text
+    for key, text in clean.items():
+        operator_setup.save_preference("operator", key, text)
+    return clean
+
+
 def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_factory: Any = None) -> dict[str, Any]:
     """Each item names a lead and what the operator said or wants, applied through the normal gates:
 
@@ -391,7 +414,9 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       with "notes" and "followup_at" (Eastern, ISO), logged with `crm.log_call` after any reply, so its follow-up
       (the next call on the calendar) wins;
     - "agent_phone": a better number for the listing agent (a cell the office gave out), saved on the agent's card;
-    - "code" (+ "result", "notes", "date"): a call-sheet result, resolved on that day's frozen sheet.
+    - "code" (+ "result", "notes", "date"): a call-sheet result, resolved on that day's frozen sheet;
+    - "operator" (no "lead"): the operator's own details for every e-mail, LOI, script and voicemail line, e.g.
+      {"operator": {"phone": "9085550100"}} (validated like My Setup, saved in the desk's settings.local.yaml).
     - "close_replies": a short reason; every reply still waiting on the lead is closed (dismissed) with it, so the
       desk sends nothing more on it (the operator or Claude settled it: a call, a polite no, a "sharing with the
       sellers"); "channel" (call / email) is how the "call" outcome was heard.
@@ -406,6 +431,13 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     except Exception:                              # noqa: BLE001 - a bad note is reported, never printed
         return {"note_error": "unreadable"}
     done, errors = 0, []
+    for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("operator"), dict)]:
+        try:
+            set_operator(item["operator"])
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
+            errors.append(type(exc).__name__)
+        items = [i for i in items if i is not item]
     codes = [i for i in items if isinstance(i, dict) and i.get("code")]
     if codes:
         # Call-block results ("A07 vm", "A04 340"): resolved on that day's frozen call sheet.
@@ -500,6 +532,11 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             fu = firm_up_pass(s, int(cfg.get("firm_up_now", 45) if task == "firmup" else cfg.get("firm_up_daily", 30)),
                               budget_seconds=900 if task == "firmup" else 600, first=sheet)
         out.update(firm_up=int(fu.get("revalued") or 0), now_firm=int(fu.get("now_firm") or 0))
+    if task == "stats":
+        # Where the pipeline stands (engine/outreach_stats.py): counts only, safe for the public run log.
+        from engine.outreach_stats import funnel
+        with session_scope() as s:
+            out["funnel"] = funnel(s, t.replace(tzinfo=None))
     if t.weekday() < 6 and 7 <= t.hour < 21:
         # The day's call sheet (engine/call_sheet.py), frozen at its first build so codes mean the same call all day;
         # task `sheet` rebuilds the blocks nobody has called yet with today's rules.
@@ -547,7 +584,7 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             a = gm.auto_approve(now=now, smtp_factory=smtp_factory)
             out["auto_answered"] = len(a["sent"])
             d = gm.daily_openers(int(os.environ.get("DAILY_OPENERS", "30")),
-                                 at=os.environ.get("OPENER_WAVES", "10:30,14:00"), now=now,
+                                 at=os.environ.get("OPENER_WAVES", "10:30,14:00,16:30"), now=now,
                                  smtp_factory=smtp_factory, background=False)
             if d is not None:
                 out["openers"] = int(d.get("sent") or 0)

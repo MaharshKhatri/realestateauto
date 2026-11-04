@@ -1245,6 +1245,14 @@ def agents_written_recently(session: Session, now: datetime | None = None, hours
     return {str(e).strip().lower() for (e,) in rows if e}
 
 
+def unanswered_today(session: Session, day: Any) -> set[int]:
+    """Leads whose listing agent was called today without reaching anyone (no answer, voicemail)."""
+    start = datetime.combine(day, datetime.min.time())
+    return {lid for (lid,) in session.execute(
+        select(Interaction.lead_id).where(Interaction.channel == "call", Interaction.occurred_at >= start,
+                                          Interaction.outcome.in_(("NO_ANSWER", "LEFT_VM"))).distinct())}
+
+
 def pick_cards(session: Session, limit: int, now: datetime | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Today's batch (in deck order: urgent listed foreclosures, due follow-ups, MLS fixers) and what was skipped."""
     from engine import autopilot
@@ -1256,7 +1264,10 @@ def pick_cards(session: Session, limit: int, now: datetime | None = None) -> tup
     gap = float(_cfg().get("agent_cold_gap_hours", 72))
     busy = agents_written_recently(session, now, hours=gap) if gap > 0 else set()
     from engine import call_sheet
-    calling = call_sheet.lead_ids_on(session, now_eastern(now).date())   # today's calls go first
+    # Today's calls go first, but a call that already went unanswered (no answer / voicemail reported in the chat)
+    # gets its e-mail the same day: the best leads are the ones on the sheet (2026-11-04).
+    calling = call_sheet.lead_ids_on(session, now_eastern(now).date()) - \
+        unanswered_today(session, now_eastern(now).date())
     for c in deck["cards"]:
         why = auto_sendable(c)
         item = {"lead_id": c["lead_id"], "address": c["address"], "kind": c["kind"], "touch": c["touch"],
@@ -1628,15 +1639,19 @@ def daily_openers(limit: int, *, at: str = "10:30", now: datetime | None = None,
         if not due:
             return None
         wave = due[0]
-        n = len(waves)
-        limit = limit // n + (1 if wave < limit % n else 0)
-        if limit <= 0:
-            return None
+        # What earlier waves didn't use carries over (a short supply at 10:30 is made up after the morning calls and
+        # the firm-up pass): each wave sends its share of what is left of the day's limit.
+        sent_before = int(state.get("sent_total", state.get("sent")) or 0) if state.get("date") == today else 0
+        left = len(waves) - len(done)
+        remaining = max(0, limit - sent_before)
+        limit = -(-remaining // max(left, 1))
         if row is None:
             row = SwarmState(key=DAILY_KEY, value_json={})
             s.add(row)
         row.value_json = {"date": today, "waves": sorted(done | {wave}), "started": t.isoformat(timespec="seconds"),
-                          "limit": limit}
+                          "limit": limit, "sent_total": sent_before}
+        if limit <= 0:
+            return None
     try:
         start_campaign(limit, now=now, smtp_factory=smtp_factory, sleep=sleep, background=background)
         out = {"started": True, "total": campaign.total, "sent": campaign.sent, "message": campaign.message}
@@ -1644,7 +1659,9 @@ def daily_openers(limit: int, *, at: str = "10:30", now: datetime | None = None,
         out = {"started": False, "total": 0, "sent": 0, "message": str(exc)}
     with session_scope() as s:
         row = s.get(SwarmState, DAILY_KEY)
-        row.value_json = {**(row.value_json or {}), **{k: v for k, v in out.items() if k != "started"}}
+        prev = dict(row.value_json or {})
+        row.value_json = {**prev, **{k: v for k, v in out.items() if k != "started"},
+                          "sent_total": int(prev.get("sent_total", 0) or 0) + int(out.get("sent") or 0)}
     return out
 
 

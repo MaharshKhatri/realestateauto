@@ -962,7 +962,18 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     construction, condo / townhouse units without fixer words (today's A13 / A18 / A21: HOA, unwarrantable financing,
     retail buyers), anything else. Nov 3 data: 81 listings qualify. Task `sheet` (`call_sheet.rebuild_unstarted`)
     rebuilds the blocks nobody has called yet with today's rules; started blocks keep their codes.
-  - **Rows follow the day**: block events re-read every row on every sync (`call_sheet.refreshed`): "DONE 11:00
+  - **Volume without wasted touches** (learned 2026-11-04, the operator: "send the most e-mails possible to the deals
+  that could work"):
+  - three opener waves (`OPENER_WAVES` 10:30, 14:00, 16:30); each sends its share of what is LEFT of the day's
+    `DAILY_OPENERS` (swarm_state `sent_total`), so a short morning supply is made up after the calls and the firm-up;
+  - a call-sheet lead is held from e-mail only until it is dialed: a reported no-answer / voicemail
+    (`gmail_autopilot.unanswered_today`) gets the e-mail the same day;
+  - desk.yml checks for a queued run before its ~6-minute wait, so a note or approval starts at once;
+  - task `stats` (`engine/outreach_stats.py::funnel`) prints counts only: listed, valued, tiers + top skip reasons,
+    convertible, reachable, never e-mailed, cold / all e-mail in 24 h, replies and bounce % in 7 days;
+  - a sealed note item `{"operator": {"phone": ...}}` changes the operator's details on the desk (validated, saved in
+    its settings.local.yaml): every e-mail, LOI, call script and voicemail line follows.
+- **Rows follow the day**: block events re-read every row on every sync (`call_sheet.refreshed`): "DONE 11:00
     (voicemail): skip" once reported in the chat, "THEY E-MAILED BACK: read it in Gmail first" when an agent wrote back,
     the current firm words, or "SKIP TODAY". Codes stay frozen.
 - **Wider listing supply, safely** (learned 2026-11-03, goal ~100 listing-agent calls a day; Nov 2 data: 648 of 1,110

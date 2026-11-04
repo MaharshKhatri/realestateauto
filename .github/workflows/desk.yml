@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "run | refresh | recalibrate | sheet (rebuild the blocks nobody called yet) | firmup (live re-value of today's call-sheet houses) | approve | dismiss | offer | note"
+        description: "run | refresh | recalibrate | sheet (rebuild the blocks nobody called yet) | firmup (live re-value of today's call-sheet houses) | stats (pipeline counts) | approve | dismiss | offer | note"
         default: run
       reply:
         description: "with approve / dismiss: the reply #"
@@ -43,7 +43,7 @@ jobs:
       DESK_KEY: ${{ secrets.DESK_KEY }}
       TZ: America/New_York
       DAILY_OPENERS: "30"          # new cold openers per weekday, split across the waves below (cap: outreach.daily_email_limit)
-      OPENER_WAVES: "10:30,14:00"
+      OPENER_WAVES: "10:30,14:00,16:30"
     steps:
       - name: Start the clock
         id: clock
@@ -102,11 +102,14 @@ jobs:
         run: |
           hour=$((10#$(date +%H)))
           if [ "$hour" -lt 7 ] || [ "$hour" -ge 21 ]; then echo "After hours: the next run starts tomorrow."; exit 0; fi
+          # One queued run at most: a note or approval someone dispatched meanwhile goes first, and carries the chain.
+          # It is checked before the wait too, so a queued note starts now instead of ~6 minutes later.
+          count_queued() { gh run list -R "$GITHUB_REPOSITORY" --workflow desk.yml --limit 20 --json status \
+                   --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length'; }
+          if [ "$(count_queued)" != "0" ]; then echo "A run is already queued: it continues the chain."; exit 0; fi
           wait=$(( CYCLE_SECONDS - ($(date +%s) - STARTED) ))
           if [ "$wait" -gt 0 ]; then sleep "$wait"; fi
-          # One queued run at most: a note or approval someone dispatched meanwhile goes first, and carries the chain.
-          queued=$(gh run list -R "$GITHUB_REPOSITORY" --workflow desk.yml --limit 20 --json status \
-                   --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length')
+          queued=$(count_queued)
           if [ "$queued" = "0" ]; then
             gh workflow run desk.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f task=run
           else

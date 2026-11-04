@@ -284,3 +284,20 @@ def test_a_note_closes_the_replies_it_settled_and_logs_an_email_outcome(db, monk
     from engine import call_sheet as cs
     t0 = cs.Row(code="A01", tier="T0", lead_id=lead.id, phone="", who="Jon Agent", streets=["1 Test St"], facts="", say="")
     assert cs.refreshed(db, t0).say.startswith("SKIP TODAY: settled by e-mail (sharing the offer")
+
+
+def test_a_note_changes_the_operators_phone_on_every_email(db, monkeypatch, tmp_path):
+    """2026-11-04: the operator moved to a new business number; it reaches the signature, scripts and voicemail line."""
+    from core.config import settings
+    from engine import human_copy as hc
+    from engine import operator_setup
+    local = tmp_path / "settings.local.yaml"
+    monkeypatch.setattr(operator_setup, "LOCAL_SETTINGS", local)
+    monkeypatch.setitem(settings()["operator"], "phone", "(732) 555-0100")
+    key = "k" * 32
+    note = cd.seal_note([{"operator": {"phone": "908-555-0142", "ssn": "x"}}], cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 1}
+    assert settings()["operator"]["phone"] == "(908) 555-0142" and "(908) 555-0142" in hc.signature_lines()
+    assert "ssn" not in local.read_text() and "(908) 555-0142" in local.read_text()
+    bad = cd.seal_note([{"operator": {"phone": "12345"}}], cd.public_hex(key))
+    assert cd.apply_note(bad, key) == {"note_done": 0, "note_errors": "ValueError"}

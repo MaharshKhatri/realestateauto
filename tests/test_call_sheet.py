@@ -227,3 +227,18 @@ def test_firm_up_re_values_todays_sheet_houses_first_whatever_their_reach(db, op
     monkeypatch.setattr(offer_math, "firm_up", lambda s, lead, **kw: seen.append(lead.id) or offer_math.firm_offer(lead, s))
     out = offer_math.firm_up_pass(db, 10, first={on_sheet.id})
     assert seen == [on_sheet.id, near.id] and out["revalued"] == 2 and off_sheet.id not in seen
+
+
+@pytest.mark.production_gates
+def test_the_funnel_counts_where_good_deals_drop_out(db, operator):
+    """`task stats`: counts only (the run log is public): listed, valued, tiers, convertible, reachable, never e-mailed."""
+    from engine.outreach_stats import funnel
+    listed(db, list_price=340_000)                                            # a fixer near our number
+    listed(db, list_price=400_000, phone="9735550133", email="lee@broker.test",
+           listing_text="Move-in ready, brand new kitchen.")                  # retail: skipped
+    db.flush()
+    f = funnel(db, NOW)
+    assert f["listed"] == 2 and f["valued"] == 2 and f["convertible"] == 1 and f["conv_never_emailed_with_email"] == 1
+    assert f["tier_skip"] == 1 and any("retail" in k for k in f["skip_top"])
+    assert all(isinstance(v, (int, float, dict)) for v in f.values())
+    assert not any("@" in str(k) or "St" in str(k) for k in f["skip_top"])   # no addresses or e-mails in the log
