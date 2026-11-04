@@ -72,7 +72,9 @@ PHRASES: dict[str, list[str]] = {
     "REJECT": [r"not interested", r"no thanks", r"too low", r"won'?t work", r"\bpass\b", r"insult", r"not even close",
                r"no way", r"declined", r"rejected", r"lowball", r"way off", r"not going to work", r"isn'?t going to work",
                r"nowhere near", r"never (?:going to |gonna |would |will )?happen", r"not happening", r"won'?t happen",
-               r"no chance", r"not a chance", r"seller (?:won'?t|will not|would never|isn'?t going to) (?:go|take|accept|do)"],
+               r"no chance", r"not a chance", r"seller (?:won'?t|will not|would never|isn'?t going to) (?:go|take|accept|do)",
+               # "No where close to what the seller needs. Best of luck" (Nov 4): a polite no, never a fresh fact-check
+               r"no ?where close", r"(?:best|good) of luck|good luck"],
     "AVAILABLE": [r"\A\W*(?:hello|hi|hey)?\b[^.!?\n]{0,30}?\b(yes|yep|yup|yeah|absolutely)\b(?![^.!?\n]*\b(but|however|under contract|"
                   r"attorney|pending|sold)\b)",          # "Yes it is." answers our "is it still available?"
                   r"still available", r"(it'?s|it is|yes,? it'?s|yes it is|yes,? still) available", r"\bavailable\b",
@@ -522,7 +524,7 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
     # -- gates: no number we can give --------------------------------------------------------------------------
     from engine import preflight
     pf = preflight.check(lead)
-    if nums and pf.status == "HOLD" and not ({"OPT_OUT", "UNDER_CONTRACT", "EXPIRED"} & intents):
+    if nums and pf.status == "HOLD" and not ({"OPT_OUT", "UNDER_CONTRACT", "EXPIRED", "REJECT"} & intents):
         # The numbers can't be defended yet (wrong parcel match, failed comps, ...): no price goes out, ask instead.
         an.headline = "NUMBERS ON HOLD: " + (pf.issues[0] if pf.issues else "re-underwrite first")
         an.actions.insert(0, "Don't quote a price yet: " + "; ".join(pf.issues[:2]) + ". Call them or use this no-price note.")

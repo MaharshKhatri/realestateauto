@@ -1104,6 +1104,19 @@ def sending_now(session: Session, lead_id: int) -> bool:
                                                              InboundReply.status == "sending").limit(1)))
 
 
+def close_open_replies(session: Session, lead_id: int, note: str) -> int:
+    """Settled without a desk answer (a call, a polite no Claude answered, "sharing with the sellers"): every reply
+    still waiting on the lead is dismissed with the note, so nothing more goes out on it by itself."""
+    rows = list(session.scalars(select(InboundReply).where(InboundReply.lead_id == lead_id,
+                                                           InboundReply.status.in_(OPEN_STATUSES))))
+    rows = [r for r in rows if r.status != "sending"]          # one already going out finishes on its own
+    for row in rows:
+        row.status, row.resolved_at, row.note = "dismissed", now_eastern(), note[:200]
+    if rows:
+        session.flush()
+    return len(rows)
+
+
 def resolve_open_replies(session: Session, lead_id: int, note: str) -> int:
     """The operator answered this agent another way (card player, lead page, phone): close what was waiting."""
     rows = list(session.scalars(select(InboundReply).where(InboundReply.lead_id == lead_id,

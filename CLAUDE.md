@@ -839,7 +839,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     - task `offer` + lead #: the lead's next e-mail, the same as `gmail --send-offer` (Touch 2 at the desk's own
       price, with the Offer Summary and the LOI, in the agent's thread).
     - task `note` + a **sealed note** (learned 2026-11-03: the operator reports calls in the chat): JSON items
-      `{"lead", "reply", "price", "over_walkaway", "call", "notes", "followup_at"}` sealed with
+      `{"lead", "reply", "price", "over_walkaway", "call", "channel", "notes", "followup_at", "agent_phone",
+        "close_replies"}` sealed with
       `manage.py cloud --seal <pub>` to the desk's X25519 public key. Every run prints that key as `pub`.
       - The public run page shows only ciphertext, and only repository writers can dispatch.
       - `apply_note`: a reply goes through `send_custom_reply` (signature, address, opt-out; price → LOI, refused
@@ -850,6 +851,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
         "📞 Call <agent> back … (check in)" carrying the chat note's facts. Only `chat_note` notes reach the
         calendar: Claude keeps them to business facts, never a homeowner's name or phone.
       - Every call script ends with a voicemail line.
+      - `close_replies` (learned 2026-11-04, Claude reads the business inbox through the Gmail connector, read-only):
+        a reply Claude settled (a polite no, "sharing with the sellers") is dismissed with the reason, so the desk
+        sends nothing more on it and its call-sheet row says "SKIP TODAY: settled by e-mail". A no ("no where
+        close", "best of luck") is a REJECT even on a HOLD listing: never a second fact-finding note.
   - **After the handoff the Mac never writes to the calendar** (learned 2026-11-03: its background sync overwrote
     the cloud's 📊 report with its stale copy). `gcal_sync.handed_off()` reads `data/runtime_cloud.json`: then
     `configured()` is False and `sync()` talks to no one. `setup-calendar` on the Mac saves the new sign-in and

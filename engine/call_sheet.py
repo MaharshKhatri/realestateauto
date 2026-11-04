@@ -328,7 +328,24 @@ def refreshed(session: Session, row: Row) -> Row:
                                                       InboundReply.status == "needs_approval")
                            .order_by(InboundReply.id.desc()).limit(1))
         if r is None:
-            return Row(**{**asdict(row), "say": _status(session, row) + "THEY REPLIED: already answered, check in"})
+            # Answered already. Settled in the chat (a polite no, "sharing with the sellers") or nothing left to win:
+            # the row says skip instead of sending the operator to call about an answered e-mail.
+            last = session.scalar(select(InboundReply).where(InboundReply.lead_id.in_(row.lead_ids or [row.lead_id]))
+                                  .order_by(InboundReply.id.desc()).limit(1))
+            if last is not None and last.status == "dismissed" and (last.note or "").startswith("closed from the chat"):
+                say = "SKIP TODAY: settled by e-mail (" + last.note.split(": ", 1)[-1][:60] + ")"
+            else:
+                from engine.offer_math import convertible
+                lead = session.get(Lead, row.lead_id)
+                ok = True
+                if lead is not None:
+                    try:
+                        ok = convertible(session, lead)[0]
+                    except Exception:              # noqa: BLE001 - keep the call when unsure
+                        ok = True
+                say = "THEY REPLIED: already answered, check in" if ok else \
+                    "SKIP TODAY: already answered by e-mail, nothing an investor can win here"
+            return Row(**{**asdict(row), "say": _status(session, row) + say})
         head = (r.headline or "they replied").split(" / ")[0][:80]
         money = f" (their number ${r.counter_amount:,.0f})" if r.counter_amount else ""
         return Row(**{**asdict(row), "say": _status(session, row) + f"THEY E-MAILED: {head}{money}. Call: answer it, "

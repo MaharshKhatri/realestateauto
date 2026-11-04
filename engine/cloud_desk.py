@@ -392,6 +392,9 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       (the next call on the calendar) wins;
     - "agent_phone": a better number for the listing agent (a cell the office gave out), saved on the agent's card;
     - "code" (+ "result", "notes", "date"): a call-sheet result, resolved on that day's frozen sheet.
+    - "close_replies": a short reason; every reply still waiting on the lead is closed (dismissed) with it, so the
+      desk sends nothing more on it (the operator or Claude settled it: a call, a polite no, a "sharing with the
+      sellers"); "channel" (call / email) is how the "call" outcome was heard.
     Counts only come back: the run log is public."""
     from db.database import session_scope
     from db.models import Lead
@@ -438,9 +441,13 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                     gm.send_custom_reply(s, lead_id, item["reply"], price=item.get("price") or None, now=now,
                                          smtp_factory=smtp_factory,
                                          allow_over_walkaway=bool(item.get("over_walkaway")))
+                if (item.get("close_replies") or "").strip():
+                    gm.close_open_replies(s, lead_id, "closed from the chat: " + str(item["close_replies"])[:120])
                 if item.get("call"):
                     when = datetime.fromisoformat(item["followup_at"]) if item.get("followup_at") else None
+                    channel = str(item.get("channel") or "call")
                     crm.log_call(s, lead, str(item["call"]), notes=str(item.get("notes") or "")[:600],
+                                 channel=channel if channel in ("call", "email", "sms") else "call",
                                  contact=ao.agent_contact(lead) or next(
                                      (x for x in lead.contacts if x.contact_type == "LISTING_AGENT"), None),
                                  followup_at=when, debrief={"source": "chat_note"})

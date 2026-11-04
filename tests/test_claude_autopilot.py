@@ -597,3 +597,19 @@ def test_one_new_cold_email_per_agent_every_three_days(live, monkeypatch):
     monkeypatch.setattr(gm, "auto_sendable", lambda c: None)
     picked, skipped = gm.pick_cards(db, 10)
     assert [p["lead_id"] for p in picked] == [a.id] and "last 3 days" in skipped[0]["reason"]
+
+
+def test_a_polite_no_on_a_held_listing_is_a_no_not_another_fact_check(live):
+    """2026-11-04: after 'No where close to what the seller needs. Best of luck', the desk sent the same
+    fact-finding note again. A no is read as a no, whatever pre-flight says about the numbers."""
+    from db.models import Listing
+    db = live
+    lead = listed(db)
+    ref = next(sg.source_ref for sg in lead.property.signals if sg.signal_type == "STALE_LISTING")
+    db.add(Listing(source="homeharvest", source_ref=ref, address="1 Test St", city="Iselin", lat=40.576, lon=-74.307))
+    db.flush()
+    for text in ("No where close to what the seller needs. Best of luck", "Nowhere close. Good luck with your search."):
+        assert "REJECT" in rn.parse_reply(text).intents
+        an = rn.analyze(db, lead, text)
+        assert an.kind != "fact_check" and not an.headline.startswith("NUMBERS ON HOLD"), an.headline
+        assert "bedrooms" not in an.reply_text

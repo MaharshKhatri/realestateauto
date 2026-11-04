@@ -259,3 +259,28 @@ def test_a_cell_number_heard_on_a_call_goes_on_the_agents_card(db, monkeypatch):
     assert cell and cell[0].phone_type == "wireless" and cell[0].name == "Lou Agent" and cell[0].company == "Sample Realty"
     from engine import call_sheet as cs
     assert cs.agent_line(db, lead)[0] == "(732) 555-0177"                      # the sheet dials the cell first
+
+
+def test_a_note_closes_the_replies_it_settled_and_logs_an_email_outcome(db, monkeypatch):
+    """2026-11-04: Claude read the business inbox (Jon: 'received the offer, sharing with the sellers'). The note
+    closes the waiting reply so the desk sends nothing more, and logs what was heard as an e-mail outcome."""
+    from db.models import InboundReply, Interaction
+    from tests.factories import add_contact, make_lead
+    lead = make_lead(db, sheriff_days=None, stale_listing=True)
+    add_contact(db, lead, contact_type="LISTING_AGENT", name="Jon Agent", email="jon@brokerage.example")
+    db.add(InboundReply(message_id="<jon@b.test>", lead_id=lead.id, status="needs_approval", verdict="INFO",
+                        from_email="jon@brokerage.example", subject="Re: 1 Test St", body_text="x"))
+    db.commit()
+    key = "k" * 32
+    note = cd.seal_note([{"lead": lead.id, "close_replies": "sharing the offer with the sellers",
+                          "call": "SPOKE_WARM_FOLLOWUP", "channel": "email", "notes": "received the offer",
+                          "followup_at": "2026-11-06T10:00:00"}], cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 1}
+    db.expire_all()
+    row = db.scalars(select(InboundReply).where(InboundReply.lead_id == lead.id)).one()
+    assert row.status == "dismissed" and row.note == "closed from the chat: sharing the offer with the sellers"
+    inter = db.scalars(select(Interaction).where(Interaction.lead_id == lead.id)).one()
+    assert inter.channel == "email" and inter.next_followup_at == datetime(2026, 11, 6, 10, 0)
+    from engine import call_sheet as cs
+    t0 = cs.Row(code="A01", tier="T0", lead_id=lead.id, phone="", who="Jon Agent", streets=["1 Test St"], facts="", say="")
+    assert cs.refreshed(db, t0).say.startswith("SKIP TODAY: settled by e-mail (sharing the offer")
