@@ -143,6 +143,11 @@ def eligible(lead: Lead) -> tuple[bool, str]:
     if f.tier == "skip":
         return False, ("too far from ask" if any("of the ask" in r for r in f.reasons)
                        else "; ".join(f.reasons) or "no offer")
+    # Only deals that can sign get a cold e-mail (the same test the call sheet uses; replies are always answered).
+    from engine.offer_math import convertible
+    ok, why = convertible(object_session(lead), lead, f)
+    if not ok:
+        return False, why
     if agent_contact(lead) is None:
         return False, "no listing-agent contact"
     return True, "ok"

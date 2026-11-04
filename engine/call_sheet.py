@@ -238,7 +238,7 @@ def build(session: Session, now: datetime | None = None, limit: int | None = Non
     for lead in crm.due_followups(session, now):
         if lead.contact_attempts <= max_attempts:
             add(lead, "T2")
-    from engine.offer_math import condition
+    from engine.offer_math import condition, convertible
     firm_rows: list[tuple[float, Lead]] = []
     ask_rows: list[tuple[float, Lead]] = []
     fixer: dict[int, int] = {}
@@ -250,6 +250,8 @@ def build(session: Session, now: datetime | None = None, limit: int | None = Non
         except Exception:                          # noqa: BLE001
             continue
         if f.tier in ("firm", "ask_first"):
+            if not convertible(session, lead, f)[0]:
+                continue           # only deals that can sign (offer_math.convertible): no wasted calls
             fixer[lead.id] = 1 if condition(session, lead) == "fixer" else 0
         if f.tier == "firm":
             firm_rows.append((f.reach or 0, lead))
@@ -264,6 +266,32 @@ def build(session: Session, now: datetime | None = None, limit: int | None = Non
     for i, row in enumerate(rows):
         row.code = f"{letters[min(i // per_block(), len(letters) - 1)]}{i % per_block() + 1:02d}"
     return rows
+
+
+def rebuild_unstarted(session: Session, now: datetime | None = None) -> list[Row]:
+    """Rebuild today's sheet from the first block nobody has called yet: blocks with a reported call keep their codes
+    (so a late "A08 vm" still means the same call); the rest is refilled with today's rules (new filters, fresh
+    numbers), never repeating a lead a kept block already has."""
+    now = now or datetime.now()
+    rows = stored(session, now.date())
+    started = {r.code[0] for r in rows if _status(session, r).startswith("DONE")}
+    keep = [r for r in rows if r.code[0] in started]
+    kept_ids = {i for r in keep for i in (r.lead_ids or [r.lead_id])}
+    fresh = [r for r in build(session, now) if not kept_ids & set(r.lead_ids or [r.lead_id])]
+    letters = [b[0] for b in blocks() if b[0] not in started]
+    room = len(letters) * per_block()
+    fresh = fresh[:room]
+    for i, r in enumerate(fresh):
+        r.code = f"{letters[min(i // per_block(), len(letters) - 1)]}{i % per_block() + 1:02d}"
+    out = keep + fresh
+    state = session.get(SwarmState, STATE_KEY)
+    if state is None:
+        state = SwarmState(key=STATE_KEY, value_json={})
+        session.add(state)
+    state.value_json = {"date": now.date().isoformat(), "built_at": now.isoformat(timespec="minutes"),
+                        "rows": [asdict(r) for r in out], "kept": sorted(started)}
+    session.flush()
+    return out
 
 
 def today(session: Session, now: datetime | None = None, *, rebuild: bool = False) -> list[Row]:

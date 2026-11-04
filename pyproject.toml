@@ -29,6 +29,7 @@ dependencies = [
   "google-api-python-client>=2.100",   # Google Calendar sync (engine/gcal_sync.py)
   "google-auth-oauthlib>=1.2",         # one-time browser consent (manage.py setup-calendar)
   "google-auth-httplib2>=0.2",
+  "homeharvest>=0.8",                  # MLS listings + recent sold comps (the cloud desk's harvest and firm-up need it)
 ]
 
 [project.optional-dependencies]

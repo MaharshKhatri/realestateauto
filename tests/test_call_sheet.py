@@ -173,7 +173,8 @@ def test_a_sale_soon_listing_with_no_possible_offer_is_not_called(db, operator):
 def test_fixers_lead_the_sheet_and_rows_show_what_already_happened(db, operator, monkeypatch):
     """2026-11-04: the calls that went nowhere were move-in-ready houses; a reported call must not be dialed twice."""
     from engine import crm
-    plain = listed(db, list_price=400_000, phone="9735550111", email="sam@broker.test", listing_text="Colonial near the park.")
+    plain = listed(db, list_price=345_000, phone="9735550111", email="sam@broker.test", listing_text="Colonial near the park.")
+    cold = listed(db, list_price=400_000, phone="9735550144", email="ann@broker.test", listing_text="Colonial near the park.")
     fixer = listed(db, list_price=400_000, phone="9735550122", email="kim@broker.test",
                    listing_text="Estate sale, sold as-is. Needs TLC.")
     retail = listed(db, list_price=400_000, phone="9735550133", email="lee@broker.test",
@@ -182,9 +183,31 @@ def test_fixers_lead_the_sheet_and_rows_show_what_already_happened(db, operator,
     rows = cs.today(db, NOW)
     order = [r.lead_id for r in rows]
     assert retail.id not in order and order.index(fixer.id) < order.index(plain.id)
+    # a neutral listing qualifies only after 120+ days or a price cut with our final at 80%+ of the ask (83% here);
+    # at 71% of the ask it has no sign the seller takes an investor price: no call, no cold e-mail
+    from engine import agent_outreach as ao
+    assert cold.id not in order and ao.eligible(cold)[0] is False
     row = next(r for r in rows if r.lead_id == fixer.id)
     assert "listing says: estate sale, sold as-is, needs tlc" in row.facts
     crm.log_call(db, fixer, "LEFT_VM", contact=fixer.contacts[0], debrief={"source": "chat_note"},
                  now=datetime.combine(date.today(), datetime.min.time()).replace(hour=11, tzinfo=crm.TZ))
     db.flush()
     assert cs.refreshed(db, row).say.startswith("DONE 11:00 (voicemail): skip")
+
+
+@pytest.mark.production_gates
+def test_rebuilding_keeps_called_blocks_and_refills_the_rest_with_todays_rules(db, operator):
+    from engine import crm
+    first = listed(db, list_price=400_000, phone="9735550111", email="sam@broker.test")
+    second = listed(db, list_price=400_000, phone="9735550122", email="kim@broker.test")
+    db.flush()
+    rows = cs.today(db, NOW)
+    assert [r.code for r in rows] == ["A01", "A02"]
+    crm.log_call(db, first, "LEFT_VM", contact=first.contacts[0], debrief={"source": "chat_note"},
+                 now=datetime.combine(date.today(), datetime.min.time()).replace(hour=11, tzinfo=crm.TZ))
+    late = listed(db, list_price=400_000, phone="9735550133", email="lee@broker.test")       # new today
+    db.flush()
+    out = cs.rebuild_unstarted(db, NOW + timedelta(hours=4))
+    codes = {r.lead_id: r.code for r in out}
+    assert codes[first.id] == "A01" and codes[second.id] == "A02"          # block A was started: kept as is
+    assert codes[late.id] == "B01"                                          # the rest refilled from block B

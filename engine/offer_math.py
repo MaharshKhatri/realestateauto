@@ -353,3 +353,41 @@ def firm_up_pass(session: Any, limit: int = 30, *, budget_seconds: float = 600, 
         out["now_firm"] += int(f.tier == "firm")
         session.commit()
     return out
+
+
+def _is_unit(session: Any, lead: Any) -> bool:
+    """A condo / townhouse / co-op unit (MLS type, MOD-IV qualifier or building description)."""
+    lst = listing_for(session, lead)
+    kind = str(getattr(lst, "property_type", "") or "").lower()
+    p = lead.property
+    return any(k in kind for k in ("condo", "town", "coop", "co-op")) or str(p.qual or "").upper().startswith("C") \
+        or "COND" in str(p.building_desc or "").upper()
+
+
+def convertible(session: Any, lead: Any, f: FirmOffer | None = None) -> tuple[bool, str]:
+    """Worth a call or a cold e-mail at all: the deals that actually sign (2026-11-04 calls: every dead end was a
+    move-in-ready house, a condo with HOA / financing issues, or a seller holding at the ask).
+
+    Yes: a firm number; a listed foreclosure with a number; a listing that reads as a fixer (as-is, needs work,
+    estate, TLC ...); a neutral listing that has sat 120+ days or cut its price, with our final at 80%+ of the ask.
+    No: retail / new construction, condo / townhouse units that don't read as fixers, everything else."""
+    from engine.fast_track import is_listed_foreclosure
+    f = f or firm_offer(lead, session)
+    if f.tier == "skip":
+        return False, (f.reasons[0] if f.reasons else "no offer we could make")
+    cond = condition(session, lead)
+    if cond == "fixer":
+        return True, "the listing reads as a fixer"
+    if is_listed_foreclosure(lead.property):
+        return True, "listed foreclosure"
+    if _is_unit(session, lead):
+        return False, "condo / townhouse unit that doesn't read as a fixer (HOA, financing, retail buyers)"
+    if f.tier == "firm":
+        return True, "firm number"
+    lst = listing_for(session, lead)
+    dom = int(getattr(lst, "days_on_market", 0) or 0)
+    cut = bool(getattr(lst, "price_reduced", False))
+    if (f.reach or 0) >= float((settings().get("outreach") or {}).get("min_list_to_mao_75", 0.80)) and \
+            (dom >= int(_cfg().get("stale_days", 120)) or cut):
+        return True, f"{dom} days on the market" + (" and a price cut" if cut else "") + ", our final near the ask"
+    return False, "no sign this seller will take an investor price yet"

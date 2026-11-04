@@ -950,6 +950,12 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     (T0 / T2) are still answered. Nov 3 data: 422 listings skip as retail; 121 remain (2 firm, 73 fixer ask-first).
   - **Fixers first**: the sheet ranks T3 / T4 by condition (fixer before unknown) then reach, and each row shows the
     listing's own words ("listing says: estate sale, sold as-is, needs tlc").
+  - **Only deals that convert** (`offer_math.convertible`, the same test for calls, cold e-mails and 48-hour nudges;
+    replies are always answered): a firm number, a listed foreclosure with a number, a listing that reads as a fixer, or
+    a neutral listing 120+ days on the market / price-cut with our final at 80%+ of the ask. Not: retail / new
+    construction, condo / townhouse units without fixer words (today's A13 / A18 / A21: HOA, unwarrantable financing,
+    retail buyers), anything else. Nov 3 data: 81 listings qualify. Task `sheet` (`call_sheet.rebuild_unstarted`)
+    rebuilds the blocks nobody has called yet with today's rules; started blocks keep their codes.
   - **Rows follow the day**: block events re-read every row on every sync (`call_sheet.refreshed`): "DONE 11:00
     (voicemail): skip" once reported in the chat, "THEY E-MAILED BACK: read it in Gmail first" when an agent wrote back,
     the current firm words, or "SKIP TODAY". Codes stay frozen.

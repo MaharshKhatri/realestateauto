@@ -148,7 +148,7 @@ def test_provider_refusal_stops_politely_and_keeps_what_was_harvested(db, provid
 
 
 def test_a_403_pauses_every_later_request_in_the_process(monkeypatch):
-    import homeharvest
+    homeharvest = pytest.importorskip("homeharvest")
     from homeharvest.exceptions import AuthenticationError
     calls = []
 

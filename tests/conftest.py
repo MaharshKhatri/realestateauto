@@ -53,6 +53,13 @@ def db(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _not_on_github(monkeypatch):
+    """CI runs on GitHub Actions, where the cloud desk's behavior switches on (GITHUB_ACTIONS: no dashboard links,
+    'by the cloud desk'). Tests run the same everywhere; the cloud-desk tests set it themselves."""
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_waits(monkeypatch):
     """SMTP retries and the gap between offers in one inbox run wait in real seconds on the laptop; tests don't."""
     import engine.agent_outreach as ao

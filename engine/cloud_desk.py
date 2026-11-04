@@ -488,10 +488,12 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             fu = firm_up_pass(s, int((settings().get("call_sheet") or {}).get("firm_up_daily", 30)))
         out.update(firm_up=int(fu.get("revalued") or 0), now_firm=int(fu.get("now_firm") or 0))
     if t.weekday() < 6 and 7 <= t.hour < 21:
-        # The day's call sheet (engine/call_sheet.py), frozen at its first build so codes mean the same call all day.
+        # The day's call sheet (engine/call_sheet.py), frozen at its first build so codes mean the same call all day;
+        # task `sheet` rebuilds the blocks nobody has called yet with today's rules.
         from engine import call_sheet as cs
         with session_scope() as s:
-            out["call_sheet"] = len(cs.today(s, t.replace(tzinfo=None)))
+            rows = cs.rebuild_unstarted(s, t.replace(tzinfo=None)) if task == "sheet" else cs.today(s, t.replace(tzinfo=None))
+            out["call_sheet"] = len(rows)
     if task == "approve" and approve_id:
         try:
             with session_scope() as s:

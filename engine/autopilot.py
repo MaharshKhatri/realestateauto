@@ -291,9 +291,13 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
                 short_sales.append(lead)       # payoff above any investor price: a lender's call, after the likelier deals
             else:
                 add(lead)
+    from engine.offer_math import convertible
     for lead in crm.due_followups(session, now)[:int(_cfg().get("max_followups_per_deck", 25))]:
         if lead.last_contact_at and any(c.contact_type == ContactType.LISTING_AGENT for c in lead.contacts):
-            add(lead)
+            # A nudge only where a deal can still sign, unless the agent already wrote back (they always get an answer)
+            replied = any(i.outcome == "AGENT_REPLIED" for i in lead.interactions)
+            if replied or convertible(session, lead)[0]:
+                add(lead)
     for lead in ao.candidates(session, limit * 3):
         if not _recently_contacted(lead, now_e, days=7) and lead.status_stage != "OFFER_SENT_TO_AGENT":
             add(lead)
