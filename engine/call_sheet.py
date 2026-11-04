@@ -323,7 +323,16 @@ def refreshed(session: Session, row: Row) -> Row:
     numbers (a re-price or a stricter certainty check during the day never leaves a stale price on the calendar)."""
     from engine.offer_math import firm_offer, locked
     if row.tier == "T0":
-        return row
+        # What the waiting reply is about (the desk's own reading: headline and light only, never the agent's words)
+        r = session.scalar(select(InboundReply).where(InboundReply.lead_id.in_(row.lead_ids or [row.lead_id]),
+                                                      InboundReply.status == "needs_approval")
+                           .order_by(InboundReply.id.desc()).limit(1))
+        if r is None:
+            return Row(**{**asdict(row), "say": _status(session, row) + "THEY REPLIED: already answered, check in"})
+        head = (r.headline or "they replied").split(" / ")[0][:80]
+        money = f" (their number ${r.counter_amount:,.0f})" if r.counter_amount else ""
+        return Row(**{**asdict(row), "say": _status(session, row) + f"THEY E-MAILED: {head}{money}. Call: answer it, "
+                                           "ask what the seller needs; no new price on the call"})
     lead = session.get(Lead, row.lead_id)
     if lead is None:
         return row
