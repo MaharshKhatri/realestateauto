@@ -287,6 +287,29 @@ a deal.
 
 ---
 
+## Part 2½ — your 100 calls a day (the four 📞 Call block events)
+
+Every weekday morning the desk puts four **📞 Call block** events on your calendar (one on Saturday). Each has
+25 calls and one word-for-word script at the top. The blocks are fitted around your classes. You never pick
+who to call: the order is already the money order (agents who replied, foreclosures with a sale coming up,
+follow-ups, firm offers, then "ask their number" listings).
+
+1. Open the block and read the script once. Every call line looks like
+   `A07 | (732) 555-0100 Maria (Brokerage) | 22 Grand Ave | 3bd/1ba 1,450sf 1955 | ask $389,000, 134 DOM | OFFER $310,000 · best and final $315,000 | lead 4812`.
+2. The line tells you the only number you may use:
+   - **OFFER $X · best and final $Y**: say $X. If they push, say "My best and final is $Y." Never above $Y.
+   - **ASK THEIR NUMBER · yes at or under $Y**: don't say a price first. Ask "What number would the seller sign at
+     for cash, as is, with a quick close?" At or under $Y: "That can work, I'll confirm and send it in writing
+     today." Above: "That's more than I can pay as is. Mind if I check back in a few weeks?"
+   - **NO PRICE**: ask the questions in the script, then "Let me run it and I'll e-mail you a number."
+3. After the block, send Claude one line: `A01 vm, A02 na, A03 send, A04 340 roof, A05 cb thu 2pm, A06 stop`.
+   - Codes: na (no answer), vm (voicemail), wn (wrong number), stop (asked not to be called), sold, uc (under
+     contract), ni (not interested), cb (call back, plus when), send (wants it in writing), or a number (what the
+     seller needs: 340 = $340,000).
+   - The desk logs every call, e-mails the offers, and puts the call-backs on your calendar.
+4. Every offer is final: the e-mail, the written offer (LOI) and your script always carry the same number, and the
+   desk never goes back below a number you already sent.
+
 ## Part 3 — your first 20 listing-agent calls
 
 Start with the Step-by-Step player (or the Today tab, Block 1, then Block 2). For each one, open the script:
