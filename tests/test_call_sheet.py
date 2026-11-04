@@ -15,6 +15,7 @@ NOW = datetime(2026, 11, 4, 8, 0)          # a Wednesday
 
 def listed(db, list_price=340_000, phone="9735550100", email="pat@broker.test", **kw):
     kw.setdefault("assumptions", {"sqft_source": "record"})
+    kw.setdefault("listing_text", "Sold strictly as-is, needs work.")       # a fixer (ARV 1.47x the ask is plausible)
     lead = make_lead(db, sheriff_days=None, stale_listing=True, list_price=list_price, **kw)
     add_contact(db, lead, contact_type="LISTING_AGENT", name="Pat Agent", phone=phone, email=email,
                 company="Garden Realty")

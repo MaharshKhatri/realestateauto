@@ -826,10 +826,12 @@ def call_block_events(session: Session, now: datetime) -> list[Desired]:
         start, mins = placed[letter]
         if start + timedelta(minutes=mins) < now:
             continue                                  # never create one in the past (an existing one stays)
+        mine = [cs.refreshed(session, r) for r in mine]
         offers = sum(1 for r in mine if r.say.startswith("OFFER"))
         asks = sum(1 for r in mine if r.say.startswith("ASK"))
         summary = (f"📞 Call block {letter}: {len(mine)} calls"
                    + (f" ({offers} offers, {asks} ask their number)" if offers or asks else ""))
+        mine = [cs.refreshed(session, r) for r in mine]
         lines = [*cs.block_script(letter), "", "--- The calls (code | number agent | house | facts | what to say) ---",
                  *[r.line() for r in mine]]
         s0, e0 = _timed(start, mins)

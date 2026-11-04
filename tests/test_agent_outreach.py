@@ -38,13 +38,14 @@ def test_one_firm_number_the_ask_first_band_and_the_certainty_gate(db):
     and the inputs are certain; 65-80% asks what the seller needs; below 65% nobody is contacted."""
     from engine.offer_math import firm_offer, locked
     rec = {"sqft_source": "record"}
-    far, _ = listed(db, list_price=500_000, assumptions=rec)      # final 285K = 57% of ask
+    fix = dict(listing_text="Sold strictly as-is, needs work. Bring your contractor.")                                          # a fixer: worth more than its ask after work
+    far, _ = listed(db, list_price=500_000, assumptions=rec, **fix)      # final 285K = 57% of ask
     assert ao.eligible(far) == (False, "too far from ask")
-    mid, _ = listed(db, list_price=360_000, assumptions=rec)      # 79%: no number from us, ask theirs
+    mid, _ = listed(db, list_price=360_000, assumptions=rec, **fix)      # 79%: no number from us, ask theirs
     assert ao.eligible(mid)[0] and ao.offer_prices(mid) == (None, None)
     p = ao.build_packet(mid, generate_loi=False)
     assert p.kind == "ask_first" and "What would the seller need to net" in p.email_body and "$280,000" not in p.email_body
-    near, _ = listed(db, list_price=340_000, assumptions=rec)     # 84%: firm
+    near, _ = listed(db, list_price=340_000, assumptions=rec, **fix)     # 84%: firm
     f = firm_offer(near, db)
     assert (f.tier, f.offer, f.final, f.fee_at(f.offer), f.fee_at(f.final)) == ("firm", 280_000, 285_000, 10_000, 5_000)
     assert ao.offer_prices(near) == (280_000, 280_000)
@@ -59,7 +60,7 @@ def test_one_firm_number_the_ask_first_band_and_the_certainty_gate(db):
     assert "Offer: $280,000 cash, as-is." in body and line in body and "oil-tank sweep" in body
     assert "Option 2" not in body and " to $" not in body
     # an estimated living area is not certain enough for a written number
-    est, _ = listed(db, list_price=340_000)
+    est, _ = listed(db, list_price=340_000, **fix)
     fe = firm_offer(est, db)
     assert fe.tier == "ask_first" and fe.offer is None and any("living area" in r for r in fe.reasons)
     # no re-trade: once 282K went out in writing, nothing later states less, and nothing ever exceeds the final
@@ -196,3 +197,18 @@ def test_first_touch_setting_can_send_the_offer_first(db, postal, monkeypatch):
     monkeypatch.setitem(settings(), "autopilot", {**dict(settings().get("autopilot", {})), "first_touch": "offer"})
     lead, _ = listed(db)
     assert not ao.opener_enabled() and ao.first_touch(lead, db, generate_loi=False).kind == "offer"
+
+
+@pytest.mark.production_gates
+def test_a_value_far_above_a_move_in_ready_ask_is_never_a_final_number(db):
+    """2026-11-04: "move-in-ready", "brand-new roof" listings carried ARVs 1.34-1.48x their asks (wrong comps)."""
+    from engine.offer_math import firm_offer
+    rec = {"sqft_source": "record"}
+    retail, _ = listed(db, list_price=340_000, assumptions=rec,
+                       listing_text="Beautifully maintained, move-in-ready Cape with a brand-new roof.")
+    plain, _ = listed(db, list_price=340_000, assumptions=rec, listing_text="Three bedrooms near the park.")
+    none, _ = listed(db, list_price=340_000, assumptions=rec)
+    for lead in (retail, plain, none):                      # ARV 500K = 1.47x a 340K ask
+        f = firm_offer(lead, db)
+        assert f.tier == "ask_first" and f.offer is None and any("1.47x the asking price" in r for r in f.reasons)
+    assert any("move-in-ready" in r for r in firm_offer(retail, db).reasons)

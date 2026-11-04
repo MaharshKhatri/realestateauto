@@ -242,6 +242,8 @@ harvest:
 firm:
   # engine/offer_math.py: a price goes out only when every certainty check passes.
   max_comp_age_months: 12            # median comparable sale at most this old (MOD-IV lags; prices are time-adjusted)
+  max_arv_to_ask: 1.30               # a fixed-up value above 1.3x a live ask is not certain enough for a final number...
+  max_arv_to_ask_fixer: 1.50         # ...unless the listing reads as a fixer (as is, needs work, TLC, estate)
 
 deal:
   pricing_model: quant               # quant = engine/quant_pricing.py buyer-implied solve (alpha + 15% ROI / $45K);

@@ -42,10 +42,11 @@ from core.config import settings
 # valuation before it sends anything (engine/cloud_desk.py::_work), so no e-mail goes out on numbers from the old rules.
 PRICING_VERSION = "2026-11-03.firm1"
 NO_OFFER_VERDICTS = {"EQUITY_RESCUE_REFERRAL", "FRFPA_BLOCKED", "PASS", "SHORT_SALE_ONLY"}
-RETAIL = re.compile(r"\b(move[- ]in ready|fully renovated|newly renovated|completely renovated|recently renovated|"
-                    r"totally renovated|gut renovated|renovated|updated|remodeled|brand new|turn[- ]?key|pristine|"
-                    r"immaculate|meticulously)\b", re.I)
-DISTRESS = re.compile(r"\b(as[- ]is|cash only|cash buyers?|investors?|handyman|fixer|tlc|needs? (some |a little |lots of )?"
+RETAIL = re.compile(r"\b(move[- ]in[- ]ready|fully renovated|newly renovated|completely renovated|recently renovated|"
+                    r"totally renovated|gut renovated|renovated|updated|remodeled|brand[- ]new|turn[- ]?key|pristine|"
+                    r"immaculate|meticulously|beautifully maintained|well[- ]maintained|lovingly maintained|"
+                    r"stunning|gorgeous|showstopper|like new|mint condition)\b", re.I)
+DISTRESS = re.compile(r"\b(as[- ]is|cash only|cash buyers?|investor special|investors? only|calling all investors|handyman|fixer|tlc|needs? (some |a little |lots of )?"
                       r"(work|updating|updates|renovation|rehab|repairs?|tlc)|bring your (vision|imagination|ideas|"
                       r"contractor)|contractor special|estate sale|executor|fire damage|water damage|mold|foundation|"
                       r"gut|rehab|tear ?down|no fha|203k|in need of|sold as[- ]is|short sale|bank[- ]owned|reo)\b", re.I)
@@ -152,8 +153,22 @@ def certainty_issues(lead: Any, session: Any = None, today: date | None = None) 
     if v and v.arv_estimate and top and v.arv_estimate > 1.05 * top:
         out.append("the after-repair value is above every comparable sale")
     text = listing_text(session, lead)
-    if text and RETAIL.search(text) and not DISTRESS.search(text):
+    distress = bool(text and DISTRESS.search(text))
+    retail = bool(text and RETAIL.search(text) and not distress)
+    if retail:
         out.append("the listing describes a renovated, move-in-ready house (retail buyers pay more than an investor can)")
+    # A fixed-up value far above a live ask means the comps are off or the house needs far more work than we priced
+    # (2026-11-04: three "move-in-ready" listings carried ARVs 1.34-1.48x their asks). Never a final number on that.
+    from engine.underwriter import asking_price
+    ask = asking_price(p)
+    max_ratio = float(_cfg().get("max_arv_to_ask", 1.30))
+    # (a listing that reads as a fixer can be worth 1.3-1.5x its ask after work: pre-flight holds those above 1.5x;
+    # one that doesn't is not priced 30% under its value, so the comps are what's wrong; no text = unknown = doubt)
+    if text and distress:
+        max_ratio = max(max_ratio, float(_cfg().get("max_arv_to_ask_fixer", 1.50)))
+    if ask and v and v.arv_estimate and v.arv_estimate > max_ratio * float(ask):
+        out.append(f"the after-repair value is {v.arv_estimate / float(ask):.2f}x the asking price: the comps may be "
+                   "off or it needs more work than we priced; get the condition and what the seller needs first")
     units = int(p.dwellings or 1)
     mls_multi = str(getattr(listing_for(session, lead), "property_type", "") or "").startswith("multi")
     if mls_multi and units <= 1:
@@ -257,7 +272,7 @@ def locked(lead: Any, f: FirmOffer) -> FirmOffer:
 
 # Certainty issues that fresh sold comps can clear (the rest need a fact from the agent or the operator).
 DATA_ISSUES = ("the comparable sales are old", "the after-repair value is above every comparable sale",
-               "the living area isn't on record")
+               "the living area isn't on record", "the after-repair value is ")
 
 
 def data_only(f: FirmOffer) -> bool:

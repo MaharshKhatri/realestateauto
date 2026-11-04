@@ -149,13 +149,22 @@ def _facts(session: Session, lead: Lead, ask: float | None) -> str:
     return " ".join(bits) + (" | " if bits else "") + ask_s + (f", {dom} DOM" if dom else "")
 
 
+def _short(reason: str) -> str:
+    return reason.split(":")[0].replace("the listing describes a renovated, move-in-ready house (retail buyers pay more "
+                                        "than an investor can)", "listing says move-in ready")[:70]
+
+
 def _say(firm: Any, tier: str) -> str:
     if tier == "T0":
         return "THEY REPLIED: answer their reply (no new price on the call)"
     if firm.priced:
         return f"OFFER {_money(firm.offer)} · best and final {_money(firm.final)}"
-    if firm.final:
+    doubts = [r for r in firm.reasons if "of the ask: ask what the seller needs first" not in r]
+    if firm.final and not doubts:
         return f"ASK THEIR NUMBER · yes at or under {_money(firm.final)}"
+    if firm.final:
+        # our own number needs a check (old comps, retail condition, value far above the ask): agree to nothing
+        return "ASK THEIR NUMBER · write it down, agree to nothing (" + _short(doubts[0]) + ")"
     return "NO PRICE: get the facts (" + (firm.reasons[0] if firm.reasons else "no numbers yet") + ")"
 
 
@@ -272,6 +281,25 @@ def stored(session: Session, day: date) -> list[Row]:
     return [Row(**r) for r in state.get("rows") or []] if state.get("date") == day.isoformat() else []
 
 
+def refreshed(session: Session, row: Row) -> Row:
+    """The row with today's words: the code and the phone stay frozen, but what to say follows the current firm
+    numbers (a re-price or a stricter certainty check during the day never leaves a stale price on the calendar)."""
+    from engine.offer_math import firm_offer, locked
+    if row.tier == "T0":
+        return row
+    lead = session.get(Lead, row.lead_id)
+    if lead is None:
+        return row
+    try:
+        firm = locked(lead, firm_offer(lead, session))
+    except Exception:                              # noqa: BLE001 - keep the morning's words
+        return row
+    say = _say(firm, row.tier)
+    if firm.tier == "skip":
+        say = "SKIP TODAY: " + (firm.reasons[0] if firm.reasons else "no offer we could make")
+    return Row(**{**asdict(row), "say": say, "offer": firm.offer if firm.priced else None, "final": firm.final})
+
+
 def lead_ids_on(session: Session, day: date) -> set[int]:
     return {i for r in stored(session, day) for i in (r.lead_ids or [r.lead_id])}
 
@@ -298,7 +326,8 @@ def block_script(letter: str) -> list[str]:
         'ceiling." Never above $Y.',
         '4b) Row says ASK THEIR NUMBER: don\'t say a price first. "What number would the seller sign at for cash, as '
         'is, with a quick close?" At or under the row\'s number: "That can work. I\'ll confirm and send it in writing '
-        'today." Above it: "That\'s more than I can pay as is. Mind if I check back in a few weeks?"',
+        'today." Above it: "That\'s more than I can pay as is. Mind if I check back in a few weeks?" When the row says '
+        '"agree to nothing": write their number down and say "Let me run it and I\'ll get back to you today."',
         '4c) Row says NO PRICE: ask the questions in 3, then "Let me run it and I\'ll e-mail you a number."',
         '5) "Are you a wholesaler?" / "Will you assign?": "I\'m an investor. I may buy it myself or assign the contract '
         'to a partner investor. That\'s in writing, and the seller\'s attorney reviews everything."',

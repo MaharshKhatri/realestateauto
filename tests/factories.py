@@ -13,7 +13,7 @@ _seq = iter(range(1, 10_000))
 def make_lead(db, *, sheriff_days: int | None = 20, upset: float | None = 150000, defendant: str = "QUINN Q SAMPLE",
               absentee: bool | None = None, vacant: bool = False, verdict: str | None = "STRONG",
               assumptions: dict[str, Any] | None = None, stale_listing: bool = False, list_price: float = 450000,
-              **prop_kw) -> Lead:
+              listing_text: str | None = None, **prop_kw) -> Lead:
     n = next(_seq)
     data = {"parcel_id": f"ESSEX-0714-{n}-1", "county": "Essex", "municipality": "NEWARK CITY", "mun_code": "0714",
             "street_address": f"{n} TEST ST", "city": "Newark", "zip_code": "07106", "property_class": "2",
@@ -33,6 +33,10 @@ def make_lead(db, *, sheriff_days: int | None = 20, upset: float | None = 150000
         upsert_signal(db, prop, signal_type=SignalType.STALE_LISTING, source="homeharvest", source_ref=f"L{n}",
                       raw_metadata_json={"days_on_market": 140, "list_price": list_price, "keywords": ["as-is"],
                                          "listing_agent": "Pat Agent", "listing_agent_phone": "9735550100"})
+        if listing_text is not None:
+            from db.models import Listing
+            db.add(Listing(property_id=prop.id, source="homeharvest", source_ref=f"L{n}", status="for_sale",
+                           list_price=list_price, days_on_market=140, description=listing_text))
     lead, _ = ensure_lead(db, prop, primary_source="sheriff_sale" if sheriff_days is not None else "stale_listing")
     if verdict:
         a = {"arv_before_tax_drag": 500000, "frfpa_applies": False, "valued_on": date.today().isoformat()}
