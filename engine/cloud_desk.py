@@ -507,9 +507,17 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
     out: dict[str, Any] = {}
     t = gm.now_eastern(now)
     if task == "refresh":
-        r = subprocess.run([sys.executable, "-m", "swarm.orchestrator", "run-all"], cwd=root, timeout=45 * 60,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        out["refresh"] = "ok" if r.returncode == 0 else f"exit {r.returncode}"
+        # With live listings the full pipeline outgrew 45 minutes (2026-11-04: a midday refresh was cut off at 45 min
+        # and the run failed). Before 7 AM it may take 80 minutes (nobody is waiting on the inbox); in the day 40. A
+        # cut-off is not a failure: every agent commits as it goes, and the rest of this run (re-price, firm-up, the
+        # sheet, the inbox, the calendar) still happens.
+        limit = (80 if t.hour < 7 else 40) * 60
+        try:
+            r = subprocess.run([sys.executable, "-m", "swarm.orchestrator", "run-all"], cwd=root, timeout=limit,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            out["refresh"] = "ok" if r.returncode == 0 else f"exit {r.returncode}"
+        except subprocess.TimeoutExpired:
+            out["refresh"] = f"cut off at {limit // 60} min"
     from engine.offer_math import PRICING_VERSION
     if task in ("recalibrate", "refresh") or _state_get("pricing_version") != PRICING_VERSION:
         # New pricing rules (or fresh data): re-price every stored valuation offline (~20 s for 2,000) before any send.

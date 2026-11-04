@@ -37,7 +37,7 @@ jobs:
   desk:
     if: github.repository == 'MaharshKhatri/realestateauto'
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 100           # the 5:17 AM refresh may take 80 minutes; a normal run takes 1-2
     env:
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}

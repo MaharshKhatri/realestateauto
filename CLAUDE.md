@@ -975,6 +975,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - each daytime run re-values up to 3 listings flagged `comps_need_refresh` (fixers first, ≤ 40 s, 150 / day:
     `offer_math.trickle`) and 2 unvalued listings (`value_new_listings` cap 2), so supply grows all day;
   - `DAILY_OPENERS` 35;
+  - the refresh's run-all may take 80 minutes before 7 AM and 40 in the day (job timeout 100); a cut-off is not a
+    failure (agents commit as they go; the state is saved in `finally`) and the rest of the run still happens;
   - three opener waves (`OPENER_WAVES` 10:30, 14:00, 16:30); each sends its share of what is LEFT of the day's
     `DAILY_OPENERS` (swarm_state `sent_total`), so a short morning supply is made up after the calls and the firm-up;
   - a call-sheet lead is held from e-mail only until it is dialed: a reported no-answer / voicemail

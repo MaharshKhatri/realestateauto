@@ -301,3 +301,20 @@ def test_a_note_changes_the_operators_phone_on_every_email(db, monkeypatch, tmp_
     assert "ssn" not in local.read_text() and "(908) 555-0142" in local.read_text()
     bad = cd.seal_note([{"operator": {"phone": "12345"}}], cd.public_hex(key))
     assert cd.apply_note(bad, key) == {"note_done": 0, "note_errors": "ValueError"}
+
+
+def test_a_refresh_that_runs_long_is_cut_off_and_the_rest_of_the_run_still_happens(db, monkeypatch, tmp_path):
+    """2026-11-04: with live listings the pipeline outgrew 45 minutes and the whole run failed; a cut-off now keeps
+    what was committed and the run goes on (re-price, sheet, inbox, calendar). 80 minutes before 7 AM, 40 in the day."""
+    import subprocess
+    seen = []
+
+    def slow(cmd, **kw):
+        seen.append(kw["timeout"])
+        raise subprocess.TimeoutExpired(cmd, kw["timeout"])
+    monkeypatch.setattr(cd.subprocess, "run", slow)
+    kw = dict(smtp_factory=None, user=ME, pw="p", desk_key=KEY, root=tmp_path, approve_id=None)
+    early = cd._work("refresh", now=datetime(2026, 11, 5, 5, 17), **kw)
+    assert early["refresh"] == "cut off at 80 min" and "repriced" in early
+    day = cd._work("refresh", now=datetime(2026, 11, 5, 13, 0), **kw)
+    assert day["refresh"] == "cut off at 40 min" and seen == [80 * 60, 40 * 60]
