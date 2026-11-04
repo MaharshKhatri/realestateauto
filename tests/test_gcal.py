@@ -756,3 +756,18 @@ def test_a_call_reported_today_turns_its_event_into_a_gray_check(db, google):
         google.store[row.google_event_id].get("status") != "cancelled"
     nxt = [x for x in google.live() if x["summary"].startswith("📞 Try")]
     assert len(nxt) == 1                                                     # the next call is its own event
+
+
+def test_a_rescheduled_call_says_where_it_moved_never_done(db, google):
+    """2026-11-04: Anna asked for a call at 1:45; the desk e-mailed her and set a new slot at 5:15, and the 1:45 event
+    showed ✅ done although the operator never called. A replaced event now says "⏩ … (moved to 5:15 PM)"."""
+    lead, agent = agent_lead(db)
+    lead.next_followup_at = datetime(2026, 11, 4, 13, 45)
+    gs.sync(db, now=datetime(2026, 11, 4, 9, 0))
+    first = db.scalar(select(CalendarEvent).where(CalendarEvent.lead_id == lead.id))
+    lead.next_followup_at = datetime(2026, 11, 4, 17, 15)                              # moved, no call made
+    gs.sync(db, now=datetime(2026, 11, 4, 14, 20))
+    db.refresh(first)
+    e = google.store[first.google_event_id]
+    assert e["summary"].startswith("⏩ ") and e["summary"].endswith("(moved to 5:15 PM)") and e["colorId"] == "8"
+    assert "✅" not in e["summary"] and e.get("status") != "cancelled"

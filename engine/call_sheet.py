@@ -21,6 +21,7 @@ THEIR NUMBER (final $Y)". Streets and business contacts only; a suppressed addre
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -361,7 +362,31 @@ def refreshed(session: Session, row: Row, day: date | None = None) -> Row:
     if firm.tier == "skip":
         say = "SKIP TODAY: " + (firm.reasons[0] if firm.reasons else "no offer we could make")
     say = _status(session, row, day) + say
+    answered = _answered_today(session, row, day)
+    if answered and not say.startswith("DONE "):
+        # The agent wrote back today and the desk answered by e-mail (2026-11-04: C08 had just said "under contract"
+        # and still read "yes at or under $310,700"): a closed door is a skip, anything else is context for the call.
+        head, closed = answered
+        say = (f"SKIP TODAY: they e-mailed back ({head})" if closed
+               else f"THEY E-MAILED BACK ({head}; the desk answered by e-mail) · " + say)
     return Row(**{**asdict(row), "say": say, "offer": firm.offer if firm.priced else None, "final": firm.final})
+
+
+_CLOSED = re.compile(r"UNDER CONTRACT|OFF THE TABLE|NOT NOW|TOO FAR APART|NOT INTERESTED|\bSOLD\b|EXPIRED|OPT.?OUT|"
+                     r"\bSTOP\b|REMOVE", re.I)
+
+
+def _answered_today(session: Session, row: Row, day: date | None) -> tuple[str, bool] | None:
+    """(the desk's one-line reading, door closed?) for an agent reply received today that is already answered."""
+    start = datetime.combine(day or date.today(), datetime.min.time())
+    r = session.scalar(select(InboundReply).where(
+        InboundReply.lead_id.in_(row.lead_ids or [row.lead_id]), InboundReply.received_at >= start,
+        InboundReply.status.notin_(("bounce", "auto_reply", "needs_approval", "auto_queued", "sending")))
+        .order_by(InboundReply.id.desc()).limit(1))
+    if r is None:
+        return None
+    head = (r.headline or "they replied").split(" / ")[0].split(":")[0].strip()[:60].lower()
+    return head, bool(_CLOSED.search(r.headline or ""))
 
 
 def _status(session: Session, row: Row, day: date | None = None) -> str:

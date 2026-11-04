@@ -301,3 +301,39 @@ def test_blocks_show_whats_left_and_missed_calls_move_to_catch_up(db, operator):
     assert night["callblock:20261104:A"].body["summary"] == "✅ Call block A: all done (2 called)"
     assert night["callblock:20261104:catchup"].body["summary"] == "✅ Catch-up calls: all done"
     assert night["callblock:20261104:catchup"].body["colorId"] == "8"
+
+
+def test_a_row_whose_agent_already_e_mailed_back_today_says_so(db, operator):
+    """2026-11-04: C08's agent had just written "under contract" and the row still read "yes at or under $310,700"."""
+    from db.models import InboundReply
+    closed, open_ = listed(db), listed(db, phone="9735550199", email="x@broker.test")
+    db.flush()
+    rows = {r.lead_id: r for r in cs.today(db, NOW)}
+    today = datetime.combine(date.today(), datetime.min.time())
+    db.add(InboundReply(message_id="<a@b>", lead_id=closed.id, status="approved", received_at=today.replace(hour=14),
+                        headline="OFF THE TABLE FOR NOW: under contract", from_email="a@b.test", subject="Re: x"))
+    db.add(InboundReply(message_id="<c@d>", lead_id=open_.id, status="approved", received_at=today.replace(hour=14),
+                        headline="ASK WHAT THE SELLER NEEDS", from_email="c@d.test", subject="Re: y"))
+    db.flush()
+    shut = cs.refreshed(db, rows[closed.id])
+    assert shut.say == "SKIP TODAY: they e-mailed back (off the table for now)" and cs.row_state(shut) == "skip"
+    warm = cs.refreshed(db, rows[open_.id])
+    assert warm.say.startswith("THEY E-MAILED BACK (ask what the seller needs; the desk answered by e-mail) · ")
+    assert cs.row_state(warm) == "open"
+
+
+def test_catch_up_finds_time_now_when_the_evening_is_busy(db, operator):
+    """2026-11-04: an evening class filled everything after the last block, so no catch-up event appeared at all."""
+    from db.models import CalendarEvent
+    listed(db)
+    db.flush()
+    cs.today(db, NOW)
+    db.add(CalendarEvent(key="callblock:20261104:A", kind="callblock", status="synced", google_event_id="g1",
+                         body_json={}, starts_at=datetime(2026, 11, 4, 9, 30)))
+    gs._set_state(db, busy={"date": "2026-11-04", "spans": [["17:15", "21:00"]]})      # class after the blocks
+    db.flush()
+    want = gs.desired_events(db, now=datetime(2026, 11, 4, 11, 20))
+    catch = want["callblock:20261104:catchup"]
+    assert catch.starts_at == datetime(2026, 11, 4, 11, 30) and catch.body["summary"].startswith("📞 Catch-up calls: 1")
+    later = gs.desired_events(db, now=datetime(2026, 11, 4, 11, 40))                    # it stays put
+    assert later["callblock:20261104:catchup"].starts_at == datetime(2026, 11, 4, 11, 30)

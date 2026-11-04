@@ -809,6 +809,31 @@ def _exists(session: Session, key: str) -> bool:
                                                               CalendarEvent.status.in_(("pending", "synced")))))
 
 
+def _catchup_slot(session: Session, now: datetime, placed: dict[str, tuple[datetime, int]],
+                  busy: list[tuple[datetime, datetime]]) -> dict[str, tuple[datetime, int]]:
+    """Where today's 📞 Catch-up calls go: the first free 30+ minutes after the last block; when there is none (an
+    evening class, 2026-11-04) or that time has passed with calls still left, the first free 30+ minutes from now.
+    Once placed it stays put (saved in the calendar state) until its time passes."""
+    day = now.date()
+    st = _state(session).value_json or {}
+    saved = st.get("catchup") or {}
+    if saved.get("date") == day.isoformat():
+        start = datetime.combine(day, time(*(int(x) for x in str(saved["start"]).split(":"))))
+        if start + timedelta(minutes=int(saved["mins"])) >= now:
+            return {"X": (start, int(saved["mins"]))}
+    spans = busy + [(s, s + timedelta(minutes=m)) for s, m in placed.values()]
+    ends = [s + timedelta(minutes=m) for s, m in placed.values()]
+    soon = (now + timedelta(minutes=15 - now.minute % 15)).replace(second=0, microsecond=0)
+    for begin in ([max(ends)] if ends else []) + [soon]:
+        if begin.date() != day:
+            continue
+        got = place_blocks(day, [("X", f"{begin:%H:%M}", 60)], spans, min_minutes=30).get("X")
+        if got and got[0] >= now - timedelta(minutes=5):           # a new slot never starts in the past
+            _set_state(session, catchup={"date": day.isoformat(), "start": f"{got[0]:%H:%M}", "mins": got[1]})
+            return {"X": got}
+    return {}
+
+
 def call_block_events(session: Session, now: datetime) -> list[Desired]:
     """📞 The day's call sheet (engine/call_sheet.py) as four events of 25 calls: one word-for-word script, then one
     line per call with the single number to use. Built from the frozen sheet, so "A07" means the same call all day.
@@ -834,11 +859,7 @@ def call_block_events(session: Session, now: datetime) -> list[Desired]:
     done_color = str(colors.get("done") or "8")
     missed: list[Any] = []
     catch_key = f"callblock:{now:%Y%m%d}:catchup"
-    ends = [s + timedelta(minutes=m) for s, m in placed.values()]
-    after = max(ends) if ends else None
-    catch = place_blocks(now.date(), [("X", f"{after:%H:%M}", 90)], busy + [(s, s + timedelta(minutes=m))
-                                                                             for s, m in placed.values()],
-                         min_minutes=30) if after else {}
+    catch = _catchup_slot(session, now, {k: v for k, v in placed.items() if cs.block_rows(rows, k)}, busy)
     catch_at = _when(catch["X"][0]).split(", ")[-1] if catch.get("X") else None
     for letter, _hhmm, _mins in cs.blocks():
         mine = cs.block_rows(rows, letter)
@@ -1032,8 +1053,9 @@ _OUTCOME_WORDS = {"NO_ANSWER": "called, no answer", "LEFT_VM": "called, left a v
                   "OFFER_ACCEPTED": "offer accepted"}
 
 
-def handled(session: Session, r: CalendarEvent) -> str | None:
-    """What settled this call event, in a few words with the time, or None while it still waits on the operator."""
+def handled(session: Session, r: CalendarEvent) -> tuple[str, bool] | None:
+    """(what settled this call event, with the time; was it the operator's own call / answer?), or None while it
+    still waits."""
     if r.lead_id is None:
         return None
     if r.kind == "reply":
@@ -1042,7 +1064,7 @@ def handled(session: Session, r: CalendarEvent) -> str | None:
         if row is None or row.status in ("needs_approval", "auto_queued", "sending"):
             return None
         when = _when(row.resolved_at) if row.resolved_at else "today"
-        return f"{when}: " + ("answered" if row.status == "approved" else "handled, no answer needed")
+        return f"{when}: " + ("answered" if row.status == "approved" else "handled, no answer needed"), True
     m = re.match(r"followup:\d+:i(\d+)$", r.key or "")
     q = select(Interaction).where(Interaction.lead_id == r.lead_id)
     if m:
@@ -1052,7 +1074,27 @@ def handled(session: Session, r: CalendarEvent) -> str | None:
     inter = session.scalars(q.order_by(Interaction.occurred_at.desc()).limit(1)).first()
     if inter is None:
         return None
-    return f"{_when(inter.occurred_at)}: {_OUTCOME_WORDS.get(inter.outcome or '', (inter.outcome or 'done').lower().replace('_', ' '))}"
+    words = _OUTCOME_WORDS.get(inter.outcome or "", (inter.outcome or "done").lower().replace("_", " "))
+    mine = inter.channel == "call" or (inter.debrief_json or {}).get("source") == "chat_note"
+    return f"{_when(inter.occurred_at)}: {words}", mine
+
+
+def moved_to(want: dict[str, Desired], r: CalendarEvent) -> Desired | None:
+    """The lead's next call event, when this one was replaced by a later one (same lead, a call kind)."""
+    later = [d for d in want.values() if d.lead_id == r.lead_id and d.kind in DONE_KINDS and d.key != r.key
+             and d.starts_at >= (r.starts_at or datetime.min)]
+    return min(later, key=lambda d: d.starts_at) if later else None
+
+
+def moved_body(body: dict[str, Any], when: datetime) -> dict[str, Any]:
+    b = dict(body)
+    summary = re.sub(r"^[^\w$#(]+", "", str(b.get("summary") or "")).strip()
+    at = _when(when).split(", ", 1)[-1] if when.date() == (parse_start(body.get("start")) or when).date() else _when(when)
+    b["summary"] = f"⏩ {summary} (moved to {at})"
+    b["colorId"] = str((cfg().get("colors") or {}).get("done") or "8")
+    b["description"] = f"⏩ MOVED to {_when(when)}: that event is the one to use.\n\n" + str(b.get("description") or "")
+    b["reminders"] = {"useDefault": False, "overrides": []}
+    return b
 
 
 def done_body(body: dict[str, Any], label: str) -> dict[str, Any]:
@@ -1096,17 +1138,25 @@ def reconcile(session: Session, lead_ids: set[int] | None = None, now: datetime 
     for key, r in rows.items():
         if key in want or r.status not in ("pending", "synced") or r.kind == "daily_goal":
             continue
-        if str((r.body_json or {}).get("summary") or "").startswith("✅"):
-            continue                                     # already marked done: it stays as the record
+        if str((r.body_json or {}).get("summary") or "").startswith(("✅", "⏩")):
+            continue                                     # already marked done / moved: it stays as the record
         if r.kind in DONE_KINDS and r.starts_at is not None and r.starts_at.date() <= now.date() \
                 and r.starts_at >= now - timedelta(days=3):
-            label = handled(session, r)
-            if label:
-                # Done today: the event stays where it was, ✅ and graphite, with what settled it (2026-11-04: the
-                # operator couldn't tell finished calls from the ones still waiting after a class).
+            got = handled(session, r)
+            nxt = moved_to(want, r)
+            body = None
+            if got and (got[1] or nxt is None):
+                # Done: the event stays where it was, ✅ and graphite, with what settled it (2026-11-04: the operator
+                # couldn't tell finished calls from the ones still waiting after a class).
+                body = done_body(r.body_json or {}, got[0])
+            elif nxt is not None:
+                # Not done by the operator, just rescheduled (a new call slot, a moved call-back): it says where it went,
+                # never "done" (2026-11-04: Anna's 1:45 call showed ✅ after the desk e-mailed her and set 5:15 PM).
+                body = moved_body(r.body_json or {}, nxt.starts_at)
+            if body is not None:
                 if r.google_event_id:
-                    r.body_json = done_body(r.body_json or {}, label)
-                    r.body_hash, r.status = body_hash(r.body_json), "pending"
+                    r.body_json = body
+                    r.body_hash, r.status = body_hash(body), "pending"
                 else:
                     r.status = "cancelled"               # never reached the calendar: nothing to mark
                 stats["done"] = stats.get("done", 0) + 1

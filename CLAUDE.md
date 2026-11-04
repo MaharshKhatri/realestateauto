@@ -991,11 +991,16 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - call blocks: the title counts what is left ("📞 Call block B: 9 to call · ✅ 16 done"); reported rows are ✅ in a
     "Done" part, "SKIP TODAY" rows ⏭; nothing left = "✅ Call block B: all done", graphite (`colors.done` 8), no reminder;
   - a passed block keeps updating ("⏩ … moved to Catch-up calls") and its unreached rows go to one
-    `callblock:<day>:catchup` event (tangerine) in the first free gap after the last block, same codes; anything still
-    left is on tomorrow's sheet by itself; row status uses the sheet's own date (`call_sheet.refreshed(..., day)`);
-  - follow-up / call-back / reply events handled today (`gcal_sync.handled`: a later interaction, an approved or
-    dismissed reply) stay in place as "✅ …" graphite with "✅ DONE <time>: <what happened>" and no reminder; handled
-    ones later in the week are removed as before;
+    `callblock:<day>:catchup` event (tangerine), same codes: the first free 30+ minutes after the last block with
+    calls, else (an evening class, 2026-11-04) the first free 30+ minutes from now; it stays put (calendar state
+    `catchup`) until its time passes, then moves forward; anything still left is on tomorrow's sheet by itself; row
+    status uses the sheet's own date (`call_sheet.refreshed(..., day)`);
+  - a row whose agent e-mailed back today and was answered says so ("THEY E-MAILED BACK (…; the desk answered by
+    e-mail)"), or "SKIP TODAY: they e-mailed back (off the table for now)" when the door is closed;
+  - follow-up / call-back / reply events handled today (`gcal_sync.handled`: the operator's call or an approved /
+    dismissed reply; or a desk e-mail when no newer event replaced it) stay in place as "✅ …" graphite with
+    "✅ DONE <time>: <what happened>" and no reminder; one that was only rescheduled (a new call slot, a moved
+    call-back) becomes "⏩ … (moved to 5:15 PM)", never ✅; handled ones later in the week are removed as before;
   - events Claude made by hand with the Calendar connector are marked the same way (✅ + colorId 8) when the operator
     says they're done.
 - **Rows follow the day**: block events re-read every row on every sync (`call_sheet.refreshed`): "DONE 11:00
