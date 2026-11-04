@@ -421,13 +421,13 @@ def apply_codes(session: Session, items: list[dict[str, Any]], *, now: datetime 
                     autopilot.send(session, lead.id, "smtp", now=now, smtp_factory=smtp_factory)
                     counts["offers"] += 1
                 elif amount:
-                    firm = locked(lead, firm_offer(lead, session, check_certainty=False))
-                    if firm.final and amount <= firm.final and certainty_issues(lead, session):
-                        # Their number fits our final, but the final rests on old or thin data: re-value live with
-                        # recent sold comps before anything goes in writing (a written number is final).
+                    if certainty_issues(lead, session):
+                        # A written number is final: when ours rests on old or doubtful data (stale comps, a value far
+                        # above the ask, a move-in-ready listing), re-value live with recent sold comps first; nothing
+                        # goes in writing (an accept or a best and final) until the numbers clear every check.
                         from engine.offer_math import firm_up
-                        fresh = locked(lead, firm_up(session, lead))
-                        if not (fresh.final and amount <= fresh.final and not certainty_issues(lead, session)):
+                        firm_up(session, lead)
+                        if certainty_issues(lead, session):
                             counts["held"] += 1    # the call-back event says what to confirm before writing it
                             continue
                     an = rn.analyze(session, lead, f"The seller would take {amount:,.0f}. {notes}", now=now)

@@ -242,3 +242,20 @@ def test_new_pricing_rules_reprice_every_valuation_once_before_anything_is_sent(
     monkeypatch.setattr(offer_math, "PRICING_VERSION", "next")
     assert cd._work("run", approve_id=None, **kw)["repriced"] >= 1
     assert cd._work("recalibrate", approve_id=None, **kw)["repriced"] >= 1           # on demand (workflow task)
+
+
+def test_a_cell_number_heard_on_a_call_goes_on_the_agents_card(db, monkeypatch):
+    """2026-11-04: Lou's office said he wasn't in and gave his cell; the next call should dial the cell."""
+    from tests.factories import add_contact, make_lead
+    lead = make_lead(db, sheriff_days=None, stale_listing=True)
+    add_contact(db, lead, contact_type="LISTING_AGENT", name="Lou Agent", phone="7325550100", company="Sample Realty")
+    db.commit()
+    key = "k" * 32
+    note = cd.seal_note([{"lead": lead.id, "agent_phone": "(732) 555-0177", "call": "NO_ANSWER",
+                          "notes": "office gave his cell"}], cd.public_hex(key))
+    assert cd.apply_note(note, key)["note_done"] == 1
+    db.expire_all()
+    cell = [c for c in lead.contacts if c.phone == "7325550177"]
+    assert cell and cell[0].phone_type == "wireless" and cell[0].name == "Lou Agent" and cell[0].company == "Sample Realty"
+    from engine import call_sheet as cs
+    assert cs.agent_line(db, lead)[0] == "(732) 555-0177"                      # the sheet dials the cell first
