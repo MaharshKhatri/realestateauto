@@ -998,6 +998,11 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     calls, else (an evening class, 2026-11-04) the first free 30+ minutes from now; it stays put (calendar state
     `catchup`) until its time passes, then moves forward; anything still left is on tomorrow's sheet by itself; row
     status uses the sheet's own date (`call_sheet.refreshed(..., day)`);
+  - with no free 30 minutes left today (2026-11-04: class, blocks C-D, an evening reception), missed rows join the
+    next block that hasn't ended ("📞 Call block C: 20 to call + 16 from earlier", "--- Also from earlier blocks ---");
+    after the last block they go on tomorrow's sheet by themselves;
+  - a plain thank-you ("Sounds good! Thank you!", `reply_negotiator.is_ack`) after a no-price note is dismissed with
+    nothing to answer and no call; after a priced offer it is read like any reply (it may be an acceptance);
   - a row whose agent e-mailed back today and was answered says so ("THEY E-MAILED BACK (…; the desk answered by
     e-mail)"), or "SKIP TODAY: they e-mailed back (off the table for now)" when the door is closed;
   - follow-up / call-back / reply events handled today (`gcal_sync.handled`: the operator's call or an approved /

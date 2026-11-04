@@ -224,3 +224,12 @@ def test_every_reply_passes_the_human_copy_lint(db, operator):
         for phrase in ("drive by", "door-knock", "stop by", "cash buyer", "postpone the sale", "stop the foreclosure"):
             assert phrase not in a.reply_text.lower()
         assert hc.lint(a.sms_text, sms=True) == [] or a.sms_text == ""
+
+
+@pytest.mark.parametrize("text, ack", [
+    ("Sounds good! Thank you!\n\nGet Outlook for Android", True), ("Thanks!\nJennifer", True), ("Will do, thanks", True),
+    ("Thank you so much", True), ("Sounds good, what's your number?", False), ("Thanks, seller wants 340", False),
+    ("Thanks. It is still available.", False), ("Sounds good. Send it over", False)])
+def test_a_plain_thank_you_is_recognized(text, ack):
+    """2026-11-04: "Sounds good! Thank you!" after our backup note became a 📞 call event and "waiting on you"."""
+    assert rn.is_ack(text) is ack

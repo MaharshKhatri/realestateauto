@@ -409,6 +409,26 @@ _FACT_SMS = {"condo": "what same-size units sold for and the HOA", "units": "the
              "basics": "beds, baths, sqft and condition"}
 
 
+_ACK = re.compile(r"^(?:(?:ok(?:ay)?|sounds good|sounds great|great|perfect|wonderful|awesome|will do|noted|got it|"
+                  r"thanks?(?: again)?(?: you)?(?: so much| very much| a lot)?|thank you(?: so much| very much)?|ty|"
+                  r"appreciate (?:it|you|that)|you too|same to you|cheers|have a (?:good|great|nice) "
+                  r"(?:day|one|night|weekend|evening)|best|regards|\U0001F44D|\U0001F64F)[\s!.,]*)+$", re.I)
+
+
+def is_ack(text: str) -> bool:
+    """A plain thank-you / "sounds good" with nothing else (no question, number, or other topic), e.g. Jennifer's
+    "Sounds good! Thank you!" after our backup note (2026-11-04). Only "nothing to answer" when our last e-mail named
+    no price: after a priced offer "sounds good" may be an acceptance, which always waits for the operator."""
+    lines = [x.strip() for x in (text or "").splitlines() if x.strip()]
+    lines = [x for x in lines if not re.match(r"(sent from|get outlook|sent via|-{2,})", x, re.I)]
+    if not lines or len(lines) > 3:
+        return False
+    if len(lines) > 1 and re.fullmatch(r"[A-Za-z.'-]+(?: [A-Za-z.'-]+)?", lines[-1]) and not _ACK.match(lines[-1]):
+        lines = lines[:-1]                         # a first name under the thank-you
+    body = " ".join(lines)
+    return len(body) <= 80 and "?" not in body and not re.search(r"\d", body) and bool(_ACK.match(body))
+
+
 def fact_check_issue(pf: Any) -> tuple[str, str] | None:
     """(kind, the pre-flight issue) when a fact from the agent must come before a price; a HOLD always needs one."""
     for issue in pf.issues:

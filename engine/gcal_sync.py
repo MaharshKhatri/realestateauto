@@ -841,8 +841,10 @@ def call_block_events(session: Session, now: datetime) -> list[Desired]:
 
     What is left stays obvious (2026-11-04: classes make the operator skip calls and come back later): a reported call
     is ✅ and drops to the "Done" part, the title counts what is left, a block with nothing left turns graphite
-    ("✅ … all done"), and the calls a passed block didn't reach move to one "📞 Catch-up calls" event in the next free
-    time after the last block (same codes, so "B07 vm" still works). A passed block keeps updating, never re-created."""
+    ("✅ … all done"), and the calls a passed block didn't reach move to one "📞 Catch-up calls" event in free time
+    (same codes, so "B07 vm" still works). With no free 30 minutes left today (classes, evening events), they are
+    added to the next block that hasn't ended instead; after the last block they go on tomorrow's sheet by themselves.
+    A passed block keeps updating, never re-created."""
     from engine import call_sheet as cs
     if not cfg().get("call_blocks", True):
         return []
@@ -855,53 +857,64 @@ def call_block_events(session: Session, now: datetime) -> list[Desired]:
         for a0, b0 in b.get("spans") or []:
             busy.append(tuple(datetime.combine(now.date(), time(*(int(x) for x in v.split(":")))) for v in (a0, b0)))
     placed = place_blocks(now.date(), cs.blocks(), busy)
-    colors = cfg().get("colors") or {}
-    done_color = str(colors.get("done") or "8")
-    missed: list[Any] = []
+    done_color = str((cfg().get("colors") or {}).get("done") or "8")
     catch_key = f"callblock:{now:%Y%m%d}:catchup"
     catch = _catchup_slot(session, now, {k: v for k, v in placed.items() if cs.block_rows(rows, k)}, busy)
     catch_at = _when(catch["X"][0]).split(", ")[-1] if catch.get("X") else None
+    # pass 1: what each block holds now
+    info: list[dict[str, Any]] = []
     for letter, _hhmm, _mins in cs.blocks():
         mine = cs.block_rows(rows, letter)
         if not mine or letter not in placed:
             continue
         start, mins = placed[letter]
-        end = start + timedelta(minutes=mins)
         key = f"callblock:{now:%Y%m%d}:{letter}"
-        passed = end < now
-        if passed and not _exists(session, key):
-            continue                                  # never create one in the past (an existing one keeps updating)
+        passed = start + timedelta(minutes=mins) < now
         mine = [cs.refreshed(session, r, now.date()) for r in mine]
-        open_ = [r for r in mine if cs.row_state(r) == "open"]
-        done = [r for r in mine if cs.row_state(r) == "done"]
-        skip = [r for r in mine if cs.row_state(r) == "skip"]
-        if passed:
-            missed.extend(open_)
+        info.append({"letter": letter, "start": start, "mins": mins, "key": key, "passed": passed,
+                     "show": not passed or _exists(session, key),
+                     "open": [r for r in mine if cs.row_state(r) == "open"],
+                     "done": [r for r in mine if cs.row_state(r) == "done"],
+                     "skip": [r for r in mine if cs.row_state(r) == "skip"]})
+    missed = [r for i in info if i["passed"] for r in i["open"]]
+    host = None if catch.get("X") else next((i for i in info if not i["passed"] and i["show"]), None)
+    where = (f"📞 Catch-up calls{' at ' + catch_at if catch_at else ''}" if catch.get("X") else
+             f"block {host['letter']} (end of its list)" if host else "tomorrow's sheet (by itself)")
+    # pass 2: the events
+    for i in info:
+        if not i["show"]:
+            continue                                  # never create one in the past (an existing one keeps updating)
+        letter, open_, done, skip = i["letter"], i["open"], i["done"], i["skip"]
+        extra = missed if host is i else []
         offers = sum(1 for r in open_ if r.say.startswith("OFFER"))
         asks = sum(1 for r in open_ if r.say.startswith("ASK"))
         tail = (f" · ✅ {len(done)} done" if done else "")
-        if not open_:
+        if not open_ and not extra:
             summary = f"✅ Call block {letter}: all done ({len(done)} called" + (
                 f", {len(skip)} no call needed)" if skip else ")")
-        elif passed:
-            summary = f"⏩ Call block {letter}: {len(open_)} moved to Catch-up calls" + tail
+        elif i["passed"]:
+            summary = f"⏩ Call block {letter}: {len(open_)} moved to " + (
+                "Catch-up calls" if catch.get("X") else f"block {host['letter']}" if host else "tomorrow") + tail
         else:
-            summary = (f"📞 Call block {letter}: {len(open_)} to call" + tail
-                       + (f" ({offers} offers, {asks} ask their number)" if offers or asks else ""))
+            summary = (f"📞 Call block {letter}: {len(open_)} to call" + (f" + {len(extra)} from earlier" if extra else "")
+                       + tail + (f" ({offers} offers, {asks} ask their number)" if offers or asks else ""))
         head = "--- The calls (code | number agent | house | facts | what to say) ---"
-        if passed and open_:
-            head = (f"--- Not reached: moved to 📞 Catch-up calls{' at ' + catch_at if catch_at else ''} "
-                    "(same codes) ---")
+        if i["passed"] and open_:
+            head = f"--- Not reached: moved to {where} (same codes) ---"
         lines = [*cs.block_script(letter), "", head, *[r.line() for r in open_]]
+        if extra:
+            lines += ["", f"--- Also from earlier blocks, if you have time ({len(extra)}; same codes) ---",
+                      *[r.line() for r in extra]]
         if done:
             lines += ["", f"--- ✅ Done ({len(done)}) ---", *["✅ " + r.line() for r in done]]
         if skip:
             lines += ["", f"--- ⏭ No call needed today ({len(skip)}) ---", *["⏭ " + r.line() for r in skip]]
-        s0, e0 = _timed(start, mins)
-        body = _body("callblock", summary, lines, s0, e0, reminders=[] if (passed or not open_) else [10])
-        if not open_ or passed:
+        s0, e0 = _timed(i["start"], i["mins"])
+        quiet = i["passed"] or not (open_ or extra)
+        body = _body("callblock", summary, lines, s0, e0, reminders=[] if quiet else [10])
+        if quiet:
             body["colorId"] = done_color              # nothing more to do in this block
-        out.append(Desired(key, "callblock", None, body, start))
+        out.append(Desired(i["key"], "callblock", None, body, i["start"]))
     if catch.get("X") and (missed or _exists(session, catch_key)):
         start, mins = catch["X"]
         if start + timedelta(minutes=mins) >= now or _exists(session, catch_key):

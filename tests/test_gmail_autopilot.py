@@ -615,3 +615,17 @@ def test_lead_page_points_a_counter_to_action_needed(live):
     gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
     card = TestClient(webapp.app).get(f"/api/autopilot/{lead.id}/card").json()
     assert card["waiting"]["numbers"]["counter"] == 285000 and card["waiting"]["status"] == "needs_approval"
+
+
+def test_a_thank_you_after_a_no_price_note_needs_nothing(live):
+    """2026-11-04: "Sounds good! Thank you!" after our opener / backup note became a 📞 call and "waiting on you"."""
+    db = live
+    lead = listed(db)
+    ours = opener(db, lead)["Message-ID"]                       # the no-price opener was our last e-mail
+    gm.set_imap_factory(lambda: FakeIMAP({7: mail(7, "Sounds good! Thank you!\n\nGet Outlook for Android",
+                                                  in_reply_to=ours)}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
+    db.expire_all()
+    row = db.query(InboundReply).one()
+    assert row.status == "dismissed" and row.headline.startswith("THANKS") and row.lead_id == lead.id
+    assert not db.query(Interaction).filter_by(lead_id=lead.id, outcome="AGENT_REPLIED").count()

@@ -664,6 +664,17 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
     if mail.auto_reply:
         row.status, row.note, row.resolved_at = "auto_reply", "out-of-office / automatic reply: nothing to do", when
         return row
+    if not voice and rn.is_ack(mail.text):
+        # "Sounds good! Thank you!" after a no-price note: nothing to answer, no call (2026-11-04: it became a 📞 call
+        # event and "waiting on you"). After a priced offer it may be an acceptance, so it is read like any reply.
+        last = session.scalar(select(Interaction).where(Interaction.lead_id == lead.id,
+                                                        Interaction.outcome.in_(ao.TOUCH_OUTCOMES))
+                              .order_by(Interaction.occurred_at.desc()).limit(1))
+        if last is not None and last.outcome != ao.SENT_OUTCOME:
+            row.status, row.resolved_at, row.verdict = "dismissed", when, "INFO"
+            row.headline = "THANKS / ACKNOWLEDGED: nothing to answer"
+            row.note = "a thank-you after a no-price note: nothing to answer, no call"
+            return row
     an = rn.analyze(session, lead, mail.text, now=now)
     inter = rn.record(session, lead, an, mail.text, now=now)
     if voice:

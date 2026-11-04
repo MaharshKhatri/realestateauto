@@ -337,3 +337,32 @@ def test_catch_up_finds_time_now_when_the_evening_is_busy(db, operator):
     assert catch.starts_at == datetime(2026, 11, 4, 11, 30) and catch.body["summary"].startswith("📞 Catch-up calls: 1")
     later = gs.desired_events(db, now=datetime(2026, 11, 4, 11, 40))                    # it stays put
     assert later["callblock:20261104:catchup"].starts_at == datetime(2026, 11, 4, 11, 30)
+
+
+def test_with_no_free_time_left_missed_calls_join_the_next_block(db, operator):
+    """2026-11-04: class, the last two blocks and an evening reception left no 30 free minutes, so the missed block-B
+    calls had nowhere to go. They are added to the next block that hasn't ended."""
+    from db.models import CalendarEvent
+    first, second = listed(db), listed(db, phone="9735550199", email="x@broker.test")
+    db.flush()
+    rows = cs.today(db, NOW)
+    db.add(CalendarEvent(key="callblock:20261104:A", kind="callblock", status="synced", google_event_id="g1",
+                         body_json={}, starts_at=datetime(2026, 11, 4, 9, 30)))
+    # everything after block A is busy except block B's own time: no catch-up slot
+    gs._set_state(db, busy={"date": "2026-11-04", "spans": [["10:45", "11:00"], ["12:15", "21:00"]]})
+    sheet = gs._state(db).value_json
+    db.flush()
+    # move the second row into block B so a later block exists
+    from dataclasses import asdict
+    from db.models import SwarmState
+    state = db.get(SwarmState, cs.STATE_KEY)
+    rs = [asdict(r) for r in rows]
+    rs[1]["code"] = "B01"
+    state.value_json = {**state.value_json, "rows": rs}
+    db.flush()
+    want = gs.desired_events(db, now=datetime(2026, 11, 4, 10, 50))
+    a, bb = want["callblock:20261104:A"].body, want["callblock:20261104:B"].body
+    assert "callblock:20261104:catchup" not in want and sheet is not None
+    assert a["summary"] == "⏩ Call block A: 1 moved to block B" and a["colorId"] == "8"
+    assert bb["summary"].startswith("📞 Call block B: 1 to call + 1 from earlier")
+    assert "--- Also from earlier blocks, if you have time (1; same codes) ---" in bb["description"]
