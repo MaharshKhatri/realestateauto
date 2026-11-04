@@ -339,3 +339,26 @@ def test_the_night_pricing_run_values_the_new_listings(db, monkeypatch, tmp_path
     assert calls[0] == ("value_new_listings", {"cap": 600, "max_minutes": 70})
     cd._work("value", now=datetime(2026, 11, 5, 13, 0, tzinfo=et), **kw)
     assert calls[1][1]["max_minutes"] == 30
+
+
+def test_a_note_hands_the_listing_to_the_colleague_the_agent_named(db, monkeypatch):
+    """2026-11-04: "Please contact Geri, who I've CC'd" (the agent was travelling): the note finds the lead by its
+    street, saves Geri as the listing agent's e-mail and sends the answer to her in the same thread."""
+    from tests.factories import add_contact, make_lead
+    lead = make_lead(db, sheriff_days=None, stale_listing=True)
+    add_contact(db, lead, contact_type="LISTING_AGENT", name="Jacqui Agent", email="jacqui@broker.example",
+                company="Sample Realty")
+    db.commit()
+    sent = []
+    monkeypatch.setattr(gm, "send_custom_reply", lambda s, lead_id, text, **kw: sent.append((lead_id, kw["to"])))
+    monkeypatch.setattr(gm, "resolve_lead", lambda s, ref: lead.id if ref == "1 Test St" else 0)
+    key = "k" * 32
+    note = cd.seal_note([{"street": "1 Test St", "agent_email": "Geri@Broker.Example", "agent_name": "Geri Agent",
+                          "reply": "Hi Geri, Jacqui pointed me to you."}], cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 1}
+    assert sent == [(lead.id, "geri@broker.example")]
+    db.expire_all()
+    geri = [c for c in lead.contacts if c.email == "geri@broker.example"]
+    assert geri and geri[0].name == "Geri Agent" and geri[0].company == "Sample Realty"
+    bad = cd.seal_note([{"lead": lead.id, "agent_email": "not-an-address"}], cd.public_hex(key))
+    assert cd.apply_note(bad, key)["note_errors"] == "ValueError"

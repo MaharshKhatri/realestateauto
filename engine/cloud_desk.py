@@ -415,6 +415,9 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       (the next call on the calendar) wins;
     - "agent_phone": a better number for the listing agent (a cell the office gave out), saved on the agent's card;
     - "code" (+ "result", "notes", "date"): a call-sheet result, resolved on that day's frozen sheet;
+    - "street" in place of "lead": the lead found by its street ("2507 Columbia Ave"), a unique match only;
+    - "agent_email" (+ "agent_name"): the person now handling the listing (an agent's "contact Geri, I've CC'd her"),
+      saved as the lead's listing-agent e-mail; a "reply" in the same item goes to that address in the thread;
     - "operator" (no "lead"): the operator's own details for every e-mail, LOI, script and voicemail line, e.g.
       {"operator": {"phone": "9085550100"}} (validated like My Setup, saved in the desk's settings.local.yaml).
     - "close_replies": a short reason; every reply still waiting on the lead is closed (dismissed) with it, so the
@@ -450,7 +453,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         items = [i for i in items if i not in codes]
     for item in items:
         try:
-            lead_id = int(item["lead"])
+            with session_scope() as s:
+                lead_id = int(item["lead"]) if item.get("lead") else gm.resolve_lead(s, str(item["street"]))
             with session_scope() as s:
                 lead = s.get(Lead, lead_id)
                 if lead is None:
@@ -469,9 +473,22 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                         c.phone_type, c.company = "wireless", c.company or base.company
                         c.confidence_score = max(float(c.confidence_score or 0), 0.9)
                         s.flush()
+                new_email = str(item.get("agent_email") or "").strip().lower()
+                if new_email:
+                    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", new_email):
+                        raise ValueError("bad agent_email")
+                    from db.repository import upsert_contact
+                    base = ao.agent_contact(lead) or next(
+                        (x for x in lead.contacts if x.contact_type == "LISTING_AGENT"), None)
+                    c, _ = upsert_contact(s, lead=lead, contact_type="LISTING_AGENT", source="chat_note",
+                                          name=str(item.get("agent_name") or (base.name if base else "")) or None,
+                                          email=new_email)
+                    c.company = c.company or (base.company if base else None)
+                    c.confidence_score = max(float(c.confidence_score or 0), 0.95)
+                    s.flush()
                 if (item.get("reply") or "").strip():
                     gm.send_custom_reply(s, lead_id, item["reply"], price=item.get("price") or None, now=now,
-                                         smtp_factory=smtp_factory,
+                                         smtp_factory=smtp_factory, to=new_email or None,
                                          allow_over_walkaway=bool(item.get("over_walkaway")))
                 if (item.get("close_replies") or "").strip():
                     gm.close_open_replies(s, lead_id, "closed from the chat: " + str(item["close_replies"])[:120])

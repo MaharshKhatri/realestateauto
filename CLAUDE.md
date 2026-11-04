@@ -852,6 +852,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
         "📞 Call <agent> back … (check in)" carrying the chat note's facts. Only `chat_note` notes reach the
         calendar: Claude keeps them to business facts, never a homeowner's name or phone.
       - Every call script ends with a voicemail line.
+      - `street` (in place of `lead`: a unique street match) and `agent_email` + `agent_name` (learned 2026-11-04: "please
+        contact Geri, who I've CC'd" while the agent travelled): the colleague is saved as the listing agent's e-mail and
+        the item's `reply` goes to her in the same thread (`send_custom_reply(to=...)`).
       - `close_replies` (learned 2026-11-04, Claude reads the business inbox through the Gmail connector, read-only):
         a reply Claude settled (a polite no, "sharing with the sellers") is dismissed with the reason, so the desk
         sends nothing more on it and its call-sheet row says "SKIP TODAY: settled by e-mail". A no ("no where

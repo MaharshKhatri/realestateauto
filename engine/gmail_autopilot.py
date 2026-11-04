@@ -1686,11 +1686,13 @@ def daily_openers(limit: int, *, at: str = "10:30", now: datetime | None = None,
 
 def send_custom_reply(session: Session, lead_id: int, text: str, *, subject: str | None = None,
                       price: float | None = None, now: datetime | None = None, smtp_factory: Any = None,
-                      allow_over_walkaway: bool = False) -> dict[str, Any]:
+                      allow_over_walkaway: bool = False, to: str | None = None) -> dict[str, Any]:
     """`/reply <house> <what to say>`: the operator's own words, in the agent's thread, from Gmail, logged.
 
     The signature, mailing address and opt-out are added when missing (CAN-SPAM); price=N attaches the 1-page
-    offer at N through the normal LOI gates and logs it as an offer."""
+    offer at N through the normal LOI gates and logs it as an offer. `to`: another address in the same thread
+    (2026-11-04: "please contact Geri, who I've CC'd": the answer goes to the colleague, still threaded on the agent's
+    message)."""
     from engine.contracts import ContractBlocked, generate
     lead = session.get(Lead, lead_id)
     if lead is None:
@@ -1709,7 +1711,8 @@ def send_custom_reply(session: Session, lead_id: int, text: str, *, subject: str
     if op["postal"] and op["postal"] not in body:
         body += "\n\n" + "\n".join(hc.signature_lines(op)) + "\n\n" + "\n".join(hc.footer_lines(op))
     waiting = waiting_reply(session, lead_id)
-    to = (waiting.from_email if waiting is not None and waiting.from_email else None) or agent.email
+    to = (to or "").strip().lower() or \
+        (waiting.from_email if waiting is not None and waiting.from_email else None) or agent.email
     if not to:
         raise ApprovalError("no e-mail address for this agent")
     base = _base_packet(session, lead, agent)
