@@ -242,3 +242,9 @@ def test_the_funnel_counts_where_good_deals_drop_out(db, operator):
     assert f["tier_skip"] == 1 and any("retail" in k for k in f["skip_top"])
     assert all(isinstance(v, (int, float, dict)) for v in f.values())
     assert not any("@" in str(k) or "St" in str(k) for k in f["skip_top"])   # no addresses or e-mails in the log
+    from engine.outreach_stats import _norm, flat
+    line = flat(f)
+    assert line["f_convertible"] == 1 and all(isinstance(v, (int, float, str)) for v in line.values())
+    assert _norm("HOLD: wrong parcel: the MLS listing (Iselin) and the parcel record (South River) are 10.4 miles apart") \
+        == "HOLD: wrong parcel"
+    assert _norm("our final is 63% of the ask (under 65%): too far apart") == "our final is #% of the ask: too far apart"

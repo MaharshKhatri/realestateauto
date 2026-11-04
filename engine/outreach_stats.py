@@ -22,8 +22,21 @@ EMAIL_CHANNELS = ("email_smtp", "email_gmail", "email")
 
 
 def _norm(reason: str) -> str:
-    """'our final is 63% of the ask (under 75%)…' → 'our final is #% of the ask (under #%)…': countable, no addresses."""
-    return re.sub(r"\$?\d[\d,.]*", "#", str(reason or "")).strip()[:70] or "(none)"
+    """'our final is 63% of the ask (under 75%)…' → 'our final is #% of the ask': countable, and nothing that could
+    name a place or a person (parentheses dropped, at most two ': ' parts, numbers as #)."""
+    text = re.sub(r"\s*\([^)]*\)", "", str(reason or ""))
+    text = ": ".join(text.split(": ")[:2])
+    text = re.sub(r"\$?\d[\d,.]*", "#", text)
+    return re.sub(r"\s+", " ", text).strip(" :;,.")[:60] or "(none)"
+
+
+def flat(f: dict[str, Any]) -> dict[str, Any]:
+    """The funnel as plain scalars for the one-line public run log (which drops nested values)."""
+    out: dict[str, Any] = {f"f_{k}": v for k, v in f.items() if isinstance(v, (int, float))}
+    for group in ("skip_top", "not_convertible_top"):
+        for i, (why, n) in enumerate((f.get(group) or {}).items(), 1):
+            out[f"f_{group}{i}"] = f"{n} x {why}"
+    return out
 
 
 def funnel(session: Session, now: datetime | None = None) -> dict[str, Any]:

@@ -534,9 +534,9 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
         out.update(firm_up=int(fu.get("revalued") or 0), now_firm=int(fu.get("now_firm") or 0))
     if task == "stats":
         # Where the pipeline stands (engine/outreach_stats.py): counts only, safe for the public run log.
-        from engine.outreach_stats import funnel
+        from engine.outreach_stats import flat, funnel
         with session_scope() as s:
-            out["funnel"] = funnel(s, t.replace(tzinfo=None))
+            out.update(flat(funnel(s, t.replace(tzinfo=None))))
     if t.weekday() < 6 and 7 <= t.hour < 21:
         # The day's call sheet (engine/call_sheet.py), frozen at its first build so codes mean the same call all day;
         # task `sheet` rebuilds the blocks nobody has called yet with today's rules.
