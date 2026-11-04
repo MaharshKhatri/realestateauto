@@ -262,3 +262,12 @@ def test_the_answer_greets_the_person_who_wrote(db):
     db.flush()
     assert rn.analyze(db, lead, "Seller wants 300k").reply_text.startswith("Hi Pat")
     assert rn.analyze(db, lead, "Seller wants 300k", agent=geri).reply_text.startswith("Hi Geri")
+
+
+def test_what_is_your_max_gets_the_best_and_final(db):
+    """2026-11-04: Juliet asked "What is your max?" and the draft asked for the seller's number again."""
+    lead = listed(db)
+    a = rn.analyze(db, lead, "What is your max?")
+    final = a.numbers["adjusted_walkaway"]
+    assert a.headline.startswith("THEY ASKED YOUR MAX") and f"${final:,.0f}" in a.reply_text
+    assert "what would the seller" not in a.reply_text.lower()

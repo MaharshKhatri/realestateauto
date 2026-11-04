@@ -67,6 +67,8 @@ _ASK_WORDS = re.compile(r"(wants?|needs?|is at|would take|will take|would accept
 _HEDGE_BEFORE = re.compile(r"(?:^|\s)(prob(?:ably)?|maybe|around|about|roughly|approx(?:imately)?|likely|ballpark|~)\s*$",
                            re.I)
 _NEG = re.compile(r"\b(not|no|isn't|aren't|haven't|hasn't|never|nope|without|nor)\b", re.I)
+_ASKS_MAX = re.compile(r"what(?:'s| is|s)? (?:your|ur|the) (?:max(?:imum)?|best|highest|top|ceiling)\b|how high (?:can|could|will|would) "
+                       r"you go|best you can do", re.I)
 
 PHRASES: dict[str, list[str]] = {
     "ACCEPT": [r"accept(s|ed)? (your|the|that) (offer|number|price)", r"we have a deal", r"let'?s do it", r"deal\b.*\bworks",
@@ -838,6 +840,20 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         an.sms_text = f"Hi {first}, it's {me}. Understood on {st}; my ceiling stays {hc.money(adj_walk)} cash, as-is, if anything changes." + sms_tail
         an.actions = ["Hold; the drip follow-up is scheduled."] + an.actions
         an.followup_at = _followup(now, int(ncfg.get("drip_days", 14)))
+        return an
+    if _ASKS_MAX.search(text or "") and adj_walk:
+        # "What is your max?" (Juliet, 2026-11-04, after our "too far apart"): the honest answer is the best and final,
+        # once; asking for their number again would ignore the question. Priced, so it waits for the operator.
+        an.verdict, an.headline = "YELLOW", f"THEY ASKED YOUR MAX: BEST AND FINAL {hc.money(adj_walk)}"
+        nums.update({"our_counter": adj_walk, "fee_at_our_counter": _floor100(adj_max - adj_walk)})
+        sentences = ["Fair question.",
+                     f"As-is, my max on {st} is {hc.money(adj_walk)} cash, with no financing or appraisal contingency "
+                     "and a quick close.",
+                     "If the seller can work with that, I'll send the written offer the same day."]
+        priced_reply(adj_walk, sentences, [])
+        an.sms_text = f"Hi {first}, it's {me}. My max on {st} is {hc.money(adj_walk)} cash, as-is." + sms_tail
+        an.actions = [f"Their question was your max: {hc.money(adj_walk)} is the best and final, nothing above it."] + an.actions
+        an.followup_at = _followup(now, int(ncfg.get("yellow_followup_days", 2)))
         return an
     # a question, or nothing we could classify
     an.headline = "ANSWER THEM, THEN ASK FOR A NUMBER"
