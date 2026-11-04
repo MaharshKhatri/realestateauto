@@ -76,7 +76,8 @@ gmail_autopilot:
   auto_send_touch2: true             # "still available" + nothing else -> the priced offer + LOI go out by themselves
   auto_send_fact_check: true         # ... or, when the price needs one fact first (condo unit, unit count, wrong parcel),
                                      # a no-price answer asking for it (no number, no LOI)
-  touch2_delay_minutes: [4, 11]      # ... a few minutes after the reply, like a person answering
+  touch2_delay_minutes: [2, 5]       # ... a few minutes after the reply, like a person answering (the desk reads
+                                     # the inbox every ~6 minutes, so a "still available" is answered within ~10)
   pace_seconds: [20, 45]             # the 🚀 batch: random gap between e-mails (never a burst)
   agent_cold_gap_hours: 72           # one NEW cold e-mail per agent address per 3 days (agents with many listings)
   reply_pace_seconds: [8, 20]        # offers to agents who replied, sent in one inbox run: a short gap between them
