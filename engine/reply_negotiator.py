@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from db.models import Interaction, Lead, LeadStage
+from db.models import Contact, Interaction, Lead, LeadStage
 from engine import agent_outreach as ao
 from engine import human_copy as hc
 from engine import quant_pricing as qp
@@ -62,6 +62,10 @@ _ASK_WORDS = re.compile(r"(wants?|needs?|is at|would take|will take|would accept
                         r"the number is|can do|could do|would do|would sell|will sell|sell for|let it go for|"
                         # "We are at 470.00" (the price they're under contract at), "sitting at", "accepted at"
                         r"are at|we'?re at|sitting at|(?:contract|accepted|deal|offers?) (?:at|for))", re.I)
+# "Prob 550" / "around 480" / "maybe 425" in answer to "what would the seller need to net?" (2026-11-04: Juliet's
+# "Prob 550" on a $575K ask was dropped as $550): thousands, but a guess, so never "stated plainly".
+_HEDGE_BEFORE = re.compile(r"(?:^|\s)(prob(?:ably)?|maybe|around|about|roughly|approx(?:imately)?|likely|ballpark|~)\s*$",
+                           re.I)
 _NEG = re.compile(r"\b(not|no|isn't|aren't|haven't|hasn't|never|nope|without|nor)\b", re.I)
 
 PHRASES: dict[str, list[str]] = {
@@ -173,7 +177,9 @@ def parse_reply(text: str) -> ParsedReply:
         window_before = re.split(r"[.;!?\n]", scrubbed[max(0, m.start() - 45):m.start()])[-1]   # same sentence only
         window_after = re.split(r"[.;!?\n]", scrubbed[m.end():m.end() + 25], maxsplit=1)[0]
         ask_before = bool(_ASK_WORDS.search(window_before))
-        value = _amount_value(dollar, number, suffix, ask_before)
+        bare = scrubbed.strip(" \t\n.!,~") == m.group(0).strip()           # the whole reply is "550"
+        hedged = not ask_before and (bare or bool(_HEDGE_BEFORE.search(window_before)))
+        value = _amount_value(dollar, number, suffix, ask_before or hedged)
         if value is None:
             continue
         if not suffix and not dollar and "," not in number and 1900 <= value <= 2100 and "." not in number:
@@ -184,7 +190,7 @@ def parse_reply(text: str) -> ParsedReply:
             continue
         if value > 50_000_000:
             continue
-        score = 1.0 if ask_before else 0.0
+        score = 1.0 if ask_before else 0.8 if hedged and value >= 20000 else 0.0
         if re.search(r"(your|my|our) (offer|number)", window_before, re.I):
             score -= 0.5                               # they are quoting us, not countering
         scored.append((round(value, 2), score, m.start()))
@@ -429,6 +435,27 @@ def is_ack(text: str) -> bool:
     return len(body) <= 80 and "?" not in body and not re.search(r"\d", body) and bool(_ACK.match(body))
 
 
+_CHECKIN_OK = re.compile(r"^(?:(?:sure(?: thing)?|yes|yeah|yep|absolutely|of course|definitely|certainly|ok(?:ay)?|"
+                         r"fine|that'?s fine|that works|no problem|np|please do|feel free|you can|you may|go ahead|"
+                         r"by all means|will do|sounds good|sounds great|great|perfect|thanks?(?: you)?|thank you|"
+                         r"appreciate it|(?:please )?(?:do )?(?:check|reach out|follow up)(?: back)?(?: with me)?"
+                         r"(?: then| anytime| any time)?)[\s!.,]*)+$", re.I)
+
+
+def is_checkin_ok(text: str) -> bool:
+    """A short yes to OUR "mind if I check back in about 30 days?" (Geri, 2026-11-04: "Sure, you can absolutely" was
+    read as "still available" and got a second "what would the seller need to net?" right after she gave a number).
+    Only meaningful when our last answer asked to check back: after an opener, "Sure" means available."""
+    lines = [x.strip() for x in (text or "").splitlines() if x.strip()]
+    lines = [x for x in lines if not re.match(r"(sent from|get outlook|sent via|-{2,})", x, re.I)]
+    if not lines or len(lines) > 3:
+        return False
+    if len(lines) > 1 and re.fullmatch(r"[A-Za-z.'-]+(?: [A-Za-z.'-]+)?", lines[-1]) and not _CHECKIN_OK.match(lines[-1]):
+        lines = lines[:-1]                         # a first name under the yes
+    body = " ".join(lines)
+    return len(body) <= 100 and "?" not in body and not re.search(r"\d", body) and bool(_CHECKIN_OK.match(body))
+
+
 def fact_check_issue(pf: Any) -> tuple[str, str] | None:
     """(kind, the pre-flight issue) when a fact from the agent must come before a price; a HOLD always needs one."""
     for issue in pf.issues:
@@ -475,12 +502,14 @@ def _backup_context(session: Session, lead: Lead, intents: set[str]) -> bool:
         select(InboundReply.intents_json).where(InboundReply.lead_id == lead.id)))
 
 
-def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = None) -> Analysis:
-    """Read the reply, run the math, write the answer. Pure: nothing is written (record() does that)."""
+def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = None,
+            agent: Contact | None = None) -> Analysis:
+    """Read the reply, run the math, write the answer. Pure: nothing is written (record() does that). `agent` is the
+    person who wrote (a colleague the listing agent handed the thread to), greeted by name; default the card's agent."""
     parsed = parse_reply(text)
     f = lead_facts(lead)
     op = hc.operator()
-    agent = ao.agent_contact(lead)
+    agent = agent or ao.agent_contact(lead)
     first = hc.first_name(agent.name) if agent and agent.name else "there"
     st = hc.street(f["address"])
     ncfg = _ncfg()

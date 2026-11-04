@@ -412,7 +412,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       "over_walkaway", which only the operator decides, e.g. when the stored valuation is for the wrong parcel);
     - "call": a call outcome (NO_ANSWER, LEFT_VM, SPOKE_WARM_FOLLOWUP, SPOKE_NEEDS_OFFER, SPOKE_NOT_INTERESTED, ...)
       with "notes" and "followup_at" (Eastern, ISO), logged with `crm.log_call` after any reply, so its follow-up
-      (the next call on the calendar) wins;
+      (the next call on the calendar) wins; "followup_at" with no "call" sets the lead's next touch after the reply
+      (a check-in date the agent agreed to);
     - "agent_phone": a better number for the listing agent (a cell the office gave out), saved on the agent's card;
     - "code" (+ "result", "notes", "date"): a call-sheet result, resolved on that day's frozen sheet;
     - "street" in place of "lead": the lead found by its street ("2507 Columbia Ave"), a unique match only;
@@ -492,6 +493,9 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                                          allow_over_walkaway=bool(item.get("over_walkaway")))
                 if (item.get("close_replies") or "").strip():
                     gm.close_open_replies(s, lead_id, "closed from the chat: " + str(item["close_replies"])[:120])
+                if item.get("followup_at") and not item.get("call"):
+                    # A reply with no call: the next touch is this date (a 30-day check-in the agent agreed to).
+                    lead.next_followup_at = datetime.fromisoformat(item["followup_at"]).replace(tzinfo=None)
                 if item.get("call"):
                     when = datetime.fromisoformat(item["followup_at"]) if item.get("followup_at") else None
                     channel = str(item.get("channel") or "call")

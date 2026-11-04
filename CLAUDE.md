@@ -841,7 +841,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
       price, with the Offer Summary and the LOI, in the agent's thread).
     - task `note` + a **sealed note** (learned 2026-11-03: the operator reports calls in the chat): JSON items
       `{"lead", "reply", "price", "over_walkaway", "call", "channel", "notes", "followup_at", "agent_phone",
-        "close_replies"}` sealed with
+        "close_replies"}` ("followup_at" with no "call" sets the next touch after the reply) sealed with
       `manage.py cloud --seal <pub>` to the desk's X25519 public key. Every run prints that key as `pub`.
       - The public run page shows only ciphertext, and only repository writers can dispatch.
       - `apply_note`: a reply goes through `send_custom_reply` (signature, address, opt-out; price → LOI, refused
@@ -1006,6 +1006,11 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     after the last block they go on tomorrow's sheet by themselves;
   - a plain thank-you ("Sounds good! Thank you!", `reply_negotiator.is_ack`) after a no-price note is dismissed with
     nothing to answer and no call; after a priced offer it is read like any reply (it may be an acceptance);
+  - a short yes to our "mind if I check back in about 30 days?" ("Sure, you can absolutely", `rn.is_checkin_ok`,
+    only when our last answer asked to check back: `gmail_autopilot.asked_to_check_back`) is dismissed and the check-in
+    stands; no Touch 2 goes out by itself once the agent gave a number on the house (`earlier_counter`); the answer
+    greets the person who wrote (a colleague the agent handed the thread to), not the card's agent; "Prob 550" /
+    "around 480" / a bare "550" read as thousands, never "stated plainly" (2026-11-04: Geri, Juliet);
   - a row whose agent e-mailed back today and was answered says so ("THEY E-MAILED BACK (…; the desk answered by
     e-mail)"), or "SKIP TODAY: they e-mailed back (off the table for now)" when the door is closed;
   - follow-up / call-back / reply events handled today (`gcal_sync.handled`: the operator's call or an approved /

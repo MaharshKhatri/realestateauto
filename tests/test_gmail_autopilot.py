@@ -629,3 +629,44 @@ def test_a_thank_you_after_a_no_price_note_needs_nothing(live):
     row = db.query(InboundReply).one()
     assert row.status == "dismissed" and row.headline.startswith("THANKS") and row.lead_id == lead.id
     assert not db.query(Interaction).filter_by(lead_id=lead.id, outcome="AGENT_REPLIED").count()
+
+
+def _answered_far_apart(db, lead, counter=300000):
+    row = InboundReply(message_id="<far@b.test>", lead_id=lead.id, status="auto_sent", verdict="RED",
+                       match_method="thread", counter_amount=counter,
+                       headline=f"TOO FAR APART AT ${counter:,} (our final $292,000): NO NUMBER, CHECK BACK IN 30 DAYS",
+                       received_at=T0 + timedelta(minutes=20), resolved_at=T0 + timedelta(minutes=25),
+                       analysis_json={"reply_text": "Hi Pat, ... mind if I check back in about 30 days?"})
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_a_yes_to_our_check_in_needs_nothing(live):
+    """2026-11-04: "Sure, you can absolutely" after our "mind if I check back in about 30 days?" was read as "still
+    available", and a second "what would the seller need to net?" went out right after the agent gave a number."""
+    db = live
+    lead = listed(db)
+    ours = opener(db, lead)["Message-ID"]
+    _answered_far_apart(db, lead)
+    sent_before = len(FakeSMTP.sent)
+    gm.set_imap_factory(lambda: FakeIMAP({8: mail(8, "Sure, you can absolutely", in_reply_to=ours)}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
+    db.expire_all()
+    row = db.query(InboundReply).filter_by(message_id="<agent-8@broker.test>").one()
+    assert row.status == "dismissed" and row.headline.startswith("OK TO CHECK BACK")
+    assert len(FakeSMTP.sent) == sent_before
+
+
+def test_no_automatic_touch2_once_they_gave_a_number(live):
+    db = live
+    lead = listed(db)
+    ours = opener(db, lead)["Message-ID"]
+    db.add(InboundReply(message_id="<num@b.test>", lead_id=lead.id, status="dismissed", match_method="thread",
+                        counter_amount=300000, received_at=T0 + timedelta(minutes=20)))
+    db.commit()
+    gm.set_imap_factory(lambda: FakeIMAP({9: mail(9, "Yes, still available", in_reply_to=ours)}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
+    db.expire_all()
+    row = db.query(InboundReply).filter_by(message_id="<agent-9@broker.test>").one()
+    assert row.status == "needs_approval" and "already gave a number" in row.note

@@ -514,6 +514,27 @@ def _only_offer_questions(text: str) -> bool:
     return all(any(p.search(q) for p in answerable) for q in qs)
 
 
+def asked_to_check_back(session: Session, lead_id: int, exclude_id: int | None = None) -> bool:
+    """Our latest answer on the lead asked "mind if I check back in about N days?" (too far apart / not now)."""
+    q = select(InboundReply).where(InboundReply.lead_id == lead_id, InboundReply.status.in_(("auto_sent", "approved")))
+    if exclude_id is not None:
+        q = q.where(InboundReply.id != exclude_id)
+    last = session.scalar(q.order_by(InboundReply.resolved_at.desc(), InboundReply.id.desc()).limit(1))
+    if last is None:
+        return False
+    text = " ".join(str(x or "") for x in (last.headline, (last.analysis_json or {}).get("reply_text"))).lower()
+    return "check back" in text
+
+
+def earlier_counter(session: Session, lead_id: int, exclude_id: int | None = None) -> float | None:
+    """The newest number an agent already gave us on this lead, if any."""
+    q = select(InboundReply.counter_amount).where(InboundReply.lead_id == lead_id,
+                                                  InboundReply.counter_amount.is_not(None))
+    if exclude_id is not None:
+        q = q.where(InboundReply.id != exclude_id)
+    return session.scalar(q.order_by(InboundReply.id.desc()).limit(1))
+
+
 def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str | None, text: str) -> str | None:
     """None when Touch 2 may go out by itself; otherwise the plain reason it waits for the operator."""
     from engine import preflight
@@ -528,6 +549,10 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
     intents = set(analysis.parsed.intents)
     if analysis.parsed.counter_amount:
         return "they named a number: your call"
+    before = earlier_counter(session, lead.id)
+    if before:
+        # Asking "what would the seller need to net?" (or opening at our price) after they told us reads as a bot.
+        return f"they already gave a number on this house ({hc.money(before)}): your call"
     fact = getattr(analysis, "kind", "") == "fact_check"
     if not ({"AVAILABLE", "BACKUP"} & intents) or (analysis.verdict != "GREEN" and not fact):
         return "not a plain 'still available'"
@@ -675,7 +700,14 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
             row.headline = "THANKS / ACKNOWLEDGED: nothing to answer"
             row.note = "a thank-you after a no-price note: nothing to answer, no call"
             return row
-    an = rn.analyze(session, lead, mail.text, now=now)
+    if not voice and rn.is_checkin_ok(mail.text) and asked_to_check_back(session, lead.id, row.id):
+        # "Sure, you can absolutely" to our "mind if I check back in about 30 days?" (2026-11-04: read as "still
+        # available", it got a second "what would the seller need to net?" right after the agent named a number).
+        row.status, row.resolved_at, row.verdict = "dismissed", when, "INFO"
+        row.headline = "OK TO CHECK BACK: nothing to answer (the check-in date stands)"
+        row.note = "they agreed to our check-in: nothing to answer, no call; the follow-up already set stays"
+        return row
+    an = rn.analyze(session, lead, mail.text, now=now, agent=agent)
     inter = rn.record(session, lead, an, mail.text, now=now)
     if voice:
         inter.channel = "sms_in" if method == "voice_text" else "voicemail"     # not an e-mail thread to answer in
@@ -836,7 +868,8 @@ def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
             Interaction.lead_id == lead.id, Interaction.occurred_at > (row.received_at or row.created_at),
             Interaction.id != row.interaction_id,
             Interaction.outcome.in_((*ao.TOUCH_OUTCOMES, ao.REPLY_OUTCOME, ao.PHONE_YES_OUTCOME))).limit(1))
-        an = rn.analyze(s, lead, row.body_text or "", now=now)
+        writer = s.get(Contact, row.contact_id) if row.contact_id else None
+        an = rn.analyze(s, lead, row.body_text or "", now=now, agent=writer)
         block = ("something happened on this lead after the reply" if newer else
                  auto_touch2_block(s, lead, an, row.match_method, row.body_text or ""))
         if block:
@@ -1189,7 +1222,8 @@ def refresh_open_replies(session: Session, now: datetime | None = None, *, promo
         if lead is None or not row.body_text:
             continue
         text = strip_quoted(row.body_text)
-        an = rn.analyze(session, lead, text, now=now)
+        an = rn.analyze(session, lead, text, now=now,
+                        agent=session.get(Contact, row.contact_id) if row.contact_id else None)
         # (the drafted answer too: after a re-price the same "still available" must not keep yesterday's number)
         same = an.headline == row.headline and an.parsed.counter_amount == row.counter_amount and text == row.body_text \
             and sorted(an.parsed.intents) == sorted(row.intents_json or []) \

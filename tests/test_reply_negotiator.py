@@ -233,3 +233,32 @@ def test_every_reply_passes_the_human_copy_lint(db, operator):
 def test_a_plain_thank_you_is_recognized(text, ack):
     """2026-11-04: "Sounds good! Thank you!" after our backup note became a 📞 call event and "waiting on you"."""
     assert rn.is_ack(text) is ack
+
+
+@pytest.mark.parametrize("text, counter", [
+    ("Prob 550", 550000), ("550", 550000), ("Around 480", 480000), ("maybe 425 if it closes fast", 425000),
+    ("about 30 days", None), ("Probably 3 bedrooms", None)])
+def test_a_hedged_short_number_is_thousands_but_not_stated_plainly(text, counter):
+    """2026-11-04: Juliet's "Prob 550" (ask $575K) was dropped as $550, and the reply asked her for a number again."""
+    p = rn.parse_reply(text)
+    assert p.counter_amount == counter
+    if counter:
+        assert p.counter_explicit is False             # a guess: a priced answer to it waits for the operator
+
+
+@pytest.mark.parametrize("text, ok", [
+    ("Sure, you can absolutely", True), ("Yes please do\nGeri", True), ("Of course!", True), ("That's fine, thanks", True),
+    ("Sure, but the seller wants 300", False), ("Yes, is your offer coming?", False), ("Still available", False)])
+def test_a_yes_to_our_check_in(text, ok):
+    """2026-11-04: Geri's "Sure, you can absolutely" to "mind if I check back in about 30 days?" was read as available."""
+    assert rn.is_checkin_ok(text) is ok
+
+
+def test_the_answer_greets_the_person_who_wrote(db):
+    """2026-11-04: Jacqui handed the thread to her colleague Geri; the answer to Geri opened "Hi Jacqueline"."""
+    lead = listed(db)
+    geri = add_contact(db, lead, contact_type="LISTING_AGENT", name="Geri Colleague", email="geri@broker.test",
+                       company="Garden Realty")
+    db.flush()
+    assert rn.analyze(db, lead, "Seller wants 300k").reply_text.startswith("Hi Pat")
+    assert rn.analyze(db, lead, "Seller wants 300k", agent=geri).reply_text.startswith("Hi Geri")
