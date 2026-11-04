@@ -182,3 +182,11 @@ def test_agent_blast_page_uses_plain_copy(db, tmp_path):
     index, packets = ao.write_batch(db, 5, tmp_path / "blast")
     assert packets and all(hc.lint(p.email_body) == [] for p in packets)
     assert "Offer Summary" in index.read_text()
+
+
+def test_a_name_inside_the_company_name_is_printed_once():
+    """2026-11-04: the cloud desk signed "Maharsh / Maharsh | Maharsh Khatri" (name "Maharsh", company "Maharsh Khatri")."""
+    op = {"first": "Maharsh", "name": "Maharsh", "company": "Maharsh Khatri", "phone": "(732) 555-0100"}
+    assert hc.signature_lines(op) == ["Maharsh", "Maharsh Khatri", "(732) 555-0100"]
+    op2 = {**op, "name": "Jordan Operator", "company": "Garden State Homes LLC"}
+    assert hc.signature_lines(op2)[1] == "Jordan Operator | Garden State Homes LLC"
