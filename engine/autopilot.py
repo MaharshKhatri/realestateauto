@@ -275,7 +275,8 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
 
     short_sales: list[Lead] = []
     for lf in ft.listed_foreclosures(session):
-        if lf.agent and lf.track not in ("NO_OFFER", "EQUITY_MONITOR") and len(cards) < min(limit, 6):
+        if lf.agent and lf.track not in ("NO_OFFER", "EQUITY_MONITOR") and \
+                len(cards) < min(limit, int(_cfg().get("max_foreclosures_per_deck", 12))):
             lead = session.get(Lead, lf.lead_id)
             if lead is None or _recently_contacted(lead, now_e):
                 continue
@@ -283,7 +284,7 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
                 short_sales.append(lead)       # payoff above any investor price: a lender's call, after the likelier deals
             else:
                 add(lead)
-    for lead in crm.due_followups(session, now)[:8]:
+    for lead in crm.due_followups(session, now)[:int(_cfg().get("max_followups_per_deck", 25))]:
         if lead.last_contact_at and any(c.contact_type == ContactType.LISTING_AGENT for c in lead.contacts):
             add(lead)
     for lead in ao.candidates(session, limit * 3):

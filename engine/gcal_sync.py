@@ -380,19 +380,30 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
             house.append(f"{max(dom, lst.days_on_market)} days on the market")
     if place.ask and not ask_shown:
         house.append(f"asking {_money(place.ask)}")
-    v = lead.property.current_valuation
     written = f"your written offer ({_money(lead.offer_amount)})" if lead.offer_amount else None
-    priced = not (fact or v is None or not v.mao_aggressive)
-    if not priced:
-        kind, issue = fact or ("basics", "no numbers for this house yet")
+    # The same one number every other surface states (engine/offer_math.py), locked to what already went out.
+    from engine.offer_math import firm_offer, locked
+    try:
+        firm = locked(lead, firm_offer(lead, session))
+    except Exception:                               # noqa: BLE001 - a script never breaks the calendar
+        log.exception("call script: firm offer failed for lead %s", lead.id)
+        firm = None
+    priced = bool(not fact and firm is not None and (firm.priced or (written and firm.final)))
+    ask_theirs = bool(not fact and not priced and firm is not None and firm.tier == "ask_first" and firm.final)
+    if ask_theirs:
+        kind, issue = "basics", ""
+        numbers = (f"Don't name a price first ({firm.reasons[0] if firm.reasons else 'ask what the seller needs'}). "
+                   f"Ask what the seller needs. At or under {_money(firm.final)} it can work; above it, you're too far "
+                   "apart: be polite and ask to check back in a few weeks.")
+    elif not priced:
+        kind, issue = fact or ("basics", (firm.reasons[0] if firm is not None and firm.reasons else
+                                          "no numbers for this house yet"))
         numbers = (f"Don't go above {written} on this call: {issue}." if written else
                    f"Don't name a price on this call: {issue}.") + " Get the facts first; the desk prices it after."
     else:
         kind, issue = "basics", ""
-        from engine.agent_outreach import offer_prices
-        opening = offer_prices(lead)[0] or v.anchor_offer
-        numbers = (f"Your numbers: open at {_money(opening)}, aim for {_money(v.mao_conservative)}, "
-                   f"walk away above {_money(v.mao_aggressive)}."
+        opening = float(lead.offer_amount or firm.offer or firm.final)
+        numbers = (f"Your one number: {_money(opening)}. Best and final: {_money(firm.final)}; never above it."
                    + (f" Already sent: {written}." if written and not ask_shown else ""))
     if lst is not None and (lst.property_type or "").startswith("multi") and kind == "basics":
         kind = "units"
@@ -402,7 +413,7 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
     phone = op["phone"] or "your phone number"
     if priced:
         open_at = _money(lead.offer_amount) if lead.offer_amount else _money(opening)
-        walk = _money(v.mao_aggressive)
+        walk = _money(firm.final)
         offer = [(f'4) Your written offer ({open_at}) already went out by e-mail. Ask: "Did you get my offer at '
                   f'{open_at}? What did the seller think?" If they ask again: "It\'s {open_at}, cash, as is, with '
                   'attorney review."') if lead.offer_amount else
@@ -414,6 +425,14 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
                  f'   Their number at or under {walk}: "That might work. Let me confirm my numbers and send it in '
                  f'writing." Above {walk}: "That\'s more than I can do. If anything changes, I\'d love to hear from '
                  'you."']
+    elif ask_theirs:
+        fin = _money(firm.final)
+        offer = ['4) Don\'t say a price first. Ask: "What number would the seller sign at for cash, as is, with a quick '
+                 'close?" Write it down.',
+                 f'   Their number at or under {fin}: "That can work. Let me confirm and I\'ll send it in writing today." '
+                 f'Above {fin}: "That\'s more than I can pay as is. Mind if I check back in a few weeks?"',
+                 '   "What\'s your offer?" first: "I\'d rather not guess at the seller\'s number. What would they need to '
+                 'walk away with?"']
     else:
         offer = ['4) "What\'s your offer?": "I want to give you a real number, not a guess. Let me run what you just '
                  'told me and I\'ll e-mail it to you in writing." Say no number on this call.']
@@ -734,14 +753,89 @@ def daily_goal_event(session: Session, today: date) -> Desired:
     first = parse_start((row.body_json or {}).get("start")) if row and row.body_json else None
     start = datetime.combine(first.date() if first else today, _clock("daily_goal_time", "10:00"))
     s, e = _timed(start, 30)
-    lines = [f"Today's outreach: {goal} new listing agents, e-mailed from your Gmail 25-60 seconds apart (urgent "
+    lines = [f"Today's outreach: {goal} new listing agents, e-mailed from your Gmail 20-45 seconds apart (urgent "
              "listed foreclosures, then due follow-ups, then stale MLS fixers).",
-             "The desk sends them by itself at 10:30 on weekdays: there is nothing to do here.",
-             "Replies that need you and calls to make each get their own event on this calendar."]
+             "The desk sends them by itself at 10:30 and 2:00 PM on weekdays: there is nothing to do here.",
+             "Your calls are in the four 📞 Call block events (25 calls each, one script); replies that need you "
+             "get their own event."]
     return Desired("daily_goal", "daily_goal", None,
                    _body("daily_goal", f"🎯 Daily outreach: {goal} agent e-mails (autopilot)", lines,
                          s, e, reminders=[0], recurrence=[str(cfg().get("daily_goal_rrule") or "RRULE:FREQ=DAILY")]),
                    start)
+
+
+def note_busy(session: Session, cal: Any, now: datetime) -> None:
+    """Remember today's busy times (classes, meetings) so the call blocks fit around them. Never fails a sync."""
+    day0 = datetime.combine(now.date(), time(0, 0))
+    try:
+        spans = cal.busy(day0, day0 + timedelta(days=1))
+    except Exception:                                    # noqa: BLE001 - an older client / offline: keep the plan
+        log.debug("calendar: busy times not read", exc_info=True)
+        return
+    _set_state(session, busy={"date": now.date().isoformat(),
+                              "spans": [[a.strftime("%H:%M"), b.strftime("%H:%M")] for a, b in spans]})
+
+
+def place_blocks(day: date, planned: list[tuple[str, str, int]], busy: list[tuple[datetime, datetime]],
+                 *, min_minutes: int = 40, last_end: time = time(20, 30)) -> dict[str, tuple[datetime, int]]:
+    """Fit each call block (letter, HH:MM, minutes) at or after its planned time into the first free gap of at least
+    `min_minutes` (a block shrinks to the gap; most calls are a 1-minute voicemail), never over a class or meeting,
+    never past `last_end` (calling hours end at 9 PM). Blocks keep their order and never overlap each other."""
+    out: dict[str, tuple[datetime, int]] = {}
+    taken = sorted(busy)
+    cursor = datetime.combine(day, time(0, 0))
+    limit = datetime.combine(day, last_end)
+    for letter, hhmm, mins in planned:
+        hh, mm = (int(x) for x in hhmm.split(":", 1))
+        start = max(datetime.combine(day, time(hh, mm)), cursor)
+        while start + timedelta(minutes=min_minutes) <= limit:
+            clash = next(((a, b) for a, b in taken if a < start + timedelta(minutes=min_minutes) and b > start), None)
+            if clash is not None:
+                start = clash[1]
+                continue
+            nxt = min((a for a, _ in taken if a >= start), default=limit)
+            length = int(min(mins, (min(nxt, limit) - start).total_seconds() // 60))
+            out[letter] = (start, length)
+            cursor = start + timedelta(minutes=length)
+            taken.append((start, cursor))
+            taken.sort()
+            break
+    return out
+
+
+def call_block_events(session: Session, now: datetime) -> list[Desired]:
+    """📞 The day's call sheet (engine/call_sheet.py) as four events of 25 calls: one word-for-word script, then one
+    line per call with the single number to use. Built from the frozen sheet, so "A07" means the same call all day.
+    Streets (or "lead #<id>" when suppressed), the agent's first name, brokerage and advertised number only."""
+    from engine import call_sheet as cs
+    if not cfg().get("call_blocks", True):
+        return []
+    rows = cs.stored(session, now.date())
+    out: list[Desired] = []
+    st = _state(session).value_json or {}
+    b = st.get("busy") or {}
+    busy = []
+    if b.get("date") == now.date().isoformat():
+        for a0, b0 in b.get("spans") or []:
+            busy.append(tuple(datetime.combine(now.date(), time(*(int(x) for x in v.split(":")))) for v in (a0, b0)))
+    placed = place_blocks(now.date(), cs.blocks(), busy)
+    for letter, _hhmm, _mins in cs.blocks():
+        mine = cs.block_rows(rows, letter)
+        if not mine or letter not in placed:
+            continue
+        start, mins = placed[letter]
+        if start + timedelta(minutes=mins) < now:
+            continue                                  # never create one in the past (an existing one stays)
+        offers = sum(1 for r in mine if r.say.startswith("OFFER"))
+        asks = sum(1 for r in mine if r.say.startswith("ASK"))
+        summary = (f"📞 Call block {letter}: {len(mine)} calls"
+                   + (f" ({offers} offers, {asks} ask their number)" if offers or asks else ""))
+        lines = [*cs.block_script(letter), "", "--- The calls (code | number agent | house | facts | what to say) ---",
+                 *[r.line() for r in mine]]
+        s0, e0 = _timed(start, mins)
+        out.append(Desired(f"callblock:{now:%Y%m%d}:{letter}", "callblock", None,
+                           _body("callblock", summary, lines, s0, e0, reminders=[10]), start))
+    return out
 
 
 def desk_status_event(session: Session, now: datetime) -> Desired | None:
@@ -839,6 +933,10 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
             put([desk_status_event(session, now)])
         except Exception:                                # noqa: BLE001 - a status line never blocks the real events
             log.exception("calendar: desk status event skipped")
+        try:
+            put(call_block_events(session, now))
+        except Exception:                                # noqa: BLE001
+            log.exception("calendar: call blocks skipped")
     else:
         leads = [lead for lead in (session.get(Lead, i) for i in sorted(lead_ids)) if lead is not None]
         # A lead's sale event is refreshed here only when it is already on the calendar; which sales make the
@@ -846,8 +944,11 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
         sale_ids = set(session.scalars(select(CalendarEvent.lead_id).where(
             CalendarEvent.kind == "sheriff_sale", CalendarEvent.lead_id.in_(lead_ids),
             CalendarEvent.status.in_(("pending", "synced")))))
+    from engine import call_sheet as cs
+    on_sheet = cs.lead_ids_on(session, today)
     for lead in leads:
-        put(followup_events(session, lead, now))
+        # A lead on today's call sheet is called from its block: no second event for the same call today.
+        put(d for d in followup_events(session, lead, now) if not (lead.id in on_sheet and d.starts_at.date() == today))
         put(contract_events(session, lead, now))
         put(reply_events(session, lead, now))
     for lid in sale_ids:
@@ -950,6 +1051,26 @@ class CalendarAPI:
 
     def delete(self, eid: str) -> None:
         self._run(self._events.delete(calendarId=self.calendar_id, eventId=eid, sendUpdates="none"))
+
+    def busy(self, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+        """The operator's own timed events (classes, meetings) between start and end, as naive local times: ours
+        (njw=1), all-day and "free" events are skipped. Used only to fit the call blocks around them."""
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(tz_name())
+        page = self._run(self._events.list(calendarId=self.calendar_id, timeMin=start.replace(tzinfo=tz).isoformat(),
+                                           timeMax=end.replace(tzinfo=tz).isoformat(), singleEvents=True,
+                                           orderBy="startTime", maxResults=250))
+        out: list[tuple[datetime, datetime]] = []
+        for it in page.get("items", []):
+            if ((it.get("extendedProperties") or {}).get("private") or {}).get("njw") or \
+                    it.get("transparency") == "transparent" or it.get("status") == "cancelled":
+                continue
+            a, b = (it.get("start") or {}).get("dateTime"), (it.get("end") or {}).get("dateTime")
+            if not a or not b:
+                continue
+            out.append(tuple(datetime.fromisoformat(x.replace("Z", "+00:00")).astimezone(tz).replace(tzinfo=None)
+                             for x in (a, b)))
+        return out
 
     def changed(self, since: str | None) -> list[dict[str, Any]]:
         """Our events (private property njw=1) changed since `since`, deleted ones included."""
@@ -1198,6 +1319,8 @@ def sync(session: Session, lead_ids: set[int] | None = None, *, cal: CalendarAPI
                 out.pulled = pull(session, cal, now)
             except CalendarError as exc:
                 out.error = str(exc)
+            if lead_ids is None and not isinstance(out.error, str):
+                note_busy(session, cal, now or now_local())
         out.reconciled = reconcile(session, lead_ids, now)
         if cal is not None and not isinstance(out.error, str):
             # Release SQLite's write lock before talking to Google: a slow or offline Google must never stall the

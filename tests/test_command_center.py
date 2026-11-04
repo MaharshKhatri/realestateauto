@@ -95,7 +95,7 @@ def test_deck_cards_explain_the_deal_and_send_logs_progress(db, setup_paths, tmp
     monkeypatch.setattr(contracts, "DEALS_DIR", tmp_path / "deals")
     lead = deal(db)
     d = ap.deck(db)
-    assert d["goal"] == 15 and d["done"] == 0 and d["setup_complete"] and not d["auto_email"]
+    assert d["goal"] == 30 and d["done"] == 0 and d["setup_complete"] and not d["auto_email"]
     c = next(x for x in d["cards"] if x["lead_id"] == lead.id)
     # A cold agent gets Touch 1: the two-line availability question, no price, no summary block.
     assert c["kind"] == "mls_fixer" and c["packet_kind"] == "opener" and c["touch"] == 1 and c["style"] == []
@@ -175,7 +175,7 @@ def test_kpis(db):
     deal(db)
     make_lead(db, stale_listing=True, list_price=360_000, absentee=True, sheriff_days=9)
     k = ap.kpis(db)
-    assert k["open_leads"] == 2 and k["listed_foreclosures"] == 1 and k["goal"] == 15
+    assert k["open_leads"] == 2 and k["listed_foreclosures"] == 1 and k["goal"] == 30
     assert set(k) >= {"ready_to_call", "offers_sent_30d", "active_cash_buyers", "pipeline_value"}
 
 

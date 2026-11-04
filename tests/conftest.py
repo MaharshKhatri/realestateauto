@@ -35,6 +35,9 @@ def _classic_offer_gates(monkeypatch, request):
     monkeypatch.setitem(settings()["outreach"], "min_open_pct_of_ask", 0)
     monkeypatch.setitem(settings()["outreach"], "ask_first_min_reach", 0.75)
     monkeypatch.setitem(settings(), "firm", {**dict(settings().get("firm") or {}), "enforce": False})
+    # the shared fixtures give every listing the same agent e-mail: the one-new-e-mail-per-agent rule has its own test
+    monkeypatch.setitem(settings(), "gmail_autopilot", {**dict(settings().get("gmail_autopilot") or {}),
+                                                         "agent_cold_gap_hours": 0})
 
 
 @pytest.fixture()

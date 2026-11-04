@@ -269,7 +269,7 @@ def test_sheriff_sale_event_moves_with_an_adjournment_and_never_duplicates(db, g
 def test_daily_goal_is_one_recurring_10am_event(db, google):
     gs.sync(db, now=datetime(2026, 11, 2, 7, 0))
     e = ev(google, "daily_goal")
-    assert e["summary"] == "🎯 Daily outreach: 15 agent e-mails (autopilot)"
+    assert e["summary"] == "🎯 Daily outreach: 30 agent e-mails (autopilot)"
     assert e["recurrence"] == ["RRULE:FREQ=DAILY"] and e["colorId"] == "10"
     assert e["start"] == {"dateTime": "2026-11-02T10:00:00", "timeZone": "America/New_York"}
     calls = google.calls
@@ -654,7 +654,7 @@ def test_every_call_event_carries_the_script_and_the_background(db, monkeypatch)
     """2026-11-03: the operator handles calls only and wants the script and the background on the event itself."""
     from db.models import Interaction
     from engine import preflight
-    lead, agent = agent_lead(db)
+    lead, agent = agent_lead(db, list_price=340_000)       # final 285K = 84% of the ask: a firm number
     sent, call = datetime(2026, 11, 3, 14, 16), datetime(2026, 11, 3, 17, 15)
     db.add(Interaction(lead_id=lead.id, contact_id=agent.id, channel="email_smtp", outcome="AGENT_FOLLOWUP_SENT",
                        occurred_at=sent, next_followup_at=call, debrief_json={"packet": {"kind": "fact_check"}}))
@@ -664,8 +664,10 @@ def test_every_call_event_carries_the_script_and_the_background(db, monkeypatch)
     monkeypatch.setattr(preflight, "check", lambda lead, today=None: preflight.Preflight(status="GO"))
     [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
     text = d.body["description"]
-    v = lead.property.current_valuation
-    assert "--- Call script (word for word) ---" in text and f"walk away above ${v.mao_aggressive:,.0f}" in text
+    from engine.offer_math import firm_offer
+    f = firm_offer(lead, db)
+    assert "--- Call script (word for word) ---" in text and f"Best and final: ${f.final:,.0f}; never above it" in text
+    assert f"Your one number: ${f.offer:,.0f}" in text
     assert "Hi Pat," in text and "not a realtor" in text and "what the seller needs to walk away with" in text
     assert "Will you assign it?" in text and "proof of funds" in text and "That might work" in text
     assert "We don't work with wholesalers" in text and "don't promise to close in your own name" in text
@@ -675,7 +677,7 @@ def test_every_call_event_carries_the_script_and_the_background(db, monkeypatch)
         status="HOLD", issues=["wrong parcel: the MLS listing is 10.4 miles from the parcel"]))
     [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
     text = d.body["description"]
-    assert "Don't name a price on this call: wrong parcel" in text and "walk away above" not in text
+    assert "Don't name a price on this call: wrong parcel" in text and "Best and final" not in text
     assert "Does it need any work" in text and "Say no number on this call" in text and "That might work" not in text
 
 

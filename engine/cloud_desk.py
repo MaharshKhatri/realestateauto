@@ -401,6 +401,16 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     except Exception:                              # noqa: BLE001 - a bad note is reported, never printed
         return {"note_error": "unreadable"}
     done, errors = 0, []
+    codes = [i for i in items if isinstance(i, dict) and i.get("code")]
+    if codes:
+        # Call-block results ("A07 vm", "A04 340"): resolved on that day's frozen call sheet.
+        from engine import call_sheet as cs
+        with session_scope() as s:
+            res = cs.apply_codes(s, codes, now=now, smtp_factory=smtp_factory)
+        done += int(res.get("logged") or 0)
+        if res.get("unknown"):
+            errors.append(f"unknown_code x{res['unknown']}")
+        items = [i for i in items if i not in codes]
     for item in items:
         try:
             lead_id = int(item["lead"])
@@ -453,6 +463,19 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             rc = quant_pricing.recalibrate_all(s)
         _state_set(pricing_version=PRICING_VERSION)
         out.update(repriced=int(rc.get("repriced") or 0), reprice_errors=int(rc.get("errors") or 0))
+    if task == "refresh":
+        # Near-firm listings whose only gap is stale comps: re-valued live with recent sold MLS comps, so the day's
+        # call sheet and e-mails carry more firm numbers (engine/offer_math.py::firm_up_pass).
+        from engine.offer_math import firm_up_pass
+        with session_scope() as s:
+            from core.config import settings
+            fu = firm_up_pass(s, int((settings().get("call_sheet") or {}).get("firm_up_daily", 30)))
+        out.update(firm_up=int(fu.get("revalued") or 0), now_firm=int(fu.get("now_firm") or 0))
+    if t.weekday() < 6 and 7 <= t.hour < 21:
+        # The day's call sheet (engine/call_sheet.py), frozen at its first build so codes mean the same call all day.
+        from engine import call_sheet as cs
+        with session_scope() as s:
+            out["call_sheet"] = len(cs.today(s, t.replace(tzinfo=None)))
     if task == "approve" and approve_id:
         try:
             with session_scope() as s:
@@ -492,7 +515,8 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
         if gm.in_send_hours(now):
             a = gm.auto_approve(now=now, smtp_factory=smtp_factory)
             out["auto_answered"] = len(a["sent"])
-            d = gm.daily_openers(int(os.environ.get("DAILY_OPENERS", "15")), at="10:30", now=now,
+            d = gm.daily_openers(int(os.environ.get("DAILY_OPENERS", "30")),
+                                 at=os.environ.get("OPENER_WAVES", "10:30,14:00"), now=now,
                                  smtp_factory=smtp_factory, background=False)
             if d is not None:
                 out["openers"] = int(d.get("sent") or 0)

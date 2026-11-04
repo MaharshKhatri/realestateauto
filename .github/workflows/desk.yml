@@ -40,6 +40,8 @@ jobs:
       SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
       DESK_KEY: ${{ secrets.DESK_KEY }}
       TZ: America/New_York
+      DAILY_OPENERS: "30"          # new cold openers per weekday, split across the waves below (cap: outreach.daily_email_limit)
+      OPENER_WAVES: "10:30,14:00"
     steps:
       - name: Turned on?
         id: cfg

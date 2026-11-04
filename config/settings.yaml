@@ -48,7 +48,9 @@ ai:
 outreach:
   # B2B listing-agent offers (engine/agent_outreach.py). SMTP is optional: set SMTP_USER / SMTP_APP_PASSWORD
   # (a Gmail app password) in .env; mailto:/copy work without it.
-  daily_email_limit: 25              # COLD e-mails (openers, first offers, nudges) per rolling 24 hours, never bulk
+  daily_email_limit: 40              # COLD e-mails (openers, first offers, nudges) per rolling 24 hours, never bulk
+                                     # (25 -> 40 on 2026-11-03: 8 replies from the first 25; go to 60 only after two weeks
+                                     # with bounces under 2% and nothing marked spam)
   reply_daily_limit: 150             # all e-mails incl. answers to agents who wrote back (Gmail allows ~500/day)
   smtp_host: "smtp.gmail.com"
   smtp_port: 465
@@ -75,14 +77,17 @@ gmail_autopilot:
   auto_send_fact_check: true         # ... or, when the price needs one fact first (condo unit, unit count, wrong parcel),
                                      # a no-price answer asking for it (no number, no LOI)
   touch2_delay_minutes: [4, 11]      # ... a few minutes after the reply, like a person answering
-  pace_seconds: [25, 60]             # the 🚀 batch: random gap between e-mails (never a burst)
+  pace_seconds: [20, 45]             # the 🚀 batch: random gap between e-mails (never a burst)
+  agent_cold_gap_hours: 72           # one NEW cold e-mail per agent address per 3 days (agents with many listings)
   reply_pace_seconds: [8, 20]        # offers to agents who replied, sent in one inbox run: a short gap between them
   send_hours: [8, 20]                # Eastern: the batch and automatic offers go out only in working hours
   max_body_chars: 4000               # the agent's own words kept per reply (quoted thread stripped)
 
 autopilot:
-  daily_goal: 15                     # distinct deals contacted per day (the progress bar)
-  deck_size: 20
+  daily_goal: 30                     # distinct deals contacted per day (the progress bar)
+  deck_size: 60
+  max_followups_per_deck: 25         # due 48-hour nudges that reach one deck
+  max_foreclosures_per_deck: 12      # listed foreclosures at the top of the deck
   first_touch: opener                # opener = the 2-sentence availability question first (Touch 1), then the
                                      # priced offer when the agent replies (Touch 2); offer = priced note first
   urgent_days_to_sale: 14            # listed foreclosures this close to the auction skip the opener
@@ -105,6 +110,7 @@ calendar:                            # Google Calendar sync (engine/gcal_sync.py
   background_minutes: 10             # the cockpit re-syncs this often (retries anything queued while offline)
   colors:                            # Google colorId: 5 banana, 6 tangerine, 7 peacock, 9 blueberry, 10 basil, 11 tomato
     followup: "6"
+    callblock: "10"                  # basil: the day's four call blocks
     callback: "7"
     attorney_review: "5"
     milestone: "9"
@@ -114,11 +120,21 @@ calendar:                            # Google Calendar sync (engine/gcal_sync.py
     reply: "2"                       # sage: an agent answered, the deal waits on your click
     desk: "8"                        # graphite: the daily 📊 deal-desk status (all day, shows as free)
 
+call_sheet:
+  # engine/call_sheet.py: up to crm.call_queue_size listing-agent calls a weekday in four blocks (one on Saturday),
+  # frozen each morning so a code like A07 means the same call all day; reported in the chat as "A07 vm".
+  blocks: [["A", "09:30"], ["B", "11:00"], ["C", "13:30"], ["D", "16:00"]]
+  block_minutes: 75
+  per_block: 25
+  max_attempts: 4                    # follow-up calls with no conversation before a lead leaves the sheet
+  recall_gap_days: 2                 # a new lead isn't called again within 2 days of the last touch
+  firm_up_daily: 30                  # near-firm listings re-valued live with recent sold comps each morning
+
 crm:
   # Days until the next touch, by call outcome (business-hours follow-up queue).
   followup_days:
-    NO_ANSWER: 2
-    LEFT_VM: 3
+    NO_ANSWER: 1                     # 100 calls a day: retry a no-answer the next business day
+    LEFT_VM: 2
     WRONG_NUMBER: 0
     SPOKE_WARM_FOLLOWUP: 4
     SPOKE_NEEDS_OFFER: 1
@@ -128,7 +144,7 @@ crm:
     OFFER_ACCEPTED: 1
   max_attempts_no_contact: 8         # after this many no-answer/VM touches, park the lead (letter / agent / relative instead)
   sale_countdown_days: 21            # dashboard countdown window for sheriff sales
-  call_queue_size: 40
+  call_queue_size: 100              # the daily call sheet (engine/call_sheet.py): up to 100 dials
 
 markets:
   # Priority order. Names match CivilView / NJGIN county names.

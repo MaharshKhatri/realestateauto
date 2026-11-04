@@ -21,7 +21,7 @@ def test_stage_only_moves_forward_except_terminal():
 
 def test_followup_cadence():
     nxt = crm.next_followup("LEFT_VM", 1, NOON)
-    assert nxt == datetime(2026, 10, 30, 10, 0)
+    assert nxt == datetime(2026, 10, 29, 10, 0)                              # 2 days (100 calls a day: retry sooner)
     assert crm.next_followup("LEFT_VM", 7, NOON) > nxt                       # cadence stretches
     assert crm.next_followup("NO_ANSWER", 8, NOON) is None                    # parked after max attempts
     assert crm.next_followup("DNC", 1, NOON) is None

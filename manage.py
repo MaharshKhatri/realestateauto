@@ -634,6 +634,33 @@ def cmd_set_gmail(args: argparse.Namespace) -> None:
     console.print("All set. Now delete the OLD app password on that same Google page.")
 
 
+def cmd_call_sheet(args: argparse.Namespace) -> None:
+    """Today's call sheet (engine/call_sheet.py): up to 100 listing-agent calls in blocks of 25, one script each."""
+    from datetime import datetime as _dt
+
+    from engine import call_sheet as cs
+    init_db()
+    with session_scope() as s:
+        if args.report:
+            # "A01 vm, A02 na, A03 340 roof, A04 cb thu 2pm" -> the same items a sealed chat note carries
+            items = []
+            for part in [x.strip() for x in args.report.split(",") if x.strip()]:
+                code, _, rest = part.partition(" ")
+                items.append({"code": code, "result": rest.strip()})
+            console.print(cs.apply_codes(s, items))
+            return
+        rows = cs.today(s, _dt.now(), rebuild=args.rebuild)
+        letter = None
+        for r in rows:
+            if r.code[0] != letter:
+                letter = r.code[0]
+                console.print(f"\n[bold]Block {letter}[/bold]")
+                if args.script:
+                    console.print("\n".join(cs.block_script(letter)))
+            console.print(r.line())
+        console.print(f"\n{len(rows)} calls. Report each block in one line: manage.py call-sheet --report \"A01 vm, A02 340\"")
+
+
 def cmd_inbox(args: argparse.Namespace) -> None:
     """/inbox: import what you sent from Gmail, read new agent replies, send every "still available" offer now,
     and print one table (--json for Claude)."""
@@ -2023,6 +2050,10 @@ def main(argv: list[str] | None = None) -> None:
     cl.add_argument("--handoff", action="store_true", help="Mac: hand the desk to the cloud now if it's ready")
     sg = sub.add_parser("set-gmail", help="save a new Gmail app password at a hidden prompt (no dashboard) and test it")
     sg.add_argument("--email", help="the Gmail address (default: the one already saved)")
+    csh = sub.add_parser("call-sheet", help="today's 100 listing-agent calls in blocks of 25 (one script per block)")
+    csh.add_argument("--rebuild", action="store_true", help="rebuild today's sheet (codes change: only before calling)")
+    csh.add_argument("--script", action="store_true", help="print each block's word-for-word script")
+    csh.add_argument("--report", metavar="CODES", help='log results: "A01 vm, A02 na, A03 send, A04 340 roof, A05 stop"')
     ib = sub.add_parser("inbox", help="/inbox: import Gmail Sent, read agent replies, send 'still available' offers now")
     ib.add_argument("--no-send", action="store_true", help="read and analyze only")
     ib.add_argument("--json", action="store_true", help="machine-readable result (for Claude)")
@@ -2182,7 +2213,7 @@ def main(argv: list[str] | None = None) -> None:
     {"init": lambda a: (init_db(), console.print("[green]database ready[/green]")),
      "briefing": cmd_briefing, "lead": cmd_lead, "underwrite": cmd_underwrite, "buyers": cmd_buyers,
      "stats": cmd_stats, "server": cmd_server, "install-shortcut": cmd_install_shortcut, "db-sync": cmd_db_sync, "setup-calendar": cmd_setup_calendar,
-     "sync-calendar": cmd_sync_calendar, "gmail": cmd_gmail, "inbox": cmd_inbox, "set-gmail": cmd_set_gmail, "cloud": cmd_cloud,
+     "sync-calendar": cmd_sync_calendar, "gmail": cmd_gmail, "inbox": cmd_inbox, "call-sheet": cmd_call_sheet, "set-gmail": cmd_set_gmail, "cloud": cmd_cloud,
      "autopilot-daemon": cmd_autopilot_daemon, "install-daemon": cmd_install_daemon, "build-site": cmd_build_site, "queue": cmd_queue, "script": cmd_script, "call": cmd_call,
      "occupancy": cmd_occupancy, "contract": cmd_contract, "docs": cmd_docs, "skiptrace": cmd_skiptrace,
      "dnc": cmd_dnc, "match": cmd_match, "pii-scan": cmd_pii_scan, "agent-blast": cmd_agent_blast,

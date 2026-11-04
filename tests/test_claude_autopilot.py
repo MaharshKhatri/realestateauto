@@ -99,12 +99,13 @@ def test_each_reply_gets_its_own_offer_by_itself_in_its_thread(live):
 def test_cold_cap_still_holds_cold_email(live):
     db = live
     lead = listed(db)
-    for _ in range(25):
+    cap = int(settings()["outreach"]["daily_email_limit"])
+    for _ in range(cap):
         db.add(Interaction(lead_id=lead.id, channel="email_smtp", outcome="AGENT_OPENER_SENT",
                            occurred_at=datetime(2026, 11, 4, 9, 0), debrief_json={"packet": {"kind": "opener"}}))
     db.commit()
     p = ao.build_opener(listed(db))
-    with pytest.raises(RuntimeError, match="25 cold e-mails"):
+    with pytest.raises(RuntimeError, match=f"{cap} cold e-mails"):
         ao.deliver(p, session=db, now=T0, smtp_factory=FakeSMTP)
     assert ao.deliver(p, session=db, now=T0, smtp_factory=FakeSMTP, engaged=True)       # a reply goes out
 
@@ -558,3 +559,41 @@ def test_an_agents_google_voice_text_becomes_their_reply_a_call_and_a_drafted_te
     assert gm.reply_thread(db, lead.id) is None or "voice" not in (gm.reply_thread(db, lead.id)["message_id"] or "")
     rows_out = {r["id"]: r for r in gm.inbox_rows(db, T0 + timedelta(minutes=45))}
     assert rows_out[text.id]["you_do"].startswith("call them back")
+
+
+def test_openers_go_out_in_waves_and_a_missed_wave_catches_up(live, monkeypatch):
+    """2026-11-03 volume plan: 30 openers a weekday in two waves (10:30, 14:00), so no desk run is busy for half an hour."""
+    from engine.crm import TZ
+    calls = []
+
+    def fake_campaign(limit, **kw):
+        calls.append(limit)
+        gm.campaign.total, gm.campaign.sent, gm.campaign.message = limit, limit, "ok"
+        return {}
+    monkeypatch.setattr(gm, "start_campaign", fake_campaign)
+    waves = "10:30,14:00"
+    assert gm.daily_openers(31, at=waves, now=datetime(2026, 11, 9, 10, 40, tzinfo=TZ))["sent"] == 16
+    assert gm.daily_openers(31, at=waves, now=datetime(2026, 11, 9, 12, 0, tzinfo=TZ)) is None      # wave 2 not due
+    assert gm.daily_openers(31, at=waves, now=datetime(2026, 11, 9, 14, 5, tzinfo=TZ))["sent"] == 15
+    assert gm.daily_openers(31, at=waves, now=datetime(2026, 11, 9, 16, 0, tzinfo=TZ)) is None      # both done
+    # Tuesday: the desk first runs at 15:00, so it sends wave 1 now and wave 2 at its next run
+    tue = datetime(2026, 11, 10, 15, 0, tzinfo=TZ)
+    assert gm.daily_openers(30, at=waves, now=tue)["sent"] == 15
+    assert gm.daily_openers(30, at=waves, now=tue + timedelta(minutes=15))["sent"] == 15
+    assert gm.daily_openers(30, at=waves, now=tue + timedelta(minutes=30)) is None
+    assert calls == [16, 15, 15, 15]
+
+
+@pytest.mark.production_gates
+def test_one_new_cold_email_per_agent_every_three_days(live, monkeypatch):
+    """An agent with several listings gets one new note, not one per house."""
+    from engine import autopilot
+    db = live
+    a = listed(db)
+    b = listed(db)                                       # same agent e-mail (pat@broker.test) on a second listing
+    cards = [{"lead_id": x.id, "address": f"{x.id} Main St", "kind": "opener", "touch": 1,
+              "agent": {"name": "Pat Agent", "email": "pat@broker.test"}} for x in (a, b)]
+    monkeypatch.setattr(autopilot, "deck", lambda s, limit=None, now=None: {"cards": cards})
+    monkeypatch.setattr(gm, "auto_sendable", lambda c: None)
+    picked, skipped = gm.pick_cards(db, 10)
+    assert [p["lead_id"] for p in picked] == [a.id] and "last 3 days" in skipped[0]["reason"]

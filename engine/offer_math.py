@@ -253,3 +253,61 @@ def locked(lead: Any, f: FirmOffer) -> FirmOffer:
             f.reasons = [*f.reasons, f"a re-check puts our final ({f.final:,.0f}) under the {sent:,.0f} already "
                                      "offered: honor it only after the operator confirms"]
     return f
+
+
+# Certainty issues that fresh sold comps can clear (the rest need a fact from the agent or the operator).
+DATA_ISSUES = ("the comparable sales are old", "the after-repair value is above every comparable sale",
+               "the living area isn't on record")
+
+
+def data_only(f: FirmOffer) -> bool:
+    """True when the only thing between this lead and a firm number is stale or thin data."""
+    return f.tier == "ask_first" and bool(f.reasons) and all(
+        r.startswith(DATA_ISSUES) or "of the ask: ask what the seller needs first" in r for r in f.reasons) and \
+        any(r.startswith(DATA_ISSUES) for r in f.reasons)
+
+
+def firm_up(session: Any, lead: Any, *, today: date | None = None) -> FirmOffer:
+    """Re-value one lead live: recent sold MLS comps (homeharvest, throttled and cached) cross-checked with the public
+    records. Used when an agent named a number we can pay but the stored comps are old, and by the daily firm-up
+    pass. If the live source is blocked the public-record valuation simply comes back again (nothing is lost)."""
+    from engine.underwriter import Underwriter, _default_listing_provider
+    try:
+        Underwriter(listing_provider=_default_listing_provider()).underwrite(session, lead.property)
+        session.flush()
+        session.expire(lead.property, ["valuations"])
+    except Exception:                               # noqa: BLE001 - keep the stored valuation
+        import logging
+        logging.getLogger(__name__).warning("firm-up failed for lead %s", lead.id, exc_info=True)
+    return firm_offer(lead, session, today=today)
+
+
+def firm_up_pass(session: Any, limit: int = 30, *, budget_seconds: float = 600, today: date | None = None
+                 ) -> dict[str, int]:
+    """Each day: the ask-first listings closest to a firm number whose only gap is data, re-valued live (best reach
+    first, at most `limit`, inside `budget_seconds`). Converts "ask their number" rows into firm offers."""
+    import time as _time
+
+    from db.models import DistressSignal, Lead
+    listed = select(DistressSignal.property_id).where(DistressSignal.active.is_(True),
+                                                      DistressSignal.signal_type.in_(("STALE_LISTING",
+                                                                                      "ACTIVE_LISTING")))
+    gate = float((settings().get("outreach") or {}).get("min_list_to_mao_75", 0.80))
+    todo: list[tuple[float, Any]] = []
+    for lead in session.scalars(select(Lead).where(Lead.property_id.in_(listed))):
+        try:
+            f = firm_offer(lead, session, today=today)
+        except Exception:                           # noqa: BLE001
+            continue
+        if data_only(f) and (f.reach or 0) >= gate:
+            todo.append((f.reach or 0, lead))
+    todo.sort(key=lambda x: -x[0])
+    start, out = _time.monotonic(), {"candidates": len(todo), "revalued": 0, "now_firm": 0}
+    for _, lead in todo[:limit]:
+        if _time.monotonic() - start > budget_seconds:
+            break
+        f = firm_up(session, lead, today=today)
+        out["revalued"] += 1
+        out["now_firm"] += int(f.tier == "firm")
+        session.commit()
+    return out

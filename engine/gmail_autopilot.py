@@ -553,6 +553,17 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
         packet = ao.build_packet(lead, agent=agent, generate_loi=False, session=session)
     except ValueError as exc:
         return f"no offer path ({exc})"
+    if packet.kind == "ask_first":
+        # No price (engine/offer_math.py ask-first tier): "what would the seller need to net?" Nothing in it can be
+        # wrong or a lowball, so it answers "still available" by itself like a fact check.
+        if not _cfg().get("auto_send_ask_first", True):
+            return "ask-first answers wait for you (settings)"
+        if agent.dnc_status == "dnc":
+            return "this agent asked to stop"
+        if is_listed_foreclosure(lead.property):
+            return "listed foreclosure: your call"
+        ok, why = ao.smtp_ready()
+        return None if ok else why
     if packet.kind != "offer" or not packet.anchor:
         return "no price yet: ask who lives there first (FRFPA)"
     if packet.warnings:
@@ -825,7 +836,7 @@ def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
         if not fact:
             packet = ao.build_packet(lead, agent=agent, generate_loi=True, session=s,
                                      reply_flags=set(an.parsed.intents) | {"ANSWERED"})
-            if packet.warnings or not packet.loi_files.get("pdf"):
+            if packet.kind != "ask_first" and (packet.warnings or not packet.loi_files.get("pdf")):
                 row.status = "needs_approval"
                 row.note = "the written offer could not be attached: " + ("; ".join(packet.warnings) or "no PDF")
                 return False
@@ -1155,8 +1166,10 @@ def refresh_open_replies(session: Session, now: datetime | None = None, *, promo
             continue
         text = strip_quoted(row.body_text)
         an = rn.analyze(session, lead, text, now=now)
+        # (the drafted answer too: after a re-price the same "still available" must not keep yesterday's number)
         same = an.headline == row.headline and an.parsed.counter_amount == row.counter_amount and text == row.body_text \
-            and sorted(an.parsed.intents) == sorted(row.intents_json or [])
+            and sorted(an.parsed.intents) == sorted(row.intents_json or []) \
+            and reply_price(an) == row.price and an.reply_text == (row.analysis_json or {}).get("reply_text")
         if same and (row.status == "auto_queued"
                      or not (promote and auto_touch2_block(session, lead, an, row.match_method, text) is None)):
             continue
@@ -1210,18 +1223,40 @@ def auto_sendable(card: dict[str, Any]) -> str | None:
     return None
 
 
+def agents_written_recently(session: Session, now: datetime | None = None, hours: float = 72) -> set[str]:
+    """Listing-agent e-mail addresses we e-mailed (any lead) inside the last `hours`."""
+    since = now_eastern(now).replace(tzinfo=None) - timedelta(hours=hours)
+    rows = session.execute(select(Contact.email).join(Interaction, Interaction.contact_id == Contact.id)
+                           .where(Interaction.channel.in_(("email", "email_smtp")), Interaction.occurred_at >= since,
+                                  Contact.email.is_not(None)))
+    return {str(e).strip().lower() for (e,) in rows if e}
+
+
 def pick_cards(session: Session, limit: int, now: datetime | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Today's batch (in deck order: urgent listed foreclosures, due follow-ups, MLS fixers) and what was skipped."""
     from engine import autopilot
     deck = autopilot.deck(session, limit=max(int((settings().get("autopilot", {}) or {}).get("deck_size", 20)),
                                              limit * 2), now=now)
     picked, skipped = [], []
+    # One new cold e-mail per agent address per `agent_cold_gap_hours` (72): an agent with 20 listings gets one note
+    # about one house, not 20 in a day (2026-11-03 volume plan). Follow-ups on a lead already in touch are not limited.
+    gap = float(_cfg().get("agent_cold_gap_hours", 72))
+    busy = agents_written_recently(session, now, hours=gap) if gap > 0 else set()
+    from engine import call_sheet
+    calling = call_sheet.lead_ids_on(session, now_eastern(now).date())   # today's calls go first
     for c in deck["cards"]:
         why = auto_sendable(c)
         item = {"lead_id": c["lead_id"], "address": c["address"], "kind": c["kind"], "touch": c["touch"],
                 "agent": (c.get("agent") or {}).get("name")}
+        addr = str((c.get("agent") or {}).get("email") or "").strip().lower()
+        if why is None and addr and int(c.get("touch") or 1) <= 1 and addr in busy:
+            why = "this agent already got a new e-mail from us in the last 3 days"
+        if why is None and c["lead_id"] in calling:
+            why = "on today's call sheet: the call goes first"
         if why is None and len(picked) < limit:
             picked.append(item)
+            if addr and gap > 0:
+                busy.add(addr)
         elif why is not None:
             skipped.append({**item, "reason": why})
     return picked, skipped
@@ -1554,26 +1589,41 @@ DAILY_KEY = "daemon_daily_openers"
 
 def daily_openers(limit: int, *, at: str = "10:30", now: datetime | None = None, smtp_factory: Any = None,
                   sleep: Callable[[float], Any] | None = None, background: bool = False) -> dict[str, Any] | None:
-    """The daemon's once-a-weekday cold batch (opt-in: `install-daemon --daily-openers N`). After `at` Eastern on
-    Monday-Friday, inside send hours, once per day: the same picks, gates, 25-60 s pacing and 25-per-24-hours cap as
-    the 🚀 button. The day is claimed before the first e-mail, so a crash or a restart never sends a second batch.
+    """The weekday cold batch (opt-in: `install-daemon --daily-openers N`; the cloud desk: DAILY_OPENERS). After each
+    wave time in `at` (Eastern) on Monday-Friday, inside send hours, once per wave: the same picks, gates, pacing and
+    cold-e-mail cap as the 🚀 button. The day is claimed before the first e-mail, so a crash or a restart never sends a second batch.
     None = not due (off, weekend, too early, already done today)."""
     t = now_eastern(now)
-    try:
-        hh, mm = (int(x) for x in str(at).split(":", 1))
-    except ValueError:
-        hh, mm = 10, 30
-    if limit <= 0 or t.weekday() >= 5 or (t.hour, t.minute) < (hh, mm) or not in_send_hours(now):
+    # `at` may name several waves ("10:30,14:00"): the day's limit is split between them, so no single desk run is
+    # busy for half an hour, and a wave the desk missed is sent at its next run (first undone wave first).
+    waves: list[tuple[int, int]] = []
+    for part in str(at).split(","):
+        try:
+            hh, mm = (int(x) for x in part.strip().split(":", 1))
+        except ValueError:
+            continue
+        waves.append((hh, mm))
+    waves = sorted(set(waves)) or [(10, 30)]
+    if limit <= 0 or t.weekday() >= 5 or not in_send_hours(now):
         return None
     today = t.date().isoformat()
     with session_scope() as s:
         row = s.get(SwarmState, DAILY_KEY)
-        if row is not None and (row.value_json or {}).get("date") == today:
+        state = dict(row.value_json or {}) if row is not None else {}
+        done = set(state.get("waves") or ([0] if state.get("date") == today else [])) if state.get("date") == today else set()
+        due = [i for i, w in enumerate(waves) if (t.hour, t.minute) >= w and i not in done]
+        if not due:
+            return None
+        wave = due[0]
+        n = len(waves)
+        limit = limit // n + (1 if wave < limit % n else 0)
+        if limit <= 0:
             return None
         if row is None:
             row = SwarmState(key=DAILY_KEY, value_json={})
             s.add(row)
-        row.value_json = {"date": today, "started": t.isoformat(timespec="seconds"), "limit": limit}
+        row.value_json = {"date": today, "waves": sorted(done | {wave}), "started": t.isoformat(timespec="seconds"),
+                          "limit": limit}
     try:
         start_campaign(limit, now=now, smtp_factory=smtp_factory, sleep=sleep, background=background)
         out = {"started": True, "total": campaign.total, "sent": campaign.sent, "message": campaign.message}

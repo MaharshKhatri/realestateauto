@@ -332,7 +332,8 @@ def test_daily_batch_is_paced_logged_and_respects_hours(live):
     waits: list[float] = []
     out = gm.start_campaign(2, now=T0, smtp_factory=FakeSMTP, sleep=waits.append, background=False)
     assert out["total"] == 2 and gm.campaign.sent == 2 and not gm.campaign.running
-    assert len(waits) == 1 and 25 <= waits[0] <= 60                     # one gap between two e-mails
+    lo, hi = settings()["gmail_autopilot"]["pace_seconds"]
+    assert len(waits) == 1 and lo <= waits[0] <= hi                     # one gap between two e-mails
     assert phone_only.id not in {x["lead_id"] for x in gm.campaign.log}
     db.expire_all()
     sent = db.query(Interaction).filter(Interaction.channel == "email_smtp").all()
@@ -381,7 +382,7 @@ def test_calendar_alert_for_a_reply_waiting_on_the_operator(live):
     body = ev[0].body
     assert body["summary"].startswith("📞 COUNTER-OFFER RECEIVED: call Pat Agent about ")
     assert "$310,000" in body["description"] and "--- Call script (word for word) ---" in body["description"]
-    assert "walk away above" in body["description"] or "Don't name a price" in body["description"]
+    assert "Best and final:" in body["description"] or "Don't name a price" in body["description"]
     assert "Quinn" not in body["description"] and ev[0].starts_at == datetime(2026, 11, 4, 11, 10)
     row.status = "approved"
     db.flush()
@@ -416,7 +417,7 @@ def test_simple_home_endpoints(live, monkeypatch):
     lead = listed(db)
     db.commit()
     st = client.get("/api/simple/status").json()
-    assert st["configured"] and st["account"] == ME and st["action_needed"] == [] and st["goal"] == 15
+    assert st["configured"] and st["account"] == ME and st["action_needed"] == [] and st["goal"] == 30
     assert st["today"] == {"emails_sent": 0, "replies_found": 0, "offers_delivered": 0}
     monkeypatch.setitem(settings()["gmail_autopilot"], "send_hours", [0, 24])
     monkeypatch.setitem(settings()["gmail_autopilot"], "pace_seconds", [0, 0])
