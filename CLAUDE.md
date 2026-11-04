@@ -917,7 +917,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     $30 / $55 / $110 per sqft + age bumps, 0 / 5 / 10% extra contingency); `reprice()` re-reads it;
   - `offer_math.PRICING_VERSION`: the cloud desk re-prices every stored valuation (~20 s) on its first run under new
     rules, on every refresh and on task `recalibrate`; waiting drafts are rebuilt when their numbers change;
-  - firm-up: the daily refresh re-values up to `call_sheet.firm_up_daily` (30) ask-first listings whose only gap is stale
+  - firm-up (task `firmup` does only this, today's call-sheet houses first whatever their reach, ~13 s each, ≤ 45 in
+    15 minutes): the daily refresh re-values up to `call_sheet.firm_up_daily` (30) ask-first listings whose only gap is stale
     data live with recent sold MLS comps; a number an agent names on a call that fits the final is written only after
     the same live re-value clears the certainty checks.
 

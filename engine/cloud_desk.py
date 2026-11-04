@@ -486,13 +486,19 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             rc = quant_pricing.recalibrate_all(s)
         _state_set(pricing_version=PRICING_VERSION)
         out.update(repriced=int(rc.get("repriced") or 0), reprice_errors=int(rc.get("errors") or 0))
-    if task == "refresh":
-        # Near-firm listings whose only gap is stale comps: re-valued live with recent sold MLS comps, so the day's
-        # call sheet and e-mails carry more firm numbers (engine/offer_math.py::firm_up_pass).
+    if task in ("refresh", "firmup"):
+        # Near-firm listings whose only gap is stale comps / no living area: re-valued live with recent sold MLS
+        # comps and the listing's own record, so the call sheet and e-mails carry more firm numbers
+        # (engine/offer_math.py::firm_up_pass). Task `firmup` does only this, today's call-sheet houses first
+        # (~13 s each), without the 45-minute refresh.
+        from engine import call_sheet as cs
         from engine.offer_math import firm_up_pass
+        from core.config import settings
+        cfg = settings().get("call_sheet") or {}
         with session_scope() as s:
-            from core.config import settings
-            fu = firm_up_pass(s, int((settings().get("call_sheet") or {}).get("firm_up_daily", 30)))
+            sheet = cs.lead_ids_on(s, t.date()) if task == "firmup" else set()
+            fu = firm_up_pass(s, int(cfg.get("firm_up_now", 45) if task == "firmup" else cfg.get("firm_up_daily", 30)),
+                              budget_seconds=900 if task == "firmup" else 600, first=sheet)
         out.update(firm_up=int(fu.get("revalued") or 0), now_firm=int(fu.get("now_firm") or 0))
     if t.weekday() < 6 and 7 <= t.hour < 21:
         # The day's call sheet (engine/call_sheet.py), frozen at its first build so codes mean the same call all day;

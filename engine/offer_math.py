@@ -324,10 +324,13 @@ def firm_up(session: Any, lead: Any, *, today: date | None = None) -> FirmOffer:
     return firm_offer(lead, session, today=today)
 
 
-def firm_up_pass(session: Any, limit: int = 30, *, budget_seconds: float = 600, today: date | None = None
-                 ) -> dict[str, int]:
+def firm_up_pass(session: Any, limit: int = 30, *, budget_seconds: float = 600, today: date | None = None,
+                 first: set[int] | None = None) -> dict[str, int]:
     """Each day: the ask-first listings closest to a firm number whose only gap is data, re-valued live (best reach
-    first, at most `limit`, inside `budget_seconds`). Converts "ask their number" rows into firm offers."""
+    first, at most `limit`, inside `budget_seconds`). Converts "ask their number" rows into firm offers.
+
+    `first`: leads on today's call sheet go ahead of everything, whatever their reach: a live re-value turns their
+    "write it down, agree to nothing" into "yes at or under $X" (or a firm number) before the operator dials."""
     import time as _time
 
     from db.models import DistressSignal, Lead
@@ -341,8 +344,9 @@ def firm_up_pass(session: Any, limit: int = 30, *, budget_seconds: float = 600, 
             f = firm_offer(lead, session, today=today)
         except Exception:                           # noqa: BLE001
             continue
-        if data_only(f) and (f.reach or 0) >= gate:
-            todo.append((f.reach or 0, lead))
+        on_sheet = bool(first) and lead.id in first
+        if data_only(f) and (on_sheet or (f.reach or 0) >= gate):
+            todo.append(((f.reach or 0) + (10 if on_sheet else 0), lead))
     todo.sort(key=lambda x: -x[0])
     start, out = _time.monotonic(), {"candidates": len(todo), "revalued": 0, "now_firm": 0}
     for _, lead in todo[:limit]:

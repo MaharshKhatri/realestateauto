@@ -211,3 +211,19 @@ def test_rebuilding_keeps_called_blocks_and_refills_the_rest_with_todays_rules(d
     codes = {r.lead_id: r.code for r in out}
     assert codes[first.id] == "A01" and codes[second.id] == "A02"          # block A was started: kept as is
     assert codes[late.id] == "B01"                                          # the rest refilled from block B
+
+
+@pytest.mark.production_gates
+def test_firm_up_re_values_todays_sheet_houses_first_whatever_their_reach(db, operator, monkeypatch):
+    """2026-11-04: most rows said "write it down, agree to nothing" (old comps, no living area on record) because the
+    morning refresh had no live listing data. Task `firmup` re-values today's sheet houses first, so a row can say
+    "yes at or under $X" before the operator dials; other listings still need the usual reach."""
+    from engine import offer_math
+    on_sheet = listed(db, list_price=370_000, assumptions={})          # 77% reach (under the gate), on the sheet
+    off_sheet = listed(db, list_price=370_000, assumptions={}, phone="9735550199", email="x@broker.test")
+    near = listed(db, list_price=340_000, assumptions={}, phone="9735550188", email="y@broker.test")   # 84%: always
+    db.flush()
+    seen = []
+    monkeypatch.setattr(offer_math, "firm_up", lambda s, lead, **kw: seen.append(lead.id) or offer_math.firm_offer(lead, s))
+    out = offer_math.firm_up_pass(db, 10, first={on_sheet.id})
+    assert seen == [on_sheet.id, near.id] and out["revalued"] == 2 and off_sheet.id not in seen
