@@ -645,3 +645,24 @@ def test_a_call_that_went_unanswered_gets_its_email_the_same_day(live):
     crm.log_call(db, lead, "LEFT_VM", contact=lead.contacts[0], now=day.replace(tzinfo=crm.TZ))
     db.flush()
     assert lead.id in gm.unanswered_today(db, day.date())
+
+
+def test_only_follow_up_rows_wait_for_their_call(live):
+    """Cold rows get the opener e-mail the same morning (the call follows it); a due follow-up waits for its call
+    until a no-answer is reported."""
+    from db.models import SwarmState
+    from engine import call_sheet as cs
+    from engine import crm
+    db = live
+    cold, follow = listed(db), listed(db)
+    db.flush()
+    day = datetime(2026, 11, 4, 9, 0)
+    rows = [cs.Row(code="A01", tier="T3", lead_id=cold.id, phone="", who="", streets=["x"], facts="", say=""),
+            cs.Row(code="A02", tier="T2", lead_id=follow.id, phone="", who="", streets=["y"], facts="", say="")]
+    from dataclasses import asdict
+    db.add(SwarmState(key=cs.STATE_KEY, value_json={"date": day.date().isoformat(), "rows": [asdict(r) for r in rows]}))
+    db.flush()
+    assert gm.held_for_calls(db, day.date()) == {follow.id}
+    crm.log_call(db, follow, "NO_ANSWER", contact=follow.contacts[0], now=day.replace(hour=11, tzinfo=crm.TZ))
+    db.flush()
+    assert gm.held_for_calls(db, day.date()) == set()

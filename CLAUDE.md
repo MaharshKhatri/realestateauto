@@ -222,7 +222,8 @@ deals/<property_id>/          ← generated LOI/PSA/assignment/JV/deal sheets �
 deals/agent_blast/, deals/mail_batches/ ← agent review pages and letter batches — git-ignored
 logs/                         ← swarm_intelligence.md (committed); *.log (ignored)
 scripts/install_desktop_shortcut.py ← writes the three launchers + a Desktop copy (`manage.py install-shortcut`)
-.github/workflows/            ← ci.yml (pytest); desk.yml (the cloud desk, self-chaining) + kicker.yml (its safety net); deploy_site.yml (GitHub Pages: pii-scan + site tests + build-site
+.github/workflows/            ← ci.yml (pytest); desk.yml (the cloud desk, self-chaining) + night.yml (overnight hand-off:
+                                5:17 AM refresh, 7:00 start) + kicker.yml (cron net, unreliable here); deploy_site.yml (GitHub Pages: pii-scan + site tests + build-site
                                 --check, from repository variables; skipped until SITE_FORM_ENDPOINT is set)
 tests/                        ← pytest; parsers run against saved real pages in tests/fixtures/ (clerk/ = UCPA,
                                 PRESS, OPRS pages with every party name replaced by an invented one)
@@ -963,7 +964,17 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     retail buyers), anything else. Nov 3 data: 81 listings qualify. Task `sheet` (`call_sheet.rebuild_unstarted`)
     rebuilds the blocks nobody has called yet with today's rules; started blocks keep their codes.
   - **Volume without wasted touches** (learned 2026-11-04, the operator: "send the most e-mails possible to the deals
-  that could work"):
+  that could work"; the first funnel: 1,447 listed, 68 convertible, 46 never e-mailed, 17 of 40 cold e-mails used,
+  28 replies to 75 e-mails in 7 days, 3 bounces):
+  - GitHub's cron is not relied on (kicker.yml fired 0 times in its first 95 minutes): after 9 PM the last desk run
+    dispatches night.yml (own concurrency group, waits ≤ 5.5 h per hop), which starts the 5:17 AM refresh; a run
+    before 7 AM hands off again (wake 07:00) to start the daytime chain. The hourly Claude check-in restarts a broken
+    chain from 7:41 AM;
+  - cold call-sheet rows (T1 / T3 / T4) get their opener e-mail the same morning (the call follows it); only follow-up
+    rows (T0 / T2) wait for their call (`gmail_autopilot.held_for_calls`);
+  - each daytime run re-values up to 3 listings flagged `comps_need_refresh` (fixers first, ≤ 40 s, 150 / day:
+    `offer_math.trickle`) and 2 unvalued listings (`value_new_listings` cap 2), so supply grows all day;
+  - `DAILY_OPENERS` 35;
   - three opener waves (`OPENER_WAVES` 10:30, 14:00, 16:30); each sends its share of what is LEFT of the day's
     `DAILY_OPENERS` (swarm_state `sent_total`), so a short morning supply is made up after the calls and the firm-up;
   - a call-sheet lead is held from e-mail only until it is dialed: a reported no-answer / voicemail

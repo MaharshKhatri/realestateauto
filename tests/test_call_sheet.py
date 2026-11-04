@@ -248,3 +248,23 @@ def test_the_funnel_counts_where_good_deals_drop_out(db, operator):
     assert _norm("HOLD: wrong parcel: the MLS listing (Iselin) and the parcel record (South River) are 10.4 miles apart") \
         == "HOLD: wrong parcel"
     assert _norm("our final is 63% of the ask (under 65%): too far apart") == "our final is #% of the ask: too far apart"
+
+
+def test_the_daytime_trickle_re_values_flagged_listings_fixers_first(db, operator, monkeypatch):
+    """2026-11-04: 94 listings waited on "stored comps failed hygiene" for the nightly refresh; each daytime run now
+    re-values a few of them live (fixers first), inside a daily cap."""
+    from engine import offer_math
+    plain = listed(db, list_price=340_000, assumptions={"sqft_source": "record", "comps_need_refresh": 5},
+                   listing_text="Colonial near the park.")
+    fixer = listed(db, list_price=340_000, phone="9735550177", email="z@broker.test",
+                   assumptions={"sqft_source": "record", "comps_need_refresh": 4})
+    listed(db, list_price=340_000, phone="9735550166", email="w@broker.test")          # not flagged: left alone
+    db.flush()
+    seen = []
+    monkeypatch.setattr(offer_math, "firm_up", lambda s, lead, **kw: seen.append(lead.id))
+    day = date(2026, 11, 4)
+    assert offer_math.trickle(db, limit=1, today=day) == {"trickle": 1, "trickle_left": 1}
+    assert seen == [fixer.id]
+    offer_math.trickle(db, limit=5, today=day)
+    assert seen == [fixer.id, plain.id]                                  # each one once a day
+    assert offer_math.trickle(db, limit=5, today=day, daily_cap=2) == {"trickle": 0}

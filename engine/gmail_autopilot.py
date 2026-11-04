@@ -1245,6 +1245,13 @@ def agents_written_recently(session: Session, now: datetime | None = None, hours
     return {str(e).strip().lower() for (e,) in rows if e}
 
 
+def held_for_calls(session: Session, day: Any) -> set[int]:
+    """Leads whose e-mail waits for today's call: follow-up rows (T0 / T2) not yet dialed without an answer."""
+    from engine import call_sheet
+    return {i for r in call_sheet.stored(session, day) if r.tier in ("T0", "T2")
+            for i in (r.lead_ids or [r.lead_id])} - unanswered_today(session, day)
+
+
 def unanswered_today(session: Session, day: Any) -> set[int]:
     """Leads whose listing agent was called today without reaching anyone (no answer, voicemail)."""
     start = datetime.combine(day, datetime.min.time())
@@ -1264,10 +1271,11 @@ def pick_cards(session: Session, limit: int, now: datetime | None = None) -> tup
     gap = float(_cfg().get("agent_cold_gap_hours", 72))
     busy = agents_written_recently(session, now, hours=gap) if gap > 0 else set()
     from engine import call_sheet
-    # Today's calls go first, but a call that already went unanswered (no answer / voicemail reported in the chat)
-    # gets its e-mail the same day: the best leads are the ones on the sheet (2026-11-04).
-    calling = call_sheet.lead_ids_on(session, now_eastern(now).date()) - \
-        unanswered_today(session, now_eastern(now).date())
+    # The call sheet and the e-mail work together (2026-11-04: 37% of e-mails got a reply, most calls rang out): a
+    # cold row (never contacted, T1/T3/T4) gets its opener e-mail the same morning, so the afternoon call follows it.
+    # Only a follow-up row (T0 reply waiting / T2 due follow-up) waits for its call, until a reported no-answer or
+    # voicemail releases the e-mail nudge.
+    calling = held_for_calls(session, now_eastern(now).date())
     for c in deck["cards"]:
         why = auto_sendable(c)
         item = {"lead_id": c["lead_id"], "address": c["address"], "kind": c["kind"], "touch": c["touch"],
@@ -1276,7 +1284,7 @@ def pick_cards(session: Session, limit: int, now: datetime | None = None) -> tup
         if why is None and addr and int(c.get("touch") or 1) <= 1 and addr in busy:
             why = "this agent already got a new e-mail from us in the last 3 days"
         if why is None and c["lead_id"] in calling:
-            why = "on today's call sheet: the call goes first"
+            why = "a follow-up on today's call sheet: the call goes first"
         if why is None and len(picked) < limit:
             picked.append(item)
             if addr and gap > 0:

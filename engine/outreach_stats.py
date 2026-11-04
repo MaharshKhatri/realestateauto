@@ -93,6 +93,18 @@ def funnel(session: Session, now: datetime | None = None) -> dict[str, Any]:
                                                                         InboundReply.created_at >= since7)) or 0
     replies7 = session.scalar(select(func.count(InboundReply.id)).where(
         InboundReply.status.notin_(("bounce", "auto_reply")), InboundReply.created_at >= since7)) or 0
+    from db.models import AgentRun
+    harvest = session.scalar(select(AgentRun).where(AgentRun.agent_name == "stale_listings")
+                             .order_by(AgentRun.started_at.desc()).limit(1))
+    if harvest is not None:
+        m = harvest.metrics_json or {}
+        out["harvest_minutes"] = round(((harvest.completed_at or harvest.started_at) - harvest.started_at)
+                                       .total_seconds() / 60, 1)
+        out["harvest_hours_ago"] = round((datetime.utcnow() - harvest.started_at).total_seconds() / 3600, 1)
+        out["harvest_zips"] = int(m.get("zips_harvested") or 0)
+        out["harvest_zips_planned"] = int(m.get("zips_planned") or 0)
+        out["harvest_listings_seen"] = int(m.get("listings_seen") or 0)
+        out["harvest_blocked"] = int(bool(m.get("provider_blocked")))
     result: dict[str, Any] = dict(out)
     result.update(cold_24h=ao.sent_last_24h(session, now, cold_only=True), all_24h=ao.sent_last_24h(session, now),
                   sent_7d=int(sent7), replies_7d=int(replies7), bounces_7d=int(bounces7),

@@ -1,0 +1,60 @@
+# Overnight hand-off for the deal desk (desk.yml). GitHub's own cron never fired for this repository on 2026-11-04
+# (kicker.yml: 0 runs in its first 95 minutes, during an Actions outage), so the desk schedules itself: the last desk
+# run of the evening dispatches this workflow, which waits on GitHub's side and then starts the 5:17 AM data refresh.
+# A job may run at most 6 hours, so a longer wait hops: it re-dispatches itself and the next hop waits the rest.
+# The refresh run then waits until 7:00 and starts the daytime chain (desk.yml, its last step).
+# It runs in its own concurrency group: a note or approval dispatched overnight runs at once, never behind this wait.
+name: Desk night
+
+on:
+  workflow_dispatch:
+    inputs:
+      wake:
+        description: "Eastern time to start the desk (HH:MM, next occurrence)"
+        default: "05:17"
+      task:
+        description: "the desk task to start then"
+        default: refresh
+
+permissions:
+  actions: write
+
+concurrency:
+  group: desk-night              # one sleeper; a newer hand-off replaces an older one
+  cancel-in-progress: true
+
+jobs:
+  wait:
+    if: github.repository == 'MaharshKhatri/realestateauto'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TZ: America/New_York
+      WAKE: ${{ github.event.inputs.wake || '05:17' }}
+      TASK: ${{ github.event.inputs.task || 'refresh' }}
+    steps:
+      - name: Wait, then start the desk (or hop)
+        run: |
+          case "$WAKE" in [0-2][0-9]:[0-5][0-9]) ;; *) echo "bad wake time"; exit 1;; esac
+          case "$TASK" in run|refresh) ;; *) echo "bad task"; exit 1;; esac
+          now=$(date +%s)
+          target=$(date -d "today $WAKE" +%s)
+          if [ "$target" -le "$now" ]; then target=$(date -d "tomorrow $WAKE" +%s); fi
+          left=$(( target - now ))
+          max=$(( 330 * 60 ))
+          if [ "$left" -gt "$max" ]; then
+            sleep "$max"
+            gh workflow run night.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f wake="$WAKE" -f task="$TASK"
+            echo "Hopped: the next wait ends at $WAKE."
+            exit 0
+          fi
+          sleep "$left"
+          busy=$(gh run list -R "$GITHUB_REPOSITORY" --workflow desk.yml --limit 20 --json status \
+                 --jq '[.[] | select(.status != "completed")] | length')
+          if [ "$busy" = "0" ]; then
+            gh workflow run desk.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f task="$TASK"
+            echo "Started the desk ($TASK)."
+          else
+            echo "The desk is already running or queued."
+          fi

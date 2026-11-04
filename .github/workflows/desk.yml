@@ -5,9 +5,10 @@
 name: Deal desk
 
 # Runs only by dispatch: each run starts the next one a few minutes later (the last step), 7 AM-9 PM Eastern, so the
-# inbox is read about every 6 minutes. GitHub's own cron fired only a few times a day (2026-11-04) and, sharing this
-# concurrency group, could cancel a queued note; the safety-net cron lives in kicker.yml, which dispatches a run only
-# when none is running or queued.
+# inbox is read about every 6 minutes. After 9 PM the last run hands over to night.yml, which waits and starts the
+# 5:17 AM refresh; the refresh hands over again to start the day at 7:00. GitHub's own cron fired only a few times a
+# day here (kicker.yml: none in its first 95 minutes), so nothing depends on it; kicker.yml stays as an extra net.
+# Never dispatch two runs back to back: a second queued run replaces (cancels) the first in this concurrency group.
 on:
   workflow_dispatch:
     inputs:
@@ -42,7 +43,7 @@ jobs:
       SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
       DESK_KEY: ${{ secrets.DESK_KEY }}
       TZ: America/New_York
-      DAILY_OPENERS: "30"          # new cold openers per weekday, split across the waves below (cap: outreach.daily_email_limit)
+      DAILY_OPENERS: "35"          # new cold openers per weekday, shared by the waves below (cap: outreach.daily_email_limit)
       OPENER_WAVES: "10:30,14:00,16:30"
     steps:
       - name: Start the clock
@@ -101,7 +102,16 @@ jobs:
           CYCLE_SECONDS: "360"
         run: |
           hour=$((10#$(date +%H)))
-          if [ "$hour" -lt 7 ] || [ "$hour" -ge 21 ]; then echo "After hours: the next run starts tomorrow."; exit 0; fi
+          # Overnight: night.yml waits on GitHub's side and starts the 5:17 AM refresh; the refresh (or any run before
+          # 7 AM) hands the morning start to night.yml again (wake 07:00). GitHub's cron can't be relied on here.
+          if [ "$hour" -ge 21 ]; then
+            gh workflow run night.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f wake=05:17 -f task=refresh
+            echo "After hours: night.yml starts the 5:17 AM refresh."; exit 0
+          fi
+          if [ "$hour" -lt 7 ]; then
+            gh workflow run night.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f wake=07:00 -f task=run
+            echo "Early: night.yml starts the day at 7:00."; exit 0
+          fi
           # One queued run at most: a note or approval someone dispatched meanwhile goes first, and carries the chain.
           # It is checked before the wait too, so a queued note starts now instead of ~6 minutes later.
           count_queued() { gh run list -R "$GITHUB_REPOSITORY" --workflow desk.yml --limit 20 --json status \

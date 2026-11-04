@@ -532,6 +532,21 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             fu = firm_up_pass(s, int(cfg.get("firm_up_now", 45) if task == "firmup" else cfg.get("firm_up_daily", 30)),
                               budget_seconds=900 if task == "firmup" else 600, first=sheet)
         out.update(firm_up=int(fu.get("revalued") or 0), now_firm=int(fu.get("now_firm") or 0))
+    if task == "run" and t.weekday() < 6 and 8 <= t.hour < 20:
+        # Supply grows all day, not only at the 5:17 refresh: a few unvalued listings and listings flagged for a
+        # re-underwrite are valued live in each run (small budget, daily cap; engine/offer_math.py::trickle).
+        from engine.offer_math import trickle
+        try:
+            with session_scope() as s:
+                out.update(trickle(s))
+        except Exception:                          # noqa: BLE001 - never stops the inbox or the sends
+            out["trickle_error"] = 1
+        try:
+            from swarm.orchestrator import run_agent
+            r = run_agent("value_new_listings", cap=2, max_minutes=0.5)
+            out["new_valued"] = int(((r.metrics_json or {}).get("valued") or 0) if r is not None else 0)
+        except Exception:                          # noqa: BLE001
+            out["new_value_error"] = 1
     if task == "stats":
         # Where the pipeline stands (engine/outreach_stats.py): counts only, safe for the public run log.
         from engine.outreach_stats import flat, funnel

@@ -359,6 +359,52 @@ def firm_up_pass(session: Any, limit: int = 30, *, budget_seconds: float = 600, 
     return out
 
 
+TRICKLE_KEY = "revalue_trickle"
+
+
+def trickle(session: Any, *, limit: int = 3, budget_seconds: float = 40, daily_cap: int = 150,
+            today: date | None = None) -> dict[str, int]:
+    """A few live re-valuations in every daytime desk run (2026-11-04: 94 listings sat on "stored comps failed hygiene"
+    and could never be priced until the nightly refresh reached them). Listings whose valuation is flagged for a
+    re-underwrite, fixer wording first, inside a small time budget and a daily cap (Realtor.com stays low volume: a
+    refusal stops the provider for its cooldown, and the public-record valuation simply comes back)."""
+    import time as _time
+
+    from db.models import DistressSignal, Lead, SwarmState
+    today = today or date.today()
+    row = session.get(SwarmState, TRICKLE_KEY)
+    state = dict(row.value_json or {}) if row is not None else {}
+    done_today = int(state.get("n") or 0) if state.get("date") == today.isoformat() else 0
+    if done_today >= daily_cap:
+        return {"trickle": 0}
+    listed = select(DistressSignal.property_id).where(DistressSignal.active.is_(True),
+                                                      DistressSignal.signal_type.in_(("STALE_LISTING",
+                                                                                      "ACTIVE_LISTING")))
+    tried = set(state.get("tried") or []) if state.get("date") == today.isoformat() else set()
+    todo: list[tuple[int, Any]] = []
+    for lead in session.scalars(select(Lead).where(Lead.property_id.in_(listed),
+                                                   Lead.status_stage.notin_(("DEAD", "DO_NOT_CONTACT", "CLOSED")))):
+        v = lead.property.current_valuation
+        if v is None or lead.id in tried or not (v.assumptions_json or {}).get("comps_need_refresh"):
+            continue
+        todo.append((0 if condition(session, lead) == "fixer" else 1, lead))
+    todo.sort(key=lambda x: (x[0], -(x[1].priority_rank_score or 0)))
+    start, n = _time.monotonic(), 0
+    for _, lead in todo[:max(0, min(limit, daily_cap - done_today))]:
+        if _time.monotonic() - start > budget_seconds:
+            break
+        firm_up(session, lead, today=today)
+        tried.add(lead.id)
+        n += 1
+        session.commit()
+    if row is None:
+        row = SwarmState(key=TRICKLE_KEY, value_json={})
+        session.add(row)
+    row.value_json = {"date": today.isoformat(), "n": done_today + n, "tried": sorted(tried)[-400:]}
+    session.commit()
+    return {"trickle": n, "trickle_left": max(0, len(todo) - n)}
+
+
 def _is_unit(session: Any, lead: Any) -> bool:
     """A condo / townhouse / co-op unit (MLS type, MOD-IV qualifier or building description)."""
     lst = listing_for(session, lead)
