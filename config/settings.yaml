@@ -120,6 +120,8 @@ calendar:                            # Google Calendar sync (engine/gcal_sync.py
     reconnect: "3"                   # grape
     reply: "2"                       # sage: an agent answered, the deal waits on your click
     desk: "8"                        # graphite: the daily 📊 deal-desk status (all day, shows as free)
+    done: "8"                        # graphite: ✅ a call or block you finished (or that needs nothing more)
+    catchup: "6"                     # tangerine: 📞 catch-up calls a passed block didn't reach
 
 call_sheet:
   # engine/call_sheet.py: up to crm.call_queue_size listing-agent calls a weekday in four blocks (one on Saturday),

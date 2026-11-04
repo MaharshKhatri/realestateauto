@@ -733,3 +733,26 @@ def test_after_the_written_offer_the_script_asks_about_it_instead_of_promising_o
     text = d.body["description"]
     assert d.body["summary"].startswith("📞 Try Pat Agent again") and "Did you get my offer at $350,400?" in text
     assert "I'll send it in writing today" not in text
+
+
+def test_a_call_reported_today_turns_its_event_into_a_gray_check(db, google):
+    """2026-11-04: the operator couldn't tell finished calls from waiting ones. A follow-up handled today stays where
+    it was, ✅ and graphite, saying what happened, without a reminder; it never comes back as a to-do."""
+    from engine import crm
+    lead, agent = agent_lead(db)
+    ao.record_sent(db, lead, offer_packet(lead, agent), "email", now=datetime(2026, 11, 3, 14, 15, tzinfo=ET))
+    gs.sync(db, now=datetime(2026, 11, 3, 14, 16))                          # follow-up Thu Nov 5, 2:15 PM
+    row = db.scalar(select(CalendarEvent).where(CalendarEvent.kind == "followup"))
+    crm.log_call(db, lead, "LEFT_VM", contact=agent, debrief={"source": "chat_note"},
+                 now=datetime(2026, 11, 5, 11, 0, tzinfo=ET))               # called that morning, reported in the chat
+    gs.sync(db, now=datetime(2026, 11, 5, 11, 1))
+    db.refresh(row)
+    e = google.store[row.google_event_id]
+    assert e["summary"].startswith("✅ Follow Up:") and e["colorId"] == "8" and e.get("status") != "cancelled"
+    assert "✅ DONE Thu Nov 5, 11:00 AM: called, left a voicemail" in e["description"]
+    assert e["reminders"]["overrides"] == []
+    gs.sync(db, now=datetime(2026, 11, 5, 16, 0))
+    assert google.store[row.google_event_id]["summary"].startswith("✅") and \
+        google.store[row.google_event_id].get("status") != "cancelled"
+    nxt = [x for x in google.live() if x["summary"].startswith("📞 Try")]
+    assert len(nxt) == 1                                                     # the next call is its own event

@@ -86,7 +86,7 @@ def test_calendar_shows_four_blocks_and_no_second_event_for_sheet_leads(db, oper
     cs.today(db, NOW)
     want = gs.desired_events(db, now=NOW)
     blocks = [d for k, d in want.items() if k.startswith("callblock:20261104:")]
-    assert len(blocks) == 1 and blocks[0].body["summary"].startswith("📞 Call block A: 1 calls")
+    assert len(blocks) == 1 and blocks[0].body["summary"].startswith("📞 Call block A: 1 to call")
     text = blocks[0].body["description"]
     assert "--- Script for every call in this block" in text and "A01 |" in text and "OFFER $280,000" in text
     assert not any(k.startswith("followup:") and d.lead_id == lead.id for k, d in want.items())
@@ -268,3 +268,36 @@ def test_the_daytime_trickle_re_values_flagged_listings_fixers_first(db, operato
     offer_math.trickle(db, limit=5, today=day)
     assert seen == [fixer.id, plain.id]                                  # each one once a day
     assert offer_math.trickle(db, limit=5, today=day, daily_cap=2) == {"trickle": 0}
+
+
+def test_blocks_show_whats_left_and_missed_calls_move_to_catch_up(db, operator):
+    """2026-11-04: "anytime I confirm I did something it gets a check mark or a color": reported calls are ✅, a block
+    with nothing left turns graphite, and calls a passed block didn't reach (class) move to one catch-up event."""
+    from db.models import CalendarEvent
+    from engine import crm
+    first = listed(db)
+    second = listed(db, phone="9735550199", email="x@broker.test")
+    db.flush()
+    rows = {r.lead_id: r for r in cs.today(db, NOW)}
+    db.add(CalendarEvent(key="callblock:20261104:A", kind="callblock", status="synced", google_event_id="g1",
+                         body_json={}, starts_at=datetime(2026, 11, 4, 9, 30)))
+    crm.log_call(db, first, "LEFT_VM", contact=first.contacts[0], debrief={"source": "chat_note"},
+                 now=datetime(2026, 11, 4, 10, 5, tzinfo=crm.TZ))
+    db.flush()
+    during = gs.desired_events(db, now=datetime(2026, 11, 4, 10, 10))["callblock:20261104:A"].body
+    assert during["summary"].startswith("📞 Call block A: 1 to call · ✅ 1 done") and during["colorId"] == "10"
+    assert f"✅ {rows[first.id].code} |" in during["description"] and "--- ✅ Done (1) ---" in during["description"]
+    later = gs.desired_events(db, now=datetime(2026, 11, 4, 11, 30))          # block A ended at 10:45
+    blk, catch = later["callblock:20261104:A"].body, later["callblock:20261104:catchup"].body
+    assert blk["summary"] == "⏩ Call block A: 1 moved to Catch-up calls · ✅ 1 done" and blk["colorId"] == "8"
+    assert catch["summary"] == "📞 Catch-up calls: 1 you didn't reach earlier" and catch["colorId"] == "6"
+    assert f"{rows[second.id].code} |" in catch["description"] and f"{rows[first.id].code} |" not in catch["description"]
+    crm.log_call(db, second, "NO_ANSWER", contact=second.contacts[0], debrief={"source": "chat_note"},
+                 now=datetime(2026, 11, 4, 19, 0, tzinfo=crm.TZ))                # called after class
+    db.add(CalendarEvent(key="callblock:20261104:catchup", kind="catchup", status="synced", google_event_id="g2",
+                         body_json={}, starts_at=datetime(2026, 11, 4, 17, 15)))
+    db.flush()
+    night = gs.desired_events(db, now=datetime(2026, 11, 4, 19, 5))
+    assert night["callblock:20261104:A"].body["summary"] == "✅ Call block A: all done (2 called)"
+    assert night["callblock:20261104:catchup"].body["summary"] == "✅ Catch-up calls: all done"
+    assert night["callblock:20261104:catchup"].body["colorId"] == "8"

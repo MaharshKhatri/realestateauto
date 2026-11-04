@@ -984,6 +984,18 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     convertible, reachable, never e-mailed, cold / all e-mail in 24 h, replies and bounce % in 7 days;
   - a sealed note item `{"operator": {"phone": ...}}` changes the operator's details on the desk (validated, saved in
     its settings.local.yaml): every e-mail, LOI, call script and voicemail line follows.
+- **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a
+  color … I will have class and miss some calls"):
+  - call blocks: the title counts what is left ("📞 Call block B: 9 to call · ✅ 16 done"); reported rows are ✅ in a
+    "Done" part, "SKIP TODAY" rows ⏭; nothing left = "✅ Call block B: all done", graphite (`colors.done` 8), no reminder;
+  - a passed block keeps updating ("⏩ … moved to Catch-up calls") and its unreached rows go to one
+    `callblock:<day>:catchup` event (tangerine) in the first free gap after the last block, same codes; anything still
+    left is on tomorrow's sheet by itself; row status uses the sheet's own date (`call_sheet.refreshed(..., day)`);
+  - follow-up / call-back / reply events handled today (`gcal_sync.handled`: a later interaction, an approved or
+    dismissed reply) stay in place as "✅ …" graphite with "✅ DONE <time>: <what happened>" and no reminder; handled
+    ones later in the week are removed as before;
+  - events Claude made by hand with the Calendar connector are marked the same way (✅ + colorId 8) when the operator
+    says they're done.
 - **Rows follow the day**: block events re-read every row on every sync (`call_sheet.refreshed`): "DONE 11:00
     (voicemail): skip" once reported in the chat, "THEY E-MAILED BACK: read it in Gmail first" when an agent wrote back,
     the current firm words, or "SKIP TODAY". Codes stay frozen.

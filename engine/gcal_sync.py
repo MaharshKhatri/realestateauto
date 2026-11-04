@@ -39,6 +39,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import socket
 import threading
 import time as clock
@@ -803,10 +804,20 @@ def place_blocks(day: date, planned: list[tuple[str, str, int]], busy: list[tupl
     return out
 
 
+def _exists(session: Session, key: str) -> bool:
+    return bool(session.scalar(select(CalendarEvent.id).where(CalendarEvent.key == key,
+                                                              CalendarEvent.status.in_(("pending", "synced")))))
+
+
 def call_block_events(session: Session, now: datetime) -> list[Desired]:
     """📞 The day's call sheet (engine/call_sheet.py) as four events of 25 calls: one word-for-word script, then one
     line per call with the single number to use. Built from the frozen sheet, so "A07" means the same call all day.
-    Streets (or "lead #<id>" when suppressed), the agent's first name, brokerage and advertised number only."""
+    Streets (or "lead #<id>" when suppressed), the agent's first name, brokerage and advertised number only.
+
+    What is left stays obvious (2026-11-04: classes make the operator skip calls and come back later): a reported call
+    is ✅ and drops to the "Done" part, the title counts what is left, a block with nothing left turns graphite
+    ("✅ … all done"), and the calls a passed block didn't reach move to one "📞 Catch-up calls" event in the next free
+    time after the last block (same codes, so "B07 vm" still works). A passed block keeps updating, never re-created."""
     from engine import call_sheet as cs
     if not cfg().get("call_blocks", True):
         return []
@@ -819,24 +830,75 @@ def call_block_events(session: Session, now: datetime) -> list[Desired]:
         for a0, b0 in b.get("spans") or []:
             busy.append(tuple(datetime.combine(now.date(), time(*(int(x) for x in v.split(":")))) for v in (a0, b0)))
     placed = place_blocks(now.date(), cs.blocks(), busy)
+    colors = cfg().get("colors") or {}
+    done_color = str(colors.get("done") or "8")
+    missed: list[Any] = []
+    catch_key = f"callblock:{now:%Y%m%d}:catchup"
+    ends = [s + timedelta(minutes=m) for s, m in placed.values()]
+    after = max(ends) if ends else None
+    catch = place_blocks(now.date(), [("X", f"{after:%H:%M}", 90)], busy + [(s, s + timedelta(minutes=m))
+                                                                             for s, m in placed.values()],
+                         min_minutes=30) if after else {}
+    catch_at = _when(catch["X"][0]).split(", ")[-1] if catch.get("X") else None
     for letter, _hhmm, _mins in cs.blocks():
         mine = cs.block_rows(rows, letter)
         if not mine or letter not in placed:
             continue
         start, mins = placed[letter]
-        if start + timedelta(minutes=mins) < now:
-            continue                                  # never create one in the past (an existing one stays)
-        mine = [cs.refreshed(session, r) for r in mine]
-        offers = sum(1 for r in mine if r.say.startswith("OFFER"))
-        asks = sum(1 for r in mine if r.say.startswith("ASK"))
-        summary = (f"📞 Call block {letter}: {len(mine)} calls"
-                   + (f" ({offers} offers, {asks} ask their number)" if offers or asks else ""))
-        mine = [cs.refreshed(session, r) for r in mine]
-        lines = [*cs.block_script(letter), "", "--- The calls (code | number agent | house | facts | what to say) ---",
-                 *[r.line() for r in mine]]
+        end = start + timedelta(minutes=mins)
+        key = f"callblock:{now:%Y%m%d}:{letter}"
+        passed = end < now
+        if passed and not _exists(session, key):
+            continue                                  # never create one in the past (an existing one keeps updating)
+        mine = [cs.refreshed(session, r, now.date()) for r in mine]
+        open_ = [r for r in mine if cs.row_state(r) == "open"]
+        done = [r for r in mine if cs.row_state(r) == "done"]
+        skip = [r for r in mine if cs.row_state(r) == "skip"]
+        if passed:
+            missed.extend(open_)
+        offers = sum(1 for r in open_ if r.say.startswith("OFFER"))
+        asks = sum(1 for r in open_ if r.say.startswith("ASK"))
+        tail = (f" · ✅ {len(done)} done" if done else "")
+        if not open_:
+            summary = f"✅ Call block {letter}: all done ({len(done)} called" + (
+                f", {len(skip)} no call needed)" if skip else ")")
+        elif passed:
+            summary = f"⏩ Call block {letter}: {len(open_)} moved to Catch-up calls" + tail
+        else:
+            summary = (f"📞 Call block {letter}: {len(open_)} to call" + tail
+                       + (f" ({offers} offers, {asks} ask their number)" if offers or asks else ""))
+        head = "--- The calls (code | number agent | house | facts | what to say) ---"
+        if passed and open_:
+            head = (f"--- Not reached: moved to 📞 Catch-up calls{' at ' + catch_at if catch_at else ''} "
+                    "(same codes) ---")
+        lines = [*cs.block_script(letter), "", head, *[r.line() for r in open_]]
+        if done:
+            lines += ["", f"--- ✅ Done ({len(done)}) ---", *["✅ " + r.line() for r in done]]
+        if skip:
+            lines += ["", f"--- ⏭ No call needed today ({len(skip)}) ---", *["⏭ " + r.line() for r in skip]]
         s0, e0 = _timed(start, mins)
-        out.append(Desired(f"callblock:{now:%Y%m%d}:{letter}", "callblock", None,
-                           _body("callblock", summary, lines, s0, e0, reminders=[10]), start))
+        body = _body("callblock", summary, lines, s0, e0, reminders=[] if (passed or not open_) else [10])
+        if not open_ or passed:
+            body["colorId"] = done_color              # nothing more to do in this block
+        out.append(Desired(key, "callblock", None, body, start))
+    if catch.get("X") and (missed or _exists(session, catch_key)):
+        start, mins = catch["X"]
+        if start + timedelta(minutes=mins) >= now or _exists(session, catch_key):
+            mins = max(30, min(mins, 10 + 3 * len(missed)))
+            if missed:
+                summary = f"📞 Catch-up calls: {len(missed)} you didn't reach earlier"
+                lines = ["Calls from today's blocks that time ran out on (class, no time). Same codes as their block, "
+                         'so report them the same way ("B07 vm, C03 340").',
+                         "Call them any time before 8:30 PM; anything left goes on tomorrow's sheet by itself.",
+                         *cs.block_script(missed[0].code[0]), "", "--- Still to call ---",
+                         *[r.line() for r in missed]]
+                body = _body("catchup", summary, lines, *_timed(start, mins), reminders=[10])
+            else:
+                body = _body("catchup", "✅ Catch-up calls: all done", ["Every call from today's blocks is done or "
+                                                                        "needs no call."], *_timed(start, mins),
+                             reminders=[])
+                body["colorId"] = done_color
+            out.append(Desired(catch_key, "catchup", None, body, start))
     return out
 
 
@@ -960,6 +1022,49 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
     return out
 
 
+# -- done marks ---------------------------------------------------------------------------------------
+DONE_KINDS = {"followup", "callback", "reply"}
+_OUTCOME_WORDS = {"NO_ANSWER": "called, no answer", "LEFT_VM": "called, left a voicemail",
+                  "WRONG_NUMBER": "called, wrong number", "SPOKE_WARM_FOLLOWUP": "talked, follow-up set",
+                  "SPOKE_NEEDS_OFFER": "talked, they want the offer", "SPOKE_NOT_INTERESTED": "not interested",
+                  "DEAD": "closed out", "DNC": "asked not to be contacted", "OFFER_SENT_TO_AGENT": "offer e-mailed",
+                  "AGENT_FOLLOWUP_SENT": "follow-up e-mailed", "AGENT_REPLIED": "they replied",
+                  "OFFER_ACCEPTED": "offer accepted"}
+
+
+def handled(session: Session, r: CalendarEvent) -> str | None:
+    """What settled this call event, in a few words with the time, or None while it still waits on the operator."""
+    if r.lead_id is None:
+        return None
+    if r.kind == "reply":
+        m = re.match(r"reply:\d+:r(\d+)$", r.key or "")
+        row = session.get(InboundReply, int(m.group(1))) if m else None
+        if row is None or row.status in ("needs_approval", "auto_queued", "sending"):
+            return None
+        when = _when(row.resolved_at) if row.resolved_at else "today"
+        return f"{when}: " + ("answered" if row.status == "approved" else "handled, no answer needed")
+    m = re.match(r"followup:\d+:i(\d+)$", r.key or "")
+    q = select(Interaction).where(Interaction.lead_id == r.lead_id)
+    if m:
+        q = q.where(Interaction.id > int(m.group(1)))
+    else:
+        q = q.where(Interaction.occurred_at >= (r.starts_at or datetime.min) - timedelta(hours=12))
+    inter = session.scalars(q.order_by(Interaction.occurred_at.desc()).limit(1)).first()
+    if inter is None:
+        return None
+    return f"{_when(inter.occurred_at)}: {_OUTCOME_WORDS.get(inter.outcome or '', (inter.outcome or 'done').lower().replace('_', ' '))}"
+
+
+def done_body(body: dict[str, Any], label: str) -> dict[str, Any]:
+    b = dict(body)
+    summary = re.sub(r"^[^\w$#(]+", "", str(b.get("summary") or "")).strip()
+    b["summary"] = "✅ " + summary
+    b["colorId"] = str((cfg().get("colors") or {}).get("done") or "8")
+    b["description"] = f"✅ DONE {label}. Nothing more to do here.\n\n" + str(b.get("description") or "")
+    b["reminders"] = {"useDefault": False, "overrides": []}
+    return b
+
+
 # -- the outbox --------------------------------------------------------------------------------------
 def reconcile(session: Session, lead_ids: set[int] | None = None, now: datetime | None = None) -> dict[str, int]:
     """Bring calendar_events in line with the pipeline: new rows, changed bodies, future events no longer needed."""
@@ -991,6 +1096,21 @@ def reconcile(session: Session, lead_ids: set[int] | None = None, now: datetime 
     for key, r in rows.items():
         if key in want or r.status not in ("pending", "synced") or r.kind == "daily_goal":
             continue
+        if str((r.body_json or {}).get("summary") or "").startswith("✅"):
+            continue                                     # already marked done: it stays as the record
+        if r.kind in DONE_KINDS and r.starts_at is not None and r.starts_at.date() <= now.date() \
+                and r.starts_at >= now - timedelta(days=3):
+            label = handled(session, r)
+            if label:
+                # Done today: the event stays where it was, ✅ and graphite, with what settled it (2026-11-04: the
+                # operator couldn't tell finished calls from the ones still waiting after a class).
+                if r.google_event_id:
+                    r.body_json = done_body(r.body_json or {}, label)
+                    r.body_hash, r.status = body_hash(r.body_json), "pending"
+                else:
+                    r.status = "cancelled"               # never reached the calendar: nothing to mark
+                stats["done"] = stats.get("done", 0) + 1
+                continue
         if r.starts_at is not None and r.starts_at < now:
             continue                                     # it already happened: leave it on the calendar as history
         r.status = "cancel" if r.google_event_id else "cancelled"

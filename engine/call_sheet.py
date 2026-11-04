@@ -318,7 +318,7 @@ def stored(session: Session, day: date) -> list[Row]:
     return [Row(**r) for r in state.get("rows") or []] if state.get("date") == day.isoformat() else []
 
 
-def refreshed(session: Session, row: Row) -> Row:
+def refreshed(session: Session, row: Row, day: date | None = None) -> Row:
     """The row with today's words: the code and the phone stay frozen, but what to say follows the current firm
     numbers (a re-price or a stricter certainty check during the day never leaves a stale price on the calendar)."""
     from engine.offer_math import firm_offer, locked
@@ -345,10 +345,10 @@ def refreshed(session: Session, row: Row) -> Row:
                         ok = True
                 say = "THEY REPLIED: already answered, check in" if ok else \
                     "SKIP TODAY: already answered by e-mail, nothing an investor can win here"
-            return Row(**{**asdict(row), "say": _status(session, row) + say})
+            return Row(**{**asdict(row), "say": _status(session, row, day) + say})
         head = (r.headline or "they replied").split(" / ")[0][:80]
         money = f" (their number ${r.counter_amount:,.0f})" if r.counter_amount else ""
-        return Row(**{**asdict(row), "say": _status(session, row) + f"THEY E-MAILED: {head}{money}. Call: answer it, "
+        return Row(**{**asdict(row), "say": _status(session, row, day) + f"THEY E-MAILED: {head}{money}. Call: answer it, "
                                            "ask what the seller needs; no new price on the call"})
     lead = session.get(Lead, row.lead_id)
     if lead is None:
@@ -360,15 +360,15 @@ def refreshed(session: Session, row: Row) -> Row:
     say = _say(firm, row.tier)
     if firm.tier == "skip":
         say = "SKIP TODAY: " + (firm.reasons[0] if firm.reasons else "no offer we could make")
-    say = _status(session, row) + say
+    say = _status(session, row, day) + say
     return Row(**{**asdict(row), "say": say, "offer": firm.offer if firm.priced else None, "final": firm.final})
 
 
-def _status(session: Session, row: Row) -> str:
+def _status(session: Session, row: Row, day: date | None = None) -> str:
     """What happened on this row since the sheet was built: reported in the chat today, or the agent e-mailed back
     (read their e-mail before calling). Empty when nothing did."""
     from db.models import Interaction
-    start = datetime.combine(date.today(), datetime.min.time())
+    start = datetime.combine(day or date.today(), datetime.min.time())
     ids = row.lead_ids or [row.lead_id]
     done = session.scalar(select(Interaction).where(Interaction.lead_id.in_(ids), Interaction.occurred_at >= start,
                                                     Interaction.channel == "call")
@@ -434,6 +434,18 @@ def block_script(letter: str) -> list[str]:
 
 def block_rows(rows: list[Row], letter: str) -> list[Row]:
     return [r for r in rows if r.code.startswith(letter)]
+
+
+def row_state(row: Row) -> str:
+    """'done' (reported in the chat today), 'skip' (no call needed today) or 'open' (still to call), read from the
+    refreshed row's words, so the calendar shows exactly what is left (2026-11-04: classes make the operator skip
+    calls and come back to them later)."""
+    say = row.say or ""
+    if say.startswith("DONE "):
+        return "done"
+    if "SKIP TODAY" in say:
+        return "skip"
+    return "open"
 
 
 # -- outcomes reported in the chat ---------------------------------------------------------------------
