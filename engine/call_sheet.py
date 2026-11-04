@@ -379,13 +379,18 @@ _CLOSED = re.compile(r"UNDER CONTRACT|OFF THE TABLE|NOT NOW|TOO FAR APART|NOT IN
 def _answered_today(session: Session, row: Row, day: date | None) -> tuple[str, bool] | None:
     """(the desk's one-line reading, door closed?) for an agent reply received today that is already answered."""
     start = datetime.combine(day or date.today(), datetime.min.time())
-    r = session.scalar(select(InboundReply).where(
+    rows = list(session.scalars(select(InboundReply).where(
         InboundReply.lead_id.in_(row.lead_ids or [row.lead_id]), InboundReply.received_at >= start,
         InboundReply.status.notin_(("bounce", "auto_reply", "needs_approval", "auto_queued", "sending")))
-        .order_by(InboundReply.id.desc()).limit(1))
-    if r is None:
+        .order_by(InboundReply.id.desc())))
+    if not rows:
         return None
+    # A closed door today wins over a later "thanks" (2026-11-04: Jennifer's thank-you after "under contract").
+    r = next((x for x in rows if _CLOSED.search(x.headline or "")), None) or next(
+        (x for x in rows if not (x.headline or "").startswith("THANKS")), rows[0])
     head = (r.headline or "they replied").split(" / ")[0].split(":")[0].strip()[:60].lower()
+    if head.startswith("send the offer"):
+        head = "still available"
     return head, bool(_CLOSED.search(r.headline or ""))
 
 
