@@ -104,7 +104,8 @@ agents/scrapers/
   njgis_client.py             ← NJGIN MOD-IV parcel API client (queries, radius sales, municipality codes)
   sheriff_sale_agent.py       ← CivilView sheriff sales → parcels → SHERIFF_SALE / VACANT / ESTATE_OWNER
   nj_tax_assessment_agent.py  ← TaxAssessmentAgent (absentee/out-of-state) + CashBuyerAgent (mailing clusters)
-  stale_listing_distress_agent.py ← homeharvest active listings: 90+ DOM, price cuts, distress keywords
+  stale_listing_distress_agent.py ← homeharvest active listings: 60+ DOM, price cuts, distress keywords in the
+                                `stale_listings:` ZIPs (+ auto-expansion towns); retires listings that left the market
   tax_sale_agent.py           ← RealAuction municipal tax lien sales (live if allowed, else saved-page import)
   owner_records_agent.py      ← imports county owner/deed exports, Newark 2020 snapshot; names buyers; flips
   lis_pendens_agent.py        ← clerk lis pendens / foreclosure filings: Union UCPA, Essex PRESS, Monmouth OPRS live;
@@ -228,7 +229,9 @@ wholesaling.db                ← SQLite database (git-ignored: contains names/a
 ## Data-source access rules (learned 2026-10-26; details in docs/nj_data_sources.md)
 
 - Automated: NJGIN parcels, CivilView sheriff sales, Census ZCTA, City of Newark ArcGIS snapshot,
-  homeharvest (low volume, cached; Realtor.com ToS caveat).
+  homeharvest (low volume, cached; Realtor.com ToS caveat). A refusal (403 → `ProviderBlocked`) is honored: the
+  process sends Realtor.com nothing for `stale_listings.blocked_cooldown_hours` (`homeharvest_provider.mark_blocked`,
+  stored in swarm_state `listing_provider_blocked` for the next process), and listing comps fall back to public records.
 - **Manual download → automatic import** (the agents parse the files): county tax-board owner/deed
   exports (taxrecords-nj.com: robots.txt `Disallow: /`), RealAuction tax-sale pages (firewall serves
   browsers only), Essex TaxDataHub (reCAPTCHA). OPRA requests to tax collectors are the scalable route.
@@ -895,6 +898,34 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
 
   tests/conftest.py pins the old 75% gate and plain anchor for the shared fixtures; `@pytest.mark.production_gates`
   tests run the live rules.
+- **Wider listing supply, safely** (learned 2026-11-03, goal ~100 listing-agent calls a day; Nov 2 data: 648 of 1,110
+  foreclosure / estate / vacant signals sat outside the 71 harvested ZIPs, 177 listing leads had no valuation, 37
+  agent "phones" were fax lines). Rules now:
+  - **Where**: `stale_listings:` in config/settings.yaml (104 quoted ZIPs, `min_days_on_market: 60`,
+    `max_list_price: 900000`); `DEFAULT_ZIPS` in the agent is only the fallback. Towns in swarm_state.auto_expansion
+    add the ZIPs our own parcels show there (≥ 5 parcels and ≥ 10% of the town, ≤ 4 per town); a town with no parcels
+    yet is noted, never guessed.
+  - **A refusal**: the harvest stops at the first `ProviderBlocked`, keeps every ZIP already harvested (committed per
+    ZIP), records it in the run notes, metrics and swarm_state, and asks nothing until the pause ends (see the data-source
+    rules). Never retried around.
+  - **Off the market = out of outreach**: a pending / contingent / sold listing retires its STALE_LISTING signal at once;
+    a listing missing from its ZIP's last 3 successful harvests (`deactivate_after_missed_harvests`; an empty answer is
+    not a harvest; history in swarm_state `stale_listing_harvests`) becomes `off_market` and its signal is retired; the
+    stacker never matches an off-market listing (its ACTIVE_LISTING retires). Back on the market = active again.
+    `scoring.listing_off_market()`: its listing agent stops counting for READY_TO_CALL and the striking-distance bonus,
+    the call queue's cold part (`best_phone(live_listing_only=True)`) and the autopilot deck skip it (unless the agent
+    already replied); agent_outreach.candidates / fast_track already require an active listing signal.
+  - **Fax lines are never callable**: `core.text.is_fax_label`; advertiser fax numbers are never saved as a phone (an
+    agent with a fax + e-mail is an e-mail contact), the harvest stores the first non-fax number (+ `listing_agent_fax`),
+    `listing_agent_enricher.scrub_fax_contacts` moves old fax numbers off contacts (raw_json["fax"]), and
+    `compliance.callable_phone` / `can_call`, `crm.best_phone` / call queue, `scoring.ready_to_call` and the deck card
+    refuse a phone labelled fax.
+  - **Every listing lead gets a number**: `value_new_listings` (engine/underwriter.py `NewListingValuationAgent`, after the
+    top-N underwriter in run-all and the dashboard's full refresh) values open leads on a live listing with no current
+    valuation, highest priority then newest, `underwrite.new_listing_cap` (300) per run inside `new_listing_max_minutes`
+    (20, ~90 valuations at the ~13 s measured live: the cloud desk's run-all has a 45-minute limit); the daemon's nightly
+    2:10 run gets 120 minutes (`agents.schedule_options`, passed only to scheduled runs). A try with no comps waits
+    `new_listing_retry_days` (3). Unmatched listing parcels carry the listing's own coordinates, so they can be valued.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 
@@ -928,7 +959,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   (from `config/settings.yaml`). Modes:
   - `python -m swarm.orchestrator run-all` — run the full pipeline once (scrape ∥ [sheriff + lis pendens, data refresh] → owner enrichment →
     contact enrichment [municipal_owners → listing_agents → owner_resolver → signal_stacker] → score → underwrite →
-    outlier_guard → re-score → fast_track → buyer_matcher → closing_alerts → self-improve).
+    value_new_listings → outlier_guard → re-score → fast_track → buyer_matcher → closing_alerts → self-improve).
   - `python -m swarm.orchestrator run <agent>` — run one agent.
   - `python -m swarm.orchestrator daemon` — APScheduler loop using the cron schedules.
   - `python -m swarm.orchestrator status` — recent runs and health.
@@ -976,6 +1007,7 @@ python manage.py build-site --out site_dist --check   # same build + the publish
 python manage.py install-shortcut           # Desktop launcher: double-click → server up → browser open
 python -m swarm.orchestrator run lis_pendens --opt days=30   # clerk filings (Union, Essex, Monmouth + imports)
 python -m swarm.orchestrator run outlier_guard  # re-check every valuation (comp hygiene + ARV guard)
+python -m swarm.orchestrator run value_new_listings --opt cap=500 --opt max_minutes=0   # value every unvalued listing lead
 python manage.py pii-scan                   # before every commit: DB names in tracked + new files → exit 1
 python manage.py calibrate                  # local investor pricing (alpha) from recorded buyer purchases → config/market_calibration.yaml
 python manage.py recalibrate                # re-price every valuation under the quant model + striking-distance report

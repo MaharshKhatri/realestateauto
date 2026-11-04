@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.text import normalize_phone
+from core.text import is_fax_label, normalize_phone
 from db.models import Contact, DncEntry, MailSuppression
 
 NJ_AREA_CODES = ["201", "551", "973", "862", "908", "732", "848", "856", "609", "640"]
@@ -130,10 +130,24 @@ def within_calling_hours(now: datetime | None = None, tz: str = "America/New_Yor
     return CALL_START <= local.hour < CALL_END
 
 
+def is_fax_contact(contact: Contact) -> bool:
+    """The contact's number is labelled a fax line (its phone type, or the label the source gave it)."""
+    raw = contact.raw_json or {}
+    return is_fax_label(contact.phone_type, raw.get("phone_label"), raw.get("phone_type"))
+
+
+def callable_phone(contact: Contact) -> bool:
+    """A phone we may dial: present, not on a stop list, a confidence above zero, and not a fax line."""
+    return bool(contact.phone) and contact.dnc_status != "dnc" and (contact.confidence_score or 0) > 0 \
+        and not is_fax_contact(contact)
+
+
 def can_call(session: Session, contact: Contact, now: datetime | None = None) -> tuple[bool, str]:
     """The cockpit asks this before showing a number as callable."""
     if not contact.phone:
         return False, "no phone"
+    if is_fax_contact(contact):
+        return False, "a fax line, not a phone: e-mail instead"
     status = classify_number(session, contact.phone, b2b=contact.contact_type == "LISTING_AGENT",
                              consent=has_consent(contact))
     if status == "dnc":

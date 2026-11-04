@@ -636,9 +636,7 @@ class UnderwriterAgent(BaseAgent):
         top = int(self.options.get("top", 15))
         stale_days = int(self.options.get("stale_days", 7))
         scope = self.options.get("scope", "top")      # top | valued | sheriff | stale_listing
-        listing = None if self.options.get("public_only") else (
-            self.options.get("listing_provider") or _default_listing_provider())
-        underwriter = Underwriter(listing_provider=listing)
+        underwriter = Underwriter(listing_provider=self._listing_provider(ctx))
         q = select(Lead).where(Lead.status_stage.notin_(["DEAD", "DO_NOT_CONTACT", "CLOSED"]))
         if scope == "valued":
             q = q.join(Valuation, Valuation.property_id == Lead.property_id).where(Valuation.is_current.is_(True))
@@ -679,6 +677,18 @@ class UnderwriterAgent(BaseAgent):
         ctx.checkpoint()
         ctx.metrics["verdicts"] = self.verdicts
 
+    def _listing_provider(self, ctx: AgentContext) -> Any | None:
+        if self.options.get("public_only"):
+            return None
+        from agents.scrapers.stale_listing_distress_agent import honor_block
+        block = honor_block(ctx.session)
+        if block:
+            # The listing provider refused us (recorded by the listing harvest): this run asks it nothing and values
+            # from public records.
+            ctx.note(f"listing provider paused until {block.get('until')} UTC after a refusal: "
+                     "public-record comps only")
+        return self.options.get("listing_provider") or _default_listing_provider()
+
     def _underwrite(self, ctx: AgentContext, underwriter: "Underwriter", lead: Lead, stale_days: int) -> None:
         prop = lead.property
         self.tried.add(lead.id)
@@ -706,6 +716,83 @@ def _default_listing_provider():
     except ImportError:
         return None
     return ListingComps.from_settings()
+
+
+LISTING_SIGNAL_TYPES = (SignalType.STALE_LISTING, SignalType.ACTIVE_LISTING)
+NEW_LISTING_STATE = "new_listing_valuation"     # swarm_state: leads whose last try found no comps (retry later)
+
+
+def unvalued_listing_leads(session: Session) -> list[Lead]:
+    """Open leads on a live listing (active STALE_LISTING / ACTIVE_LISTING) without a current valuation: highest
+    priority first, then the listing we found most recently."""
+    from sqlalchemy import func
+    from engine.scoring import TERMINAL
+    seen = (select(DistressSignal.property_id, func.max(DistressSignal.first_seen_at).label("seen"))
+            .where(DistressSignal.active.is_(True), DistressSignal.signal_type.in_(LISTING_SIGNAL_TYPES))
+            .group_by(DistressSignal.property_id).subquery())
+    valued = select(Valuation.property_id).where(Valuation.is_current.is_(True))
+    stmt = (select(Lead).join(seen, seen.c.property_id == Lead.property_id)
+            .where(Lead.status_stage.notin_(sorted(TERMINAL)), Lead.property_id.notin_(valued))
+            .order_by(Lead.priority_rank_score.desc(), seen.c.seen.desc(), Lead.id.desc()))
+    return list(session.scalars(stmt))
+
+
+class NewListingValuationAgent(UnderwriterAgent):
+    """Every listing lead gets a number: the top-N underwriter only reaches the best-ranked leads, so a fresh listing
+    (ranked on motivation alone until it is valued) could wait forever. This step values the listing leads that have no
+    current valuation, `underwrite.new_listing_cap` per run inside `new_listing_max_minutes` (~10 s per valuation);
+    the rest wait for the next run. A lead whose try found no comps is retried after `new_listing_retry_days`."""
+    name = "value_new_listings"
+    description = ("Underwrite every listing lead with no current valuation (stale MLS fixers, listed distress), "
+                   "highest priority and newest first, capped per run.")
+
+    def run(self, ctx: AgentContext) -> None:
+        import time
+
+        from sqlalchemy.orm.attributes import flag_modified
+
+        from db.models import SwarmState
+        from engine.scoring import active_weights, apply_score
+        cfg = dict(settings().get("underwrite", {}) or {})
+        cap = int(self.options.get("cap") or cfg.get("new_listing_cap", 300))
+        minutes = float(self.options.get("max_minutes", cfg.get("new_listing_max_minutes", 20)))
+        retry_days = int(self.options.get("retry_days", cfg.get("new_listing_retry_days", 3)))
+        stale_days = int(self.options.get("stale_days", 7))
+        today = date.today()
+        state = ctx.session.get(SwarmState, NEW_LISTING_STATE)
+        if state is None:
+            state = SwarmState(key=NEW_LISTING_STATE, value_json={})
+            ctx.session.add(state)
+        # Leads whose last try (within retry_days) found no comps wait; older entries are dropped and tried again.
+        failed: dict[str, str] = {k: v for k, v in ((state.value_json or {}).get("no_valuation") or {}).items()
+                                  if (today - date.fromisoformat(v)).days < retry_days}
+        waiting = set(failed)
+        pending = unvalued_listing_leads(ctx.session)
+        queue = [lead for lead in pending if str(lead.id) not in waiting]
+        ctx.metrics.update(unvalued_listing_leads=len(pending), waiting_retry=len(pending) - len(queue), cap=cap)
+        underwriter = Underwriter(listing_provider=self._listing_provider(ctx))
+        version, weights = active_weights(ctx.session)
+        self.verdicts, self.tried = {}, set()
+        started, valued, tried = time.monotonic(), 0, 0
+        for lead in queue[:cap]:
+            if minutes > 0 and time.monotonic() - started > minutes * 60:
+                ctx.note(f"time budget of {minutes:g} min used after {tried} listing leads; "
+                         f"{len(queue) - tried} wait for the next run")
+                break
+            tried += 1
+            self._underwrite(ctx, underwriter, lead, stale_days)
+            if lead.property.current_valuation is None:
+                failed[str(lead.id)] = today.isoformat()
+            else:
+                failed.pop(str(lead.id), None)
+                apply_score(lead, version, weights)          # ranked and READY_TO_CALL-checked right away
+                valued += 1
+            ctx.checkpoint()
+        state.value_json = {"no_valuation": failed}
+        flag_modified(state, "value_json")
+        ctx.metrics.update(valued=valued, tried=tried, left_for_next_run=max(len(queue) - tried, 0),
+                           verdicts=self.verdicts)
+        ctx.checkpoint()
 
 
 def main() -> None:

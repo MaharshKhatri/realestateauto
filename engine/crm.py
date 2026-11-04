@@ -232,13 +232,27 @@ def due_followups(session: Session, now: datetime | None = None) -> list[Lead]:
                                 .order_by(Lead.next_followup_at)))
 
 
-def best_phone(session: Session, lead: Lead) -> Contact | None:
+def not_fax():
+    """SQL: a contact phone that isn't labelled a fax line."""
+    return or_(Contact.phone_type.is_(None), ~Contact.phone_type.ilike("%fax%"))
+
+
+def best_phone(session: Session, lead: Lead, *, live_listing_only: bool = False) -> Contact | None:
+    """The number to dial for this lead: never a DNC number, a zero-confidence one or a fax line. With
+    `live_listing_only` (cold calls), a listing agent counts only while the listing is still on the market."""
+    from engine.scoring import listing_off_market
     from engine.scripts import pick_contact
+    skip_agents = live_listing_only and listing_off_market(lead.property)
+
+    def ok(c: Contact | None) -> bool:
+        return c is not None and compliance.callable_phone(c) \
+            and not (skip_agents and c.contact_type == "LISTING_AGENT")
+
     c = pick_contact(lead)
-    if c and c.phone and (c.confidence_score or 0) > 0 and c.dnc_status != "dnc":
+    if ok(c):
         return c
     for c in sorted(lead.contacts, key=lambda c: -(c.confidence_score or 0)):
-        if c.phone and (c.confidence_score or 0) > 0 and c.dnc_status != "dnc":
+        if ok(c):
             return c
     return None
 
@@ -259,13 +273,13 @@ def call_queue(session: Session, limit: int | None = None, now: datetime | None 
     for lead in due_followups(session, now):
         items.append(QueueItem(lead, best_phone(session, lead), "follow-up due", lead.next_followup_at))
         seen.add(lead.id)
-    phone_leads = select(Contact.lead_id).where(Contact.phone.is_not(None), not_dnc()).distinct()
+    phone_leads = select(Contact.lead_id).where(Contact.phone.is_not(None), not_dnc(), not_fax()).distinct()
     stmt = (open_leads_stmt().where(Lead.id.in_(phone_leads), Lead.next_followup_at.is_(None))
             .order_by(Lead.priority_rank_score.desc()).limit(limit * 2))
     for lead in session.scalars(stmt):
         if lead.id in seen or len(items) >= limit:
             continue
-        c = best_phone(session, lead)
+        c = best_phone(session, lead, live_listing_only=True)   # a cold call: never about a listing that's gone
         if c is None:
             continue
         days = None

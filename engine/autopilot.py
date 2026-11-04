@@ -120,8 +120,10 @@ def why_it_works(lead: Lead, f: dict[str, Any], anchor: float | None, best: floa
 def _agent_dict(c: Contact | None) -> dict[str, Any] | None:
     if c is None:
         return None
+    from engine.compliance import is_fax_contact
+    phone = None if is_fax_contact(c) else c.phone       # a fax line is never shown as the number to call
     return {"contact_id": c.id, "name": c.name, "company": c.company, "email": c.email,
-            "phone": c.phone, "phone_display": format_phone(c.phone) if c.phone else None}
+            "phone": phone, "phone_display": format_phone(phone) if phone else None}
 
 
 def _action(kind: str, packet: ao.AgentPacket, agent: dict[str, Any] | None) -> str:
@@ -249,7 +251,9 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
 
     held: list[dict[str, Any]] = []
     hidden: list[int] = []
+    off_market: list[int] = []
     from engine import gmail_autopilot
+    from engine.scoring import listing_off_market
     waiting = gmail_autopilot.awaiting_approval_lead_ids(session)
 
     def add(lead: Lead | None) -> None:
@@ -264,6 +268,9 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
             return
         if lead.id in waiting:
             return                          # an agent reply is waiting for approval: the Action Needed box owns it
+        if listing_off_market(lead.property) and ao.last_touch(session, lead) != "reply":
+            off_market.append(lead.id)      # pending / sold / gone from the MLS: no opener, offer or nudge about it
+            return
         card = build_card(session, lead, now)
         if card is None:
             return
@@ -300,7 +307,7 @@ def deck(session: Session, limit: int | None = None, now: datetime | None = None
             "sent_24h": ao.sent_last_24h(session, now),
             "daily_email_limit": int(settings().get("outreach", {}).get("daily_email_limit", 25)),
             "first_touch": "opener" if ao.opener_enabled() else "offer", "held": held[:12],
-            "hidden_no_contact": len(hidden),
+            "hidden_no_contact": len(hidden), "hidden_off_market": len(off_market),
             # Phase 0: until `partners_needed` rehabbers are active with proof of funds, the deck shows the ones the
             # operator can actually reach (e-mail or DNC-clear phone); the rest wait in Skip Trace (needs_lookup).
             "partners": {"active": vault.active_count(session), "needed": vault.partners_needed(),
