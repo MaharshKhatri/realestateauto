@@ -551,10 +551,18 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             out["trickle_error"] = 1
         try:
             from swarm.orchestrator import run_agent
-            r = run_agent("value_new_listings", cap=2, max_minutes=0.5)
+            r = run_agent("value_new_listings", cap=4, max_minutes=1.0)
             out["new_valued"] = int(((r.metrics_json or {}).get("valued") or 0) if r is not None else 0)
         except Exception:                          # noqa: BLE001
             out["new_value_error"] = 1
+    if task == "value":
+        # Price the listings a harvest brought in (2026-11-04: the first cloud harvest found 1,567 unvalued listings
+        # and used 42 of the refresh's 45 minutes): after 9 PM / before 7 AM up to 70 minutes, in the day 30.
+        from swarm.orchestrator import run_agent
+        night = t.hour >= 21 or t.hour < 7
+        r = run_agent("value_new_listings", cap=600, max_minutes=70 if night else 30)
+        m = (r.metrics_json or {}) if r is not None else {}
+        out.update(new_valued=int(m.get("valued") or 0), unvalued_left=int(m.get("left_for_next_run") or 0))
     if task == "stats":
         # Where the pipeline stands (engine/outreach_stats.py): counts only, safe for the public run log.
         from engine.outreach_stats import flat, funnel

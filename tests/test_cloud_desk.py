@@ -314,7 +314,28 @@ def test_a_refresh_that_runs_long_is_cut_off_and_the_rest_of_the_run_still_happe
         raise subprocess.TimeoutExpired(cmd, kw["timeout"])
     monkeypatch.setattr(cd.subprocess, "run", slow)
     kw = dict(smtp_factory=None, user=ME, pw="p", desk_key=KEY, root=tmp_path, approve_id=None)
-    early = cd._work("refresh", now=datetime(2026, 11, 5, 5, 17), **kw)
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    early = cd._work("refresh", now=datetime(2026, 11, 5, 5, 17, tzinfo=et), **kw)
     assert early["refresh"] == "cut off at 80 min" and "repriced" in early
-    day = cd._work("refresh", now=datetime(2026, 11, 5, 13, 0), **kw)
+    day = cd._work("refresh", now=datetime(2026, 11, 5, 13, 0, tzinfo=et), **kw)
     assert day["refresh"] == "cut off at 40 min" and seen == [80 * 60, 40 * 60]
+
+
+def test_the_night_pricing_run_values_the_new_listings(db, monkeypatch, tmp_path):
+    """2026-11-04: the first cloud harvest brought 1,567 unvalued listings; task `value` prices them (70 minutes at
+    night, 30 in the day) and every daytime run prices a few more."""
+    import swarm.orchestrator as orch
+    calls = []
+
+    class Run:
+        metrics_json = {"valued": 250, "left_for_next_run": 1300}
+    monkeypatch.setattr(orch, "run_agent", lambda name, **kw: calls.append((name, kw)) or Run())
+    kw = dict(smtp_factory=None, user=ME, pw="p", desk_key=KEY, root=tmp_path, approve_id=None)
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    night = cd._work("value", now=datetime(2026, 11, 5, 5, 0, tzinfo=et), **kw)      # before 7 AM (no backup)
+    assert night["new_valued"] == 250 and night["unvalued_left"] == 1300
+    assert calls[0] == ("value_new_listings", {"cap": 600, "max_minutes": 70})
+    cd._work("value", now=datetime(2026, 11, 5, 13, 0, tzinfo=et), **kw)
+    assert calls[1][1]["max_minutes"] == 30

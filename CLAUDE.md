@@ -973,7 +973,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - cold call-sheet rows (T1 / T3 / T4) get their opener e-mail the same morning (the call follows it); only follow-up
     rows (T0 / T2) wait for their call (`gmail_autopilot.held_for_calls`);
   - each daytime run re-values up to 3 listings flagged `comps_need_refresh` (fixers first, ≤ 40 s, 150 / day:
-    `offer_math.trickle`) and 2 unvalued listings (`value_new_listings` cap 2), so supply grows all day;
+    `offer_math.trickle`) and 4 unvalued listings (`value_new_listings` cap 4, 1 minute), so supply grows all day;
+  - the first cloud harvest (2026-11-04): 104 ZIPs, 10,252 listings seen in 41.6 minutes, not blocked; listed leads
+    1,447 → 2,796 with 1,567 unvalued. So after 9 PM the last desk run first dispatches task `value`
+    (`value_new_listings`, cap 600, 70 minutes at night / 30 in the day), whose own hand-off then starts night.yml;
   - `DAILY_OPENERS` 35;
   - the refresh's run-all may take 80 minutes before 7 AM and 40 in the day (job timeout 100); a cut-off is not a
     failure (agents commit as they go; the state is saved in `finally`) and the rest of the run still happens;
