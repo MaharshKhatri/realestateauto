@@ -150,3 +150,19 @@ def test_the_cloud_desk_applies_codes_from_a_sealed_note(db, monkeypatch):
     out = cd.apply_note(note, key)
     assert out["note_done"] == 2 and [i["code"] for i in seen] == ["A01", "A02"]
     assert db.get(SwarmState, "call_sheet") is None
+
+
+def test_a_sale_soon_listing_with_no_possible_offer_is_not_called(db, operator):
+    """2026-11-04: the first sheet opened with five listed foreclosures on lender short sales / a refer-out."""
+    from engine import fast_track as ft
+    lead = listed(db, verdict="SHORT_SALE_ONLY")
+    db.flush()
+    row = ft.ListedForeclosure.__new__(ft.ListedForeclosure)
+    row.lead_id, row.days_to_sale, row.track = lead.id, 9, "SHORT_SALE"
+    import engine.fast_track as ftm
+    orig = ftm.listed_foreclosures
+    ftm.listed_foreclosures = lambda s, **kw: [row]
+    try:
+        assert lead.id not in {r.lead_id for r in cs.build(db, NOW)}
+    finally:
+        ftm.listed_foreclosures = orig

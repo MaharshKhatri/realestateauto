@@ -195,8 +195,8 @@ def build(session: Session, now: datetime | None = None, limit: int | None = Non
         except Exception:                          # noqa: BLE001 - one broken valuation never stops the sheet
             log.exception("call sheet: firm offer failed for lead %s", lead.id)
             return
-        if tier in ("T3", "T4") and firm.tier == "skip":
-            return
+        if tier in ("T1", "T3", "T4") and firm.tier == "skip":
+            return      # a lender short sale / refer-out / too-far listing: no offer we could make, so no call
         place = _place(session, lead)
         row = by_phone.get(phone)
         if row is not None:
