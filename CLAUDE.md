@@ -222,7 +222,7 @@ deals/<property_id>/          ← generated LOI/PSA/assignment/JV/deal sheets �
 deals/agent_blast/, deals/mail_batches/ ← agent review pages and letter batches — git-ignored
 logs/                         ← swarm_intelligence.md (committed); *.log (ignored)
 scripts/install_desktop_shortcut.py ← writes the three launchers + a Desktop copy (`manage.py install-shortcut`)
-.github/workflows/            ← ci.yml (pytest); deploy_site.yml (GitHub Pages: pii-scan + site tests + build-site
+.github/workflows/            ← ci.yml (pytest); desk.yml (the cloud desk, self-chaining) + kicker.yml (its safety net); deploy_site.yml (GitHub Pages: pii-scan + site tests + build-site
                                 --check, from repository variables; skipped until SITE_FORM_ENDPOINT is set)
 tests/                        ← pytest; parsers run against saved real pages in tests/fixtures/ (clerk/ = UCPA,
                                 PRESS, OPRS pages with every party name replaced by an invented one)
@@ -936,6 +936,23 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     weekday in two waves (`DAILY_OPENERS`, `OPENER_WAVES` 10:30, 14:00), 20-45 s apart, one new cold e-mail per agent
     address per 72 h (`gmail_autopilot.agent_cold_gap_hours`), and a lead on today's call sheet is called before it
     is e-mailed.
+- **Speed and purpose** (learned 2026-11-04, the operator: "make the entire process more efficient ... everything has
+  purpose"):
+  - **Every ~6 minutes, 7 AM-9 PM**: desk.yml runs only by dispatch, and its last step starts the next run
+    (`CYCLE_SECONDS` 360; GITHUB_TOKEN may dispatch workflow_dispatch). It dispatches only when no desk run is queued,
+    so a note or approval dispatched meanwhile goes first and carries the chain. GitHub's own cron had fired twice in
+    a day and, sharing desk.yml's concurrency group, could cancel a queued note: the safety net is now
+    `.github/workflows/kicker.yml` (every 20 min + the 5:17 AM refresh), which dispatches only when no desk run is
+    running or queued.
+  - **No call or cold e-mail on a house an investor can't win**: `offer_math.condition()` reads the listing text;
+    "retail" (move-in-ready / renovated / new construction, no distress words) is tier skip (`firm.skip_retail`).
+    Nov 4: every "no work needed / new kitchen / new construction" conversation was a dead end. Replies and follow-ups
+    (T0 / T2) are still answered. Nov 3 data: 422 listings skip as retail; 121 remain (2 firm, 73 fixer ask-first).
+  - **Fixers first**: the sheet ranks T3 / T4 by condition (fixer before unknown) then reach, and each row shows the
+    listing's own words ("listing says: estate sale, sold as-is, needs tlc").
+  - **Rows follow the day**: block events re-read every row on every sync (`call_sheet.refreshed`): "DONE 11:00
+    (voicemail): skip" once reported in the chat, "THEY E-MAILED BACK: read it in Gmail first" when an agent wrote back,
+    the current firm words, or "SKIP TODAY". Codes stay frozen.
 - **Wider listing supply, safely** (learned 2026-11-03, goal ~100 listing-agent calls a day; Nov 2 data: 648 of 1,110
   foreclosure / estate / vacant signals sat outside the 71 harvested ZIPs, 177 listing leads had no valuation, 37
   agent "phones" were fax lines). Rules now:

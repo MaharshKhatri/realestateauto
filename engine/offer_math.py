@@ -45,7 +45,8 @@ NO_OFFER_VERDICTS = {"EQUITY_RESCUE_REFERRAL", "FRFPA_BLOCKED", "PASS", "SHORT_S
 RETAIL = re.compile(r"\b(move[- ]in[- ]ready|fully renovated|newly renovated|completely renovated|recently renovated|"
                     r"totally renovated|gut renovated|renovated|updated|remodeled|brand[- ]new|turn[- ]?key|pristine|"
                     r"immaculate|meticulously|beautifully maintained|well[- ]maintained|lovingly maintained|"
-                    r"stunning|gorgeous|showstopper|like new|mint condition)\b", re.I)
+                    r"stunning|gorgeous|showstopper|like new|mint condition|new construction|newly built|"
+                    r"new development|pre-construction|to be built)\b", re.I)
 DISTRESS = re.compile(r"\b(as[- ]is|cash only|cash buyers?|investor special|investors? only|calling all investors|handyman|fixer|tlc|needs? (some |a little |lots of )?"
                       r"(work|updating|updates|renovation|rehab|repairs?|tlc)|bring your (vision|imagination|ideas|"
                       r"contractor)|contractor special|estate sale|executor|fire damage|water damage|mold|foundation|"
@@ -94,6 +95,27 @@ def listing_for(session: Any, lead: Any) -> Any:
 def listing_text(session: Any, lead: Any) -> str:
     lst = listing_for(session, lead)
     return str(getattr(lst, "description", "") or "") if lst is not None else ""
+
+
+def condition(session: Any, lead: Any) -> str:
+    """'fixer' (the listing says as-is / needs work / estate ...), 'retail' (move-in-ready / renovated / new, no
+    distress words), 'unknown' (no description, or neither)."""
+    text = listing_text(session, lead)
+    if not text:
+        return "unknown"
+    if DISTRESS.search(text):
+        return "fixer"
+    return "retail" if RETAIL.search(text) else "unknown"
+
+
+def distress_words(session: Any, lead: Any, limit: int = 3) -> list[str]:
+    text = listing_text(session, lead)
+    seen: list[str] = []
+    for m in DISTRESS.finditer(text or ""):
+        w = m.group(0).lower()
+        if w not in seen:
+            seen.append(w)
+    return seen[:limit]
 
 
 def _months(d: Any, today: date) -> float | None:
@@ -202,6 +224,11 @@ def firm_offer(lead: Any, session: Any = None, *, today: date | None = None,
         return FirmOffer("skip", buyer_max=buyer_max or None, ask=ask, reasons=[f"verdict {v.verdict}"])
     if buyer_max <= min_fee:
         return FirmOffer("skip", ask=ask, reasons=["no price an investor buyer could pay"])
+    if ask and check_certainty and _cfg().get("skip_retail", True) and condition(session, lead) == "retail":
+        # 2026-11-04 calls: every "no work needed / new kitchen / new construction" listing was a dead end (retail
+        # buyers outbid an investor by far). No call and no cold e-mail; T0 replies and follow-ups still get answered.
+        return FirmOffer("skip", buyer_max=buyer_max, ask=ask,
+                         reasons=["move-in-ready or new listing: retail buyers outbid an investor"])
     if ask and buyer_max <= 0.10 * ask:
         return FirmOffer("skip", buyer_max=buyer_max, ask=ask,
                          reasons=["the valuation looks broken (buyer price under 10% of the ask)"])

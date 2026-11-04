@@ -1,0 +1,38 @@
+# Safety net for the deal desk (desk.yml): the desk keeps itself running every few minutes from 7 AM to 9 PM Eastern
+# (its last step dispatches the next run). This workflow restarts it when the chain stopped (a failed step, GitHub
+# hiccup, the first run of the day) and starts the 5:17 AM data refresh. It dispatches only when no desk run is running
+# or queued, so it can never cancel a queued note or approval (desk.yml's concurrency group replaces queued runs).
+name: Desk kicker
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"      # GitHub may skip or delay these; the desk's own chain is what runs every few minutes
+    - cron: "17 10 * * *"       # ~5:17 AM Eastern: the daily data refresh (sheriff sales, listings, comps)
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  kick:
+    if: github.repository == 'MaharshKhatri/realestateauto'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TZ: America/New_York
+    steps:
+      - name: Start the desk if it isn't running
+        run: |
+          hour=$((10#$(date +%H)))
+          task=run
+          if [ "${{ github.event.schedule }}" = "17 10 * * *" ]; then task=refresh; fi
+          if [ "$task" = "run" ] && { [ "$hour" -lt 7 ] || [ "$hour" -ge 21 ]; }; then echo "After hours."; exit 0; fi
+          busy=$(gh run list -R "$GITHUB_REPOSITORY" --workflow desk.yml --limit 20 --json status \
+                 --jq '[.[] | select(.status != "completed")] | length')
+          if [ "$busy" = "0" ]; then
+            gh workflow run desk.yml -R "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}" -f task="$task"
+            echo "Started the desk ($task)."
+          else
+            echo "The desk is already running or queued."
+          fi

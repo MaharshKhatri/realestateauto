@@ -144,6 +144,10 @@ def _facts(session: Session, lead: Lead, ask: float | None) -> str:
             bits.append(f"{lst.sqft:,}sf")
         if lst.year_built:
             bits.append(str(lst.year_built))
+    from engine.offer_math import distress_words
+    words = distress_words(session, lead)
+    if words:
+        bits.append("listing says: " + ", ".join(words))
     ask_s = f"ask {_money(ask)}" if ask else ""
     dom = getattr(lst, "days_on_market", None) if lst is not None else None
     return " ".join(bits) + (" | " if bits else "") + ask_s + (f", {dom} DOM" if dom else "")
@@ -234,8 +238,10 @@ def build(session: Session, now: datetime | None = None, limit: int | None = Non
     for lead in crm.due_followups(session, now):
         if lead.contact_attempts <= max_attempts:
             add(lead, "T2")
+    from engine.offer_math import condition
     firm_rows: list[tuple[float, Lead]] = []
     ask_rows: list[tuple[float, Lead]] = []
+    fixer: dict[int, int] = {}
     for lead in _pool(session):
         if lead.id in seen:
             continue
@@ -243,13 +249,16 @@ def build(session: Session, now: datetime | None = None, limit: int | None = Non
             f = firm_offer(lead, session)
         except Exception:                          # noqa: BLE001
             continue
+        if f.tier in ("firm", "ask_first"):
+            fixer[lead.id] = 1 if condition(session, lead) == "fixer" else 0
         if f.tier == "firm":
             firm_rows.append((f.reach or 0, lead))
         elif f.tier == "ask_first":
             ask_rows.append((f.reach or 0, lead))
-    for _, lead in sorted(firm_rows, key=lambda x: (-x[0], -(x[1].priority_rank_score or 0))):
+    # Fixers first (the listing says as-is / needs work / estate: where an investor actually wins), then reach.
+    for _, lead in sorted(firm_rows, key=lambda x: (-fixer.get(x[1].id, 0), -x[0], -(x[1].priority_rank_score or 0))):
         add(lead, "T3")
-    for _, lead in sorted(ask_rows, key=lambda x: (-x[0], -(x[1].priority_rank_score or 0))):
+    for _, lead in sorted(ask_rows, key=lambda x: (-fixer.get(x[1].id, 0), -x[0], -(x[1].priority_rank_score or 0))):
         add(lead, "T4")
     letters = [b[0] for b in blocks()]
     for i, row in enumerate(rows):
@@ -297,7 +306,29 @@ def refreshed(session: Session, row: Row) -> Row:
     say = _say(firm, row.tier)
     if firm.tier == "skip":
         say = "SKIP TODAY: " + (firm.reasons[0] if firm.reasons else "no offer we could make")
+    say = _status(session, row) + say
     return Row(**{**asdict(row), "say": say, "offer": firm.offer if firm.priced else None, "final": firm.final})
+
+
+def _status(session: Session, row: Row) -> str:
+    """What happened on this row since the sheet was built: reported in the chat today, or the agent e-mailed back
+    (read their e-mail before calling). Empty when nothing did."""
+    from db.models import Interaction
+    start = datetime.combine(date.today(), datetime.min.time())
+    ids = row.lead_ids or [row.lead_id]
+    done = session.scalar(select(Interaction).where(Interaction.lead_id.in_(ids), Interaction.occurred_at >= start,
+                                                    Interaction.channel == "call")
+                          .order_by(Interaction.occurred_at.desc()).limit(1))
+    if done is not None and (done.debrief_json or {}).get("source") == "chat_note":
+        label = {"NO_ANSWER": "no answer", "LEFT_VM": "voicemail", "WRONG_NUMBER": "wrong number", "DNC": "stop",
+                 "DEAD": "sold", "SPOKE_NOT_INTERESTED": "not interested", "SPOKE_WARM_FOLLOWUP": "talked",
+                 "SPOKE_NEEDS_OFFER": "talked"}.get(done.outcome, done.outcome.lower())
+        return f"DONE {done.occurred_at:%-I:%M} ({label}): skip · "
+    waiting = session.scalar(select(InboundReply.id).where(InboundReply.lead_id.in_(ids),
+                                                           InboundReply.status == "needs_approval").limit(1))
+    if waiting and row.tier != "T0":
+        return "THEY E-MAILED BACK: read it in Gmail first · "
+    return ""
 
 
 def lead_ids_on(session: Session, day: date) -> set[int]:

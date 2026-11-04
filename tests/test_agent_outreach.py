@@ -208,7 +208,12 @@ def test_a_value_far_above_a_move_in_ready_ask_is_never_a_final_number(db):
                        listing_text="Beautifully maintained, move-in-ready Cape with a brand-new roof.")
     plain, _ = listed(db, list_price=340_000, assumptions=rec, listing_text="Three bedrooms near the park.")
     none, _ = listed(db, list_price=340_000, assumptions=rec)
-    for lead in (retail, plain, none):                      # ARV 500K = 1.47x a 340K ask
+    for lead in (plain, none):                              # ARV 500K = 1.47x a 340K ask
         f = firm_offer(lead, db)
         assert f.tier == "ask_first" and f.offer is None and any("1.47x the asking price" in r for r in f.reasons)
-    assert any("move-in-ready" in r for r in firm_offer(retail, db).reasons)
+    # a move-in-ready / new listing isn't called or e-mailed at all: retail buyers outbid an investor (Nov 4 calls)
+    f = firm_offer(retail, db)
+    assert f.tier == "skip" and "retail buyers outbid an investor" in f.reasons[0]
+    assert ao.eligible(retail)[0] is False
+    new_build, _ = listed(db, list_price=340_000, assumptions=rec, listing_text="New construction townhome, 2025.")
+    assert firm_offer(new_build, db).tier == "skip"

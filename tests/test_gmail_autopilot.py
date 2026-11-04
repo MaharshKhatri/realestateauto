@@ -373,6 +373,7 @@ def test_calendar_alert_for_a_reply_waiting_on_the_operator(live):
     lead = listed(db)
     row = InboundReply(message_id="<cal@b.test>", lead_id=lead.id, status="needs_approval", verdict="YELLOW",
                        headline="COUNTER AT $290,000", counter_amount=310000, received_at=datetime(2026, 11, 4, 11, 0),
+                       created_at=datetime(2026, 11, 4, 16, 0),         # read by the desk at 11:00 Eastern (UTC)
                        body_text="The seller Quinn Sample wants 310", note="they named a number: your call",
                        analysis_json={"numbers": {"mao_walkaway": 292000}})
     db.add(row)

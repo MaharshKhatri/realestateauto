@@ -4,10 +4,11 @@
 # The repository is public: the run prints counts only, and the state it keeps between runs is encrypted.
 name: Deal desk
 
+# Runs only by dispatch: each run starts the next one a few minutes later (the last step), 7 AM-9 PM Eastern, so the
+# inbox is read about every 6 minutes. GitHub's own cron fired only a few times a day (2026-11-04) and, sharing this
+# concurrency group, could cancel a queued note; the safety-net cron lives in kicker.yml, which dispatches a run only
+# when none is running or queued.
 on:
-  schedule:
-    - cron: "*/15 * * * *"      # the desk (it reads replies 8 AM-9 PM Eastern and sends 8 AM-8 PM)
-    - cron: "17 10 * * *"       # ~5:17 AM Eastern: the daily data refresh (sheriff sales, listings, comps)
   workflow_dispatch:
     inputs:
       task:
@@ -25,6 +26,7 @@ on:
 
 permissions:
   contents: read
+  actions: write                # the last step dispatches the next run (workflow_dispatch works with GITHUB_TOKEN)
 
 concurrency:
   group: deal-desk              # one run at a time: they share one database
@@ -43,6 +45,9 @@ jobs:
       DAILY_OPENERS: "30"          # new cold openers per weekday, split across the waves below (cap: outreach.daily_email_limit)
       OPENER_WAVES: "10:30,14:00"
     steps:
+      - name: Start the clock
+        id: clock
+        run: echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
       - name: Turned on?
         id: cfg
         run: |
@@ -72,7 +77,7 @@ jobs:
       - name: Run the desk
         if: steps.cfg.outputs.ok == 'true'
         env:
-          TASK: ${{ github.event.schedule == '17 10 * * *' && 'refresh' || github.event.inputs.task || 'run' }}
+          TASK: ${{ github.event.inputs.task || 'run' }}
           REPLY: ${{ github.event.inputs.reply }}
           LEAD: ${{ github.event.inputs.lead }}
           NOTE: ${{ github.event.inputs.note }}
@@ -88,3 +93,22 @@ jobs:
         with:
           path: data/cloud
           key: desk-state-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Start the next run in a few minutes
+        if: always() && steps.cfg.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ steps.clock.outputs.started }}
+          CYCLE_SECONDS: "360"
+        run: |
+          hour=$((10#$(date +%H)))
+          if [ "$hour" -lt 7 ] || [ "$hour" -ge 21 ]; then echo "After hours: the next run starts tomorrow."; exit 0; fi
+          wait=$(( CYCLE_SECONDS - ($(date +%s) - STARTED) ))
+          if [ "$wait" -gt 0 ]; then sleep "$wait"; fi
+          # One queued run at most: a note or approval someone dispatched meanwhile goes first, and carries the chain.
+          queued=$(gh run list -R "$GITHUB_REPOSITORY" --workflow desk.yml --limit 20 --json status \
+                   --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length')
+          if [ "$queued" = "0" ]; then
+            gh workflow run desk.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f task=run
+          else
+            echo "A run is already queued: it continues the chain."
+          fi

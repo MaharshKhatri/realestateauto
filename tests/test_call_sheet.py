@@ -167,3 +167,24 @@ def test_a_sale_soon_listing_with_no_possible_offer_is_not_called(db, operator):
         assert lead.id not in {r.lead_id for r in cs.build(db, NOW)}
     finally:
         ftm.listed_foreclosures = orig
+
+
+@pytest.mark.production_gates
+def test_fixers_lead_the_sheet_and_rows_show_what_already_happened(db, operator, monkeypatch):
+    """2026-11-04: the calls that went nowhere were move-in-ready houses; a reported call must not be dialed twice."""
+    from engine import crm
+    plain = listed(db, list_price=400_000, phone="9735550111", email="sam@broker.test", listing_text="Colonial near the park.")
+    fixer = listed(db, list_price=400_000, phone="9735550122", email="kim@broker.test",
+                   listing_text="Estate sale, sold as-is. Needs TLC.")
+    retail = listed(db, list_price=400_000, phone="9735550133", email="lee@broker.test",
+                    listing_text="Move-in ready, brand new kitchen.")
+    db.flush()
+    rows = cs.today(db, NOW)
+    order = [r.lead_id for r in rows]
+    assert retail.id not in order and order.index(fixer.id) < order.index(plain.id)
+    row = next(r for r in rows if r.lead_id == fixer.id)
+    assert "listing says: estate sale, sold as-is, needs tlc" in row.facts
+    crm.log_call(db, fixer, "LEFT_VM", contact=fixer.contacts[0], debrief={"source": "chat_note"},
+                 now=datetime.combine(date.today(), datetime.min.time()).replace(hour=11, tzinfo=crm.TZ))
+    db.flush()
+    assert cs.refreshed(db, row).say.startswith("DONE 11:00 (voicemail): skip")
