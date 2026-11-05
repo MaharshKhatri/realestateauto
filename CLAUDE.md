@@ -998,6 +998,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     call that is far above our final (final < 80% of it) sets the next touch to the ~30-day check-in, not tomorrow;
   - a lead's fact question (beds / baths / sqft, rent roll, unit sales + HOA) goes out once: `asked_facts_before` keeps
     auto-answers and `auto_approve` from asking it again after the agent answered (2026-11-05, 12 Tasley Court);
+  - a bounced address is remembered (swarm_state `bounced_emails`, `agent_outreach.record_bounce`) and `deliver` refuses
+    it from then on, whichever card still carries it (2026-11-04: a 48-hour nudge went to an "inbox full" address that
+    had bounced that morning; first-week bounce rate 3.8%, 5 of 130);
   - a sealed note item `{"operator": {"phone": ...}}` changes the operator's details on the desk (validated, saved in
     its settings.local.yaml): every e-mail, LOI, call script and voicemail line follows.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a

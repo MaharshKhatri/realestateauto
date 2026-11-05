@@ -644,6 +644,7 @@ def _drop_email(session: Session, contact: Contact, why: str) -> None:
     """A bounced address comes off the agent's card (kept in the notes); their phone stays."""
     bad, stamp = contact.email, now_eastern().strftime("%Y-%m-%d")
     contact.notes = " | ".join(x for x in (contact.notes, f"{stamp}: e-mail {bad} bounced ({why})") if x)
+    ao.record_bounce(session, bad or "")          # never sent to again, whichever card still carries it
     session.flush()
     try:
         with session.begin_nested():

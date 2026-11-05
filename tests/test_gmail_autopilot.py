@@ -290,6 +290,13 @@ def test_opt_out_suppresses_and_a_bounce_takes_the_address_off(live):
     db.expire_all()
     c = db.query(Contact).filter_by(lead_id=other.id, contact_type="LISTING_AGENT").one()
     assert c.email is None and "bounced" in c.notes and c.phone        # the phone stays: call them
+    # 2026-11-04: a nudge went to an address that had bounced that morning: a bounced address never gets mail again
+    from engine import agent_outreach as ao
+    assert "pat@broker.test" in ao.bounced_emails(db)
+    third = listed(db)
+    db.commit()
+    with pytest.raises(RuntimeError, match="bounced before"):
+        ao.deliver(ao.build_packet(third, session=db, generate_loi=False), session=db, smtp_factory=FakeSMTP)
 
 
 def test_unknown_senders_are_ignored_unless_they_name_our_street(live):

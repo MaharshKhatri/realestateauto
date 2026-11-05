@@ -582,6 +582,31 @@ def new_message_id() -> str:
     return make_msgid(domain=user.rsplit("@", 1)[-1] if "@" in user else None)
 
 
+BOUNCED_KEY = "bounced_emails"
+
+
+def bounced_emails(session: Session) -> set[str]:
+    """Every address a delivery failure came back for (`gmail_autopilot._drop_email` records them)."""
+    from db.models import SwarmState
+    row = session.get(SwarmState, BOUNCED_KEY)
+    return {str(x).lower() for x in ((row.value_json or {}).get("emails") or [])} if row else set()
+
+
+def record_bounce(session: Session, email: str) -> None:
+    from db.models import SwarmState
+    addr = (email or "").strip().lower()
+    if not addr:
+        return
+    row = session.get(SwarmState, BOUNCED_KEY)
+    if row is None:
+        row = SwarmState(key=BOUNCED_KEY, value_json={"emails": []})
+        session.add(row)
+    emails = list((row.value_json or {}).get("emails") or [])
+    if addr not in emails:
+        row.value_json = {"emails": emails + [addr]}
+        session.flush()
+
+
 def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = None, smtp_factory: Any = None,
             in_reply_to: str | None = None, references: list[str] | None = None, engaged: bool = False) -> str:
     """Send one personalized e-mail over SMTP (Gmail app password), inside the rolling 24-hour limit.
@@ -602,6 +627,10 @@ def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = Non
                                "back still go out")
     if not packet.agent_email:
         raise RuntimeError("agent has no e-mail address")
+    if packet.agent_email.strip().lower() in bounced_emails(session):
+        # 2026-11-04: a 48-hour nudge went to an address that had bounced ("inbox full") that morning; every repeat
+        # bounce counts against the sender's reputation (bounce rate 3.8% in the first week).
+        raise RuntimeError(f"{packet.agent_email} bounced before: not sent (call the agent or find a new e-mail)")
     message_id = new_message_id()
     msg = EmailMessage()
     msg["From"] = os.environ["SMTP_USER"]
