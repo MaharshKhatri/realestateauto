@@ -25,12 +25,14 @@ from __future__ import annotations
 import base64
 import email
 import hashlib
+import imaplib
 import io
 import json
 import logging
 import os
 import re
 import secrets
+import smtplib
 import sqlite3
 import subprocess
 import sys
@@ -629,21 +631,27 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
         except (autopilot.AutopilotError, gm.ApprovalError, RuntimeError) as exc:
             out["offer_error"] = type(exc).__name__
     if 8 <= t.hour < 21:
-        r = gm.run_inbox(send=gm.in_send_hours(now), now=now, smtp_factory=smtp_factory)
-        p = r.get("poll") or {}
-        out.update(new=int(p.get("checked") or 0), replies=int(p.get("matched") or 0),
-                   sent=int(r.get("sent_now", 0)) + int(p.get("sent") or 0),
-                   waiting=sum(1 for x in r.get("rows", []) if x["status"] == "needs_approval"))
-        if r.get("send_error") or not r.get("ok"):
-            out["gmail_error"] = True
-        if gm.in_send_hours(now):
-            a = gm.auto_approve(now=now, smtp_factory=smtp_factory)
-            out["auto_answered"] = len(a["sent"])
-            d = gm.daily_openers(int(os.environ.get("DAILY_OPENERS", "30")),
-                                 at=os.environ.get("OPENER_WAVES", "10:30,14:00,16:30"), now=now,
-                                 smtp_factory=smtp_factory, background=False)
-            if d is not None:
-                out["openers"] = int(d.get("sent") or 0)
+        try:
+            r = gm.run_inbox(send=gm.in_send_hours(now), now=now, smtp_factory=smtp_factory)
+            p = r.get("poll") or {}
+            out.update(new=int(p.get("checked") or 0), replies=int(p.get("matched") or 0),
+                       sent=int(r.get("sent_now", 0)) + int(p.get("sent") or 0),
+                       waiting=sum(1 for x in r.get("rows", []) if x["status"] == "needs_approval"))
+            if r.get("send_error") or not r.get("ok"):
+                out["gmail_error"] = True
+            if gm.in_send_hours(now):
+                a = gm.auto_approve(now=now, smtp_factory=smtp_factory)
+                out["auto_answered"] = len(a["sent"])
+                d = gm.daily_openers(int(os.environ.get("DAILY_OPENERS", "30")),
+                                     at=os.environ.get("OPENER_WAVES", "10:30,14:00,16:30"), now=now,
+                                     smtp_factory=smtp_factory, background=False)
+                if d is not None:
+                    out["openers"] = int(d.get("sent") or 0)
+        except (OSError, imaplib.IMAP4.error, smtplib.SMTPException) as exc:
+            # Gmail dropped the line (2026-11-05: a TimeoutError and an IMAP "abort" each failed a whole run). What was
+            # read or sent is committed per message; the next run ~6 minutes later picks up from the last UID it saw.
+            # The calendar still syncs and the run stays green.
+            out["gmail_error"] = type(exc).__name__
     if gcal_sync.configured():
         try:
             with session_scope() as s:

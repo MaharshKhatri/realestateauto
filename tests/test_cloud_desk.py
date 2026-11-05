@@ -338,6 +338,26 @@ def test_a_refresh_that_runs_long_is_cut_off_and_the_rest_of_the_run_still_happe
     assert day["refresh"] == "cut off at 40 min" and seen == [80 * 60, 40 * 60]
 
 
+def test_gmail_dropping_the_line_costs_one_inbox_check_not_the_run(db, monkeypatch, tmp_path):
+    """2026-11-05: a TimeoutError and an IMAP "abort" from Gmail each failed a whole desk run (no calendar sync, a red
+    run). The inbox step reports it in the counts; the calendar still syncs and the run finishes."""
+    import imaplib
+    from engine import gcal_sync, gmail_autopilot as gm
+    synced = []
+    monkeypatch.setattr(gcal_sync, "configured", lambda: True)
+    monkeypatch.setattr(gcal_sync, "sync", lambda s, now=None: synced.append(now) or type("R", (), {"error": None})())
+    kw = dict(smtp_factory=None, user=ME, pw="p", desk_key=KEY, root=tmp_path, approve_id=None)
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    for exc in (TimeoutError("timed out"), imaplib.IMAP4.abort("socket error: EOF")):
+        def boom(*a, _exc=exc, **k):
+            raise _exc
+        monkeypatch.setattr(gm, "run_inbox", boom)
+        out = cd._work("dismiss", now=datetime(2026, 11, 5, 16, 20, tzinfo=et), **kw)
+        assert out["gmail_error"] == type(exc).__name__ and out["calendar"] == "ok"
+    assert len(synced) == 2
+
+
 def test_the_night_pricing_run_values_the_new_listings(db, monkeypatch, tmp_path):
     """2026-11-04: the first cloud harvest brought 1,567 unvalued listings; task `value` prices them (70 minutes at
     night, 30 in the day) and every daytime run prices a few more."""

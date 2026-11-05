@@ -1006,6 +1006,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     had bounced that morning; first-week bounce rate 3.8%, 5 of 130);
   - a sealed note item `{"operator": {"phone": ...}}` changes the operator's details on the desk (validated, saved in
     its settings.local.yaml): every e-mail, LOI, call script and voicemail line follows.
+  - Gmail dropping the line (2026-11-05: a TimeoutError and an IMAP "abort" each failed a whole run) costs one inbox
+    check, not the run: `_work` reports `gmail_error` with the exception name, the calendar still syncs, the run stays
+    green, and the next run picks up from the last UID it saw.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a
   color … I will have class and miss some calls"):
   - call blocks: the title counts what is left ("📞 Call block B: 9 to call · ✅ 16 done"); reported rows are ✅ in a
