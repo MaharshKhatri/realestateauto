@@ -1771,7 +1771,12 @@ def send_custom_reply(session: Session, lead_id: int, text: str, *, subject: str
     op = hc.operator()
     body = text.strip()
     if op["postal"] and op["postal"] not in body:
-        body += "\n\n" + "\n".join(hc.signature_lines(op)) + "\n\n" + "\n".join(hc.footer_lines(op))
+        sig, gap = hc.signature_lines(op), "\n\n"
+        # Text already signed with the first name ("Thanks,\nMaharsh") keeps one: no "Maharsh / Maharsh" (2026-11-05)
+        last = body.splitlines()[-1].strip() if body else ""
+        if sig and op["first"] and last.lower() == op["first"].strip().lower():
+            sig, gap = sig[1:], "\n"
+        body += gap + "\n".join(sig) + "\n\n" + "\n".join(hc.footer_lines(op))
     waiting = waiting_reply(session, lead_id)
     to = (to or "").strip().lower() or \
         (waiting.from_email if waiting is not None and waiting.from_email else None) or agent.email

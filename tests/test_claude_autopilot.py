@@ -174,6 +174,13 @@ def test_reply_in_plain_words_threads_signs_and_attaches(live):
     db.expire_all()
     assert db.get(Lead, lead.id).offer_amount == 290000
     assert db.query(InboundReply).one().status == "approved"
+    # Already signed with the first name: the signature doesn't print it a second time
+    gm.send_custom_reply(db, lead.id, "Hi Pat,\n\nThanks again.\n\nThanks,\nJordan", now=T0 + timedelta(minutes=55),
+                         smtp_factory=FakeSMTP)
+    body = FakeSMTP.sent[-1].get_body(preferencelist=("plain",)).get_content()
+    lines = [x.strip() for x in body.splitlines()]
+    assert lines.count("Jordan") == 1 and "PO Box 10" in body and '"no more"' in body
+    assert lines[lines.index("Jordan") + 1] != ""                 # the full name / phone follow right under it
 
 
 def test_daemon_and_launchd_plist(live, capsys, monkeypatch):
