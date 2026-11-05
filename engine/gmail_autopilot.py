@@ -537,6 +537,13 @@ def asked_facts_before(session: Session, lead_id: int, exclude_id: int | None = 
     return any((a or {}).get("kind") == "fact_check" for a in session.scalars(q))
 
 
+def asked_net_before(session: Session, lead_id: int) -> bool:
+    """We already sent this lead's ask-first note ("what would the seller need to net?")."""
+    rows = session.scalars(select(Interaction.debrief_json).where(Interaction.lead_id == lead_id,
+                                                                 Interaction.debrief_json.is_not(None)))
+    return any(((d or {}).get("packet") or {}).get("kind") == "ask_first" for d in rows)
+
+
 def earlier_counter(session: Session, lead_id: int, exclude_id: int | None = None) -> float | None:
     """The newest number an agent already gave us on this lead, if any."""
     q = select(InboundReply.counter_amount).where(InboundReply.lead_id == lead_id,
@@ -596,6 +603,10 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
         # wrong or a lowball, so it answers "still available" by itself like a fact check.
         if not _cfg().get("auto_send_ask_first", True):
             return "ask-first answers wait for you (settings)"
+        if asked_net_before(session, lead.id):
+            # 2026-11-05: Tracy answered "please submit an offer in writing" and got the same "what would the seller
+            # need to net?" back. Asked once; the next answer is a number or the one fact the number needs.
+            return "we already asked what the seller needs: they want a written number (your call)"
         if agent.dnc_status == "dnc":
             return "this agent asked to stop"
         if is_listed_foreclosure(lead.property):

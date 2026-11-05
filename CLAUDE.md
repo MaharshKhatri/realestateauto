@@ -996,6 +996,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - follow-ups due any time today are T2 rows on the 5:17 sheet (a no-answer from last night is due at 10:00; left off the
     sheet, each had become its own calendar event: 40 "Try again" events at 10:00 on 2026-11-05); a number reported on a
     call that is far above our final (final < 80% of it) sets the next touch to the ~30-day check-in, not tomorrow;
+  - the ask-first note ("what would the seller need to net?") goes out once per lead (`asked_net_before`): an agent who
+    answers "please submit an offer in writing" waits for a number or the one fact the number needs (2026-11-05, Tracy);
   - a lead's fact question (beds / baths / sqft, rent roll, unit sales + HOA) goes out once: `asked_facts_before` keeps
     auto-answers and `auto_approve` from asking it again after the agent answered (2026-11-05, 12 Tasley Court);
   - a bounced address is remembered (swarm_state `bounced_emails`, `agent_outreach.record_bounce`) and `deliver` refuses

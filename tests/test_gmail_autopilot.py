@@ -700,3 +700,16 @@ def test_the_same_fact_question_is_never_asked_twice(live):
     finally:
         g.approve_all = orig
     assert not sent or row.id not in (sent[0] or [])
+
+
+def test_the_ask_first_question_goes_out_once(live):
+    """2026-11-05: "Please submit an offer in writing" got the same "what would the seller need to net?" back."""
+    db = live
+    lead = listed(db)
+    db.add(Interaction(lead_id=lead.id, channel="email_smtp", outcome="OFFER_SENT_TO_AGENT", occurred_at=T0,
+                       debrief_json={"packet": {"kind": "ask_first"}, "engaged": True}))
+    db.commit()
+    assert gm.asked_net_before(db, lead.id)
+    other = listed(db)
+    db.commit()
+    assert not gm.asked_net_before(db, other.id)
