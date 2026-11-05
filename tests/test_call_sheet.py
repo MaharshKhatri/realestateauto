@@ -366,3 +366,26 @@ def test_with_no_free_time_left_missed_calls_join_the_next_block(db, operator):
     assert a["summary"] == "⏩ Call block A: 1 moved to block B" and a["colorId"] == "8"
     assert bb["summary"].startswith("📞 Call block B: 1 to call + 1 from earlier")
     assert "--- Also from earlier blocks, if you have time (1; same codes) ---" in bb["description"]
+
+
+def test_a_retry_due_later_today_is_on_the_sheet_not_a_separate_event(db, operator):
+    """2026-11-05: last night's no-answers were due at 10:00, the 5:17 sheet left them off (not due yet, and cold rows
+    wait 2 days), and each got its own "Try again" calendar event: 40 events stacked at 10:00."""
+    lead = listed(db, list_price=400_000)
+    lead.last_contact_at = datetime(2026, 11, 4, 19, 30)
+    lead.next_followup_at = datetime(2026, 11, 5, 10, 0)
+    lead.contact_attempts = 1
+    db.flush()
+    rows = cs.build(db, datetime(2026, 11, 5, 5, 17))
+    assert [r.tier for r in rows if r.lead_id == lead.id] == ["T2"]
+
+
+def test_a_number_far_above_our_final_checks_back_in_a_month(db, operator, monkeypatch):
+    """2026-11-04: "under 300k would not work" on a $269,800 final became a call-back the next morning."""
+    from engine import gmail_autopilot as gm
+    lead = listed(db, list_price=340_000)
+    db.flush()
+    row = cs.today(db, NOW)[0]
+    monkeypatch.setattr(gm, "send_custom_reply", lambda *a, **kw: pytest.fail("too far apart: nothing in writing"))
+    cs.apply_codes(db, [{"code": row.code, "result": "600 seller wants full price"}], now=NOW)
+    assert lead.next_followup_at and lead.next_followup_at.date() >= (NOW + timedelta(days=20)).date()

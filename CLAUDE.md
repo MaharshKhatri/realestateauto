@@ -993,6 +993,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - a note item's "agent_phone" + "agent_name" saves a different person the office named as the listing agent (her own
     contact, not the office's e-mail); a note or approval run before 5:17 AM hands back to night.yml for the 5:17 refresh
     (it used to hand off with wake 07:00, which would have replaced the sleeper and skipped the morning refresh);
+  - follow-ups due any time today are T2 rows on the 5:17 sheet (a no-answer from last night is due at 10:00; left off the
+    sheet, each had become its own calendar event: 40 "Try again" events at 10:00 on 2026-11-05); a number reported on a
+    call that is far above our final (final < 80% of it) sets the next touch to the ~30-day check-in, not tomorrow;
   - a sealed note item `{"operator": {"phone": ...}}` changes the operator's details on the desk (validated, saved in
     its settings.local.yaml): every e-mail, LOI, call script and voicemail line follows.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a

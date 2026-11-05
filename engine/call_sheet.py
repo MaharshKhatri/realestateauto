@@ -236,7 +236,10 @@ def build(session: Session, now: datetime | None = None, limit: int | None = Non
                 add(session.get(Lead, lf.lead_id), "T1")
     except Exception:                              # noqa: BLE001
         log.exception("call sheet: listed foreclosures failed")
-    for lead in crm.due_followups(session, now):
+    # Due any time today, not just by the 5:17 build: a no-answer from last night is due at 10:00, and leaving it off
+    # the sheet gave it a separate calendar event instead (2026-11-05: 40 "Try again" events stacked at 10:00).
+    end_of_day = now.replace(hour=23, minute=59, second=0, microsecond=0)
+    for lead in crm.due_followups(session, end_of_day):
         if lead.contact_attempts <= max_attempts:
             add(lead, "T2")
     from engine.offer_math import condition, convertible
@@ -548,6 +551,10 @@ def apply_codes(session: Session, items: list[dict[str, Any]], *, now: datetime 
                     autopilot.send(session, lead.id, "smtp", now=now, smtp_factory=smtp_factory)
                     counts["offers"] += 1
                 elif amount:
+                    final = firm_offer(lead, session).final
+                    if final and final < 0.80 * amount and when is None:
+                        # Far above our final even before any re-value ("full price"): a month, not tomorrow.
+                        lead.next_followup_at = rn._followup(now, int((rn._ncfg() or {}).get("far_apart_days", 30)))
                     if certainty_issues(lead, session):
                         # A written number is final: when ours rests on old or doubtful data (stale comps, a value far
                         # above the ask, a move-in-ready listing), re-value live with recent sold comps first; nothing
@@ -559,6 +566,10 @@ def apply_codes(session: Session, items: list[dict[str, Any]], *, now: datetime 
                             continue
                     an = rn.analyze(session, lead, f"The seller would take {amount:,.0f}. {notes}", now=now)
                     price = an.numbers.get("counter") if an.verdict == "GREEN" else an.numbers.get("our_counter")
+                    if an.verdict not in ("GREEN", "YELLOW") and an.followup_at and when is None:
+                        # Their number is far above our final ("under 300 won't work"): the next touch is the
+                        # negotiator's check-in (~30 days), not a call-back tomorrow that can only repeat the no.
+                        lead.next_followup_at = an.followup_at
                     # In writing only when it moves the deal: their number works (GREEN) or our one best-and-final
                     # is within reach (YELLOW). "Too far apart" was already said on the phone.
                     if an.reply_text and an.verdict in ("GREEN", "YELLOW") and price:
