@@ -124,6 +124,19 @@ def test_far_apart_counter_names_no_number(db, operator):
     assert hc.lint(a.reply_text) == []
 
 
+def test_full_price_is_their_number(db, operator):
+    """2026-11-05: Edison answered "what would the seller need to net?" with "Full price" on 114 Sheridan Ave, and the desk
+    read it as a question. "Full price" is their number: the ask, stated plainly."""
+    from engine import agent_outreach as ao
+    lead = listed(db)
+    ask = float(ao.listing_gap(lead)["list_price"])
+    a = rn.analyze(db, lead, "Full price\n\nSent from my iPhone", now=datetime(2026, 10, 20, 9, 0))
+    assert a.parsed.counter_amount == ask and a.parsed.counter_explicit and "COUNTER" in a.parsed.intents
+    assert a.verdict in ("RED", "YELLOW") and a.headline and "ANSWER THEM" not in a.headline
+    assert not rn.full_price_asked("Below asking price is fine with them") and not rn.full_price_asked("What's the asking price?")
+    assert rn.full_price_asked("Seller wants full asking") and rn.full_price_asked("They're firm on list price")
+
+
 def test_risk_buffers_move_the_numbers_and_add_language(db, operator):
     lead = listed(db)
     a = rn.analyze(db, lead, "Seller would take 285k. Heads up: there is an underground oil tank and it's tenant occupied, "

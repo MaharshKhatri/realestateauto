@@ -1025,6 +1025,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     stands; no Touch 2 goes out by itself once the agent gave a number on the house (`earlier_counter`); the answer
     greets the person who wrote (a colleague the agent handed the thread to), not the card's agent; "Prob 550" /
     "around 480" / a bare "550" read as thousands, never "stated plainly" (2026-11-04: Geri, Juliet);
+    "Full price" / "seller wants asking" / "firm on list price" is their number = the ask, stated plainly
+    (`reply_negotiator.full_price_asked`; not after "below" / "under" / "not", never "what's the asking price?");
   - a row whose agent e-mailed back today and was answered says so ("THEY E-MAILED BACK (…; the desk answered by
     e-mail)"), or "SKIP TODAY: they e-mailed back (off the table for now)" when the door is closed;
   - follow-up / call-back / reply events handled today (`gcal_sync.handled`: the operator's call or an approved /

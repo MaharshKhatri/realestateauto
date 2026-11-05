@@ -67,6 +67,19 @@ _ASK_WORDS = re.compile(r"(wants?|needs?|is at|would take|will take|would accept
 _HEDGE_BEFORE = re.compile(r"(?:^|\s)(prob(?:ably)?|maybe|around|about|roughly|approx(?:imately)?|likely|ballpark|~)\s*$",
                            re.I)
 _NEG = re.compile(r"\b(not|no|isn't|aren't|haven't|hasn't|never|nope|without|nor)\b", re.I)
+# "Full price" / "they want asking": their number is the list price (2026-11-05: Edison on 114 Sheridan Ave answered
+# "what would the seller need to net?" with "Full price", read as a question). Not after "below" / "under" / "less than"
+# / "not" (those offer room under the ask) and never a question ("what's the asking price?").
+_FULL_PRICE = re.compile(r"(?<!below )(?<!under )(?<!than )(?<!not )\bfull (?:price|ask(?:ing)?(?: price)?)\b"
+                         r"|\b(?:wants?|needs?|looking for|expects?|holding (?:at|for)|firm (?:at|on)|accepts?|take)\s+"
+                         r"(?:the\s+)?(?:asking|list(?:ing)?) price\b", re.I)
+
+
+def full_price_asked(text: str) -> bool:
+    t = text or ""
+    return bool(_FULL_PRICE.search(t)) and not re.search(r"\bwhat(?:'s| is)? the (?:asking|list) price\b", t, re.I)
+
+
 _ASKS_MAX = re.compile(r"what(?:'s| is|s)? (?:your|ur|the) (?:max(?:imum)?|best|highest|top|ceiling)\b|how high (?:can|could|will|would) "
                        r"you go|best you can do", re.I)
 
@@ -574,6 +587,12 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
                            "or another listing). Check their message.")
         parsed.counter_amount, counter = None, None
         parsed.intents.discard("COUNTER")
+    ask_now = float(ao.listing_gap(lead).get("list_price") or 0)
+    if not counter and ask_now and full_price_asked(text):
+        # "Full price": the seller's number is the asking price, stated plainly.
+        counter = parsed.counter_amount = ask_now
+        parsed.counter_explicit = True
+        intents.add("COUNTER")
     frfpa_floor = nums.get("frfpa_floor")
     priced = bool(nums) and nums.get("verdict") not in NO_PRICE_VERDICTS and nums.get("mao_walkaway", 0) > 0
 
