@@ -137,6 +137,28 @@ def test_full_price_is_their_number(db, operator):
     assert rn.full_price_asked("Seller wants full asking") and rn.full_price_asked("They're firm on list price")
 
 
+def test_their_number_above_an_unsure_final_gets_facts_not_a_ceiling(db, operator, monkeypatch):
+    """2026-11-05: "Full price" on 114 Sheridan Ave was drafted as "hold at $499K" while the call sheet said agree to
+    nothing (no living area on record). With our own number unsure, nothing goes in writing: ask for the fact."""
+    from core.config import settings
+    from engine import offer_math
+    lead = listed(db)
+    monkeypatch.setitem(settings(), "firm", {**dict(settings().get("firm") or {}), "enforce": True})
+    monkeypatch.setattr(offer_math, "certainty_issues", lambda lead, session=None, today=None:
+                        ["the living area isn't on record"])
+    for text in ("Seller wants 340k firm.", "Seller wants 310k."):          # 297K final: hold range, best-and-final range
+        a = rn.analyze(db, lead, text, now=datetime(2026, 10, 20, 9, 0))
+        body = a.reply_text.split("---")[0]
+        assert "FACTS FIRST" in a.headline and "$297,000" not in a.reply_text and "best and final" not in body.lower()
+        assert "square footage" in body and a.numbers.get("our_counter") is None
+        from engine import human_copy as hc
+        assert hc.lint(a.reply_text) == []
+    # Far apart stays the plain "too far apart" note; a sure number keeps the hold.
+    assert "TOO FAR APART" in rn.analyze(db, lead, "Seller wants 400k firm.", now=datetime(2026, 10, 20, 9, 0)).headline
+    monkeypatch.setattr(offer_math, "certainty_issues", lambda lead, session=None, today=None: [])
+    assert "HOLD FIRM" in rn.analyze(db, lead, "Seller wants 340k firm.", now=datetime(2026, 10, 20, 9, 0)).headline
+
+
 def test_risk_buffers_move_the_numbers_and_add_language(db, operator):
     lead = listed(db)
     a = rn.analyze(db, lead, "Seller would take 285k. Heads up: there is an underground oil tank and it's tenant occupied, "

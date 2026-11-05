@@ -1027,6 +1027,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     "around 480" / a bare "550" read as thousands, never "stated plainly" (2026-11-04: Geri, Juliet);
     "Full price" / "seller wants asking" / "firm on list price" is their number = the ask, stated plainly
     (`reply_negotiator.full_price_asked`; not after "below" / "under" / "not", never "what's the asking price?");
+    their number above our final while our own number still needs a check (`certainty_issues`: no living area, old
+    comps) gets no ceiling or best-and-final in writing: "facts first" asks for the one fact (`_doubt_ask`) instead;
   - a row whose agent e-mailed back today and was answered says so ("THEY E-MAILED BACK (…; the desk answered by
     e-mail)"), or "SKIP TODAY: they e-mailed back (off the table for now)" when the door is closed;
   - follow-up / call-back / reply events handled today (`gcal_sync.handled`: the operator's call or an approved /

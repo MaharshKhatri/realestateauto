@@ -487,6 +487,18 @@ def fact_check_issue(pf: Any) -> tuple[str, str] | None:
     return None
 
 
+def _doubt_ask(doubt: str) -> str:
+    """The one fact that settles a certainty doubt, in the agent's words."""
+    d = doubt.lower()
+    if "living area" in d:
+        return "the square footage (and the rent roll, if it's rented)"
+    if "comparable" in d or "comps" in d or "after-repair" in d:
+        return "the condition (roof, heating, kitchen, baths) and anything that sold nearby lately"
+    if "unit" in d or "condo" in d:
+        return "the unit count, the rents and recent sales of similar units"
+    return "the square footage, the condition and the rents if it's rented"
+
+
 def _fact_note(an: Analysis, kind: str, intents: set[str], st: str, first: str, op: dict[str, str], me: str,
                now: datetime | None) -> None:
     """A no-price answer: it answers what they asked (role, showing, call, backup), then asks for the one fact."""
@@ -681,7 +693,25 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
             # One move only (2026-11-03: offers are final and on the record): our counter IS the best and final.
             x = adj_walk
             final_said = bool(last_offer and float(last_offer) >= adj_walk and nums.get("last_offer"))
-            if x > 0 and not final_said and x >= float(ncfg.get("counter_within_pct", 0.92)) * c:
+            from engine.offer_math import _cfg as _firm_cfg, certainty_issues
+            doubts = [] if nums.get("last_offer") or _backup_context(session, lead, intents) \
+                or not _firm_cfg().get("enforce", True) else certainty_issues(lead, session)
+            if doubts and adj_walk >= float(ncfg.get("state_ceiling_min_pct", 0.80)) * c:
+                # Their number is above our final, and our own number still needs a check (no living area on record, old
+                # comps): a best-and-final or ceiling in writing could be wrong either way (2026-11-05: 114 Sheridan Ave,
+                # "Full price" drafted as "hold at $499K" on a house the call sheet said to agree nothing on). Facts first.
+                ask = _doubt_ask(doubts[0])
+                an.verdict, an.headline = "RED", f"THEIR {hc.money(c)} IS ABOVE YOUR FINAL: FACTS FIRST, NO NUMBER ({doubts[0][:60]})"
+                nums.update({"our_counter": None, "fee_at_our_counter": None})
+                sentences = [f"Thanks for the number on {st}.",
+                             f"Before I put anything in writing I want to get it right: could you send me {ask}?",
+                             "With that I'll tell you honestly where I can be."]
+                an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
+                an.sms_text = f"Hi {first}, it's {me}. Thanks on {st}; could you send {ask} so I can firm up my number?" + sms_tail
+                an.actions = [f"No number in writing yet: {doubts[0]}. Their {hc.money(c)} is above your final "
+                              f"({hc.money(adj_walk)})."] + an.actions
+                an.followup_at = _followup(now, int(ncfg.get("yellow_followup_days", 2)))
+            elif x > 0 and not final_said and x >= float(ncfg.get("counter_within_pct", 0.92)) * c:
                 an.verdict, an.headline = "YELLOW", f"BEST AND FINAL AT {hc.money(x)} (keeps a {hc.money(_floor100(adj_max - x))} fee)"
                 nums.update({"our_counter": x, "fee_at_our_counter": _floor100(adj_max - x)})
                 sentences = [f"I ran it again with the real costs, {cost_line}, and that's what keeps me from {hc.money(c)}.",
