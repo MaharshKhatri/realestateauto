@@ -26,6 +26,7 @@ config/token.json
 
 # Run logs (swarm_intelligence.md is aggregate-only and IS committed)
 logs/*.log
+logs/*.log.*
 
 data/imports/
 # JV partners' proof-of-funds letters and bank statements
