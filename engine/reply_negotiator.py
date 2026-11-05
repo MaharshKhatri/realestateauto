@@ -92,7 +92,7 @@ PHRASES: dict[str, list[str]] = {
                   r"open to offers", r"bring (me |us )?an offer"],
     "UNDER_CONTRACT": [r"under contract", r"in attorney review", r"attorney review (now|already|period)", r"accepted an offer",
                        r"has an accepted offer", r"\bpending\b", r"already sold", r"\bsold\b", r"no longer available",
-                       r"went under contract", r"off the market", r"withdrawn", r"\bclosed\b", r"in contract", r"contract signed"],
+                       r"went under contract", r"off the market", r"\bclosed\b", r"in contract", r"contract signed"],
     "POF_REQUEST": [r"proof of funds", r"\bpof\b", r"bank statement", r"verif(y|ication of) (your )?funds", r"show (me |us )?(the )?funds",
                     r"funds letter", r"pre-?qual", r"pre-?approval", r"where('s| is) the money coming from", r"source of funds"],
     "HIGHEST_AND_BEST": [r"highest and best", r"best and final", r"multiple offers", r"other offers?", r"bidding war",
@@ -121,7 +121,10 @@ PHRASES: dict[str, list[str]] = {
     "BACKUP": [r"(have|has|got) a contract,? but", r"not sure (it'?s|it is|if it'?s|if it is|it will|it'?ll) (going|go) through",
                r"(might|may|could) fall (through|apart)", r"back-?up offer", r"second position", r"in case (it|the deal) falls"],
     "EXPIRED": [r"listing (has )?expired", r"\bexpired\b", r"no longer (listed|on the market|with (me|us|our office))",
-                r"(i|we) (no longer|don'?t) (have|represent) (it|the listing|that listing)", r"listing (was )?cancell?ed"],
+                r"(i|we) (no longer|don'?t) (have|represent) (it|the listing|that listing)", r"listing (was )?cancell?ed",
+                # "The house was withdrawn" (Asher, Nov 5): pulled off the market, not sold (it was read as under
+                # contract and got "congratulations")
+                r"\bwithdr[ae]wn?\b", r"taken off the market", r"took it off the market"],
     "QUESTION": [r"\?", r"who are you", r"are you (an |a )?(agent|realtor|broker|investor|wholesaler)", r"how (do|does) (this|that) work",
                  r"what('s| is) your (company|name)", r"tell me more"],
 }

@@ -278,3 +278,9 @@ def test_so_no_is_a_no():
     assert "REJECT" in rn.parse_reply("We had 2 offers over 5 so no.").intents
     assert "REJECT" in rn.parse_reply("Seller countered at 500 so no").intents
     assert "REJECT" not in rn.parse_reply("Still available, so no rush on your end").intents
+
+
+def test_withdrawn_is_off_the_market_not_under_contract():
+    """2026-11-05: "The house was withdrawn" got "congratulations on getting it under contract"."""
+    p = rn.parse_reply("The house was withdrawn")
+    assert "EXPIRED" in p.intents and "UNDER_CONTRACT" not in p.intents
