@@ -271,3 +271,10 @@ def test_what_is_your_max_gets_the_best_and_final(db):
     final = a.numbers["adjusted_walkaway"]
     assert a.headline.startswith("THEY ASKED YOUR MAX") and f"${final:,.0f}" in a.reply_text
     assert "what would the seller" not in a.reply_text.lower()
+
+
+def test_so_no_is_a_no():
+    """2026-11-04: "We had 2 offers over 5 so no." was read as a question to answer."""
+    assert "REJECT" in rn.parse_reply("We had 2 offers over 5 so no.").intents
+    assert "REJECT" in rn.parse_reply("Seller countered at 500 so no").intents
+    assert "REJECT" not in rn.parse_reply("Still available, so no rush on your end").intents

@@ -80,7 +80,9 @@ PHRASES: dict[str, list[str]] = {
                r"nowhere near", r"never (?:going to |gonna |would |will )?happen", r"not happening", r"won'?t happen",
                r"no chance", r"not a chance", r"seller (?:won'?t|will not|would never|isn'?t going to) (?:go|take|accept|do)",
                # "No where close to what the seller needs. Best of luck" (Nov 4): a polite no, never a fresh fact-check
-               r"no ?where close", r"(?:best|good) (?:of|if) luck|good luck"],
+               r"no ?where close", r"(?:best|good) (?:of|if) luck|good luck",
+               # "We had 2 offers over 5 so no." (Juliet, Nov 4, to our max): a closing "so no" / "that's a no"
+               r"\bso,? no\s*(?:[.!]|$)", r"\bthat'?s a no\b"],
     "AVAILABLE": [r"\A\W*(?:hello|hi|hey)?\b[^.!?\n]{0,30}?\b(yes|yep|yup|yeah|absolutely)\b(?![^.!?\n]*\b(but|however|under contract|"
                   r"attorney|pending|sold)\b)",          # "Yes it is." answers our "is it still available?"
                   r"still available", r"(it'?s|it is|yes,? it'?s|yes it is|yes,? still) available", r"\bavailable\b",
