@@ -526,6 +526,17 @@ def asked_to_check_back(session: Session, lead_id: int, exclude_id: int | None =
     return "check back" in text
 
 
+def asked_facts_before(session: Session, lead_id: int, exclude_id: int | None = None) -> bool:
+    """We already sent this lead's fact question (beds / baths / sqft, the rent roll, unit sales + HOA). Asking it again
+    after the agent answered it reads as a bot (2026-11-05: Olga answered "good condition, the website is correct" and
+    got the same question back)."""
+    q = select(InboundReply.analysis_json).where(InboundReply.lead_id == lead_id,
+                                                 InboundReply.status.in_(("auto_sent", "approved")))
+    if exclude_id is not None:
+        q = q.where(InboundReply.id != exclude_id)
+    return any((a or {}).get("kind") == "fact_check" for a in session.scalars(q))
+
+
 def earlier_counter(session: Session, lead_id: int, exclude_id: int | None = None) -> float | None:
     """The newest number an agent already gave us on this lead, if any."""
     q = select(InboundReply.counter_amount).where(InboundReply.lead_id == lead_id,
@@ -568,6 +579,8 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
     if fact:
         # A no-price question (the unit's size and HOA, the rent roll, beds / baths / sqft on a mismatched parcel):
         # it answers what they asked and asks for the one fact the price needs. No number, no LOI.
+        if asked_facts_before(session, lead.id):
+            return "we already asked for these facts: their answer needs a look"
         if not _cfg().get("auto_send_fact_check", True):
             return "pre-flight: " + analysis.headline.split(": ", 1)[-1]
         if agent.dnc_status == "dnc":
@@ -1093,7 +1106,10 @@ def auto_approve(*, now: datetime | None = None, smtp_factory: Any = None) -> di
         for r in ok:
             an = r.analysis_json or {}
             head = str(an.get("headline") or r.headline or "").upper()
-            if an.get("kind") == "fact_check" or head.startswith(SAFE_NO_PRICE):
+            if an.get("kind") == "fact_check":
+                if r.lead_id and not asked_facts_before(s, r.lead_id, r.id):
+                    ids.append(r.id)               # never the same fact question twice on one house
+            elif head.startswith(SAFE_NO_PRICE):
                 ids.append(r.id)
             elif head.startswith(SAFE_PRICED) and (not r.counter_amount
                                                    or rn.parse_reply(r.body_text or "").counter_explicit):

@@ -670,3 +670,26 @@ def test_no_automatic_touch2_once_they_gave_a_number(live):
     db.expire_all()
     row = db.query(InboundReply).filter_by(message_id="<agent-9@broker.test>").one()
     assert row.status == "needs_approval" and "already gave a number" in row.note
+
+
+def test_the_same_fact_question_is_never_asked_twice(live):
+    """2026-11-05: Olga answered our beds / baths / sqft question and the desk sent the same question back."""
+    db = live
+    lead = listed(db)
+    db.add(InboundReply(message_id="<facts@b.test>", lead_id=lead.id, status="auto_sent", match_method="thread",
+                        received_at=T0, resolved_at=T0, analysis_json={"kind": "fact_check", "reply_text": "beds?"}))
+    row = InboundReply(message_id="<facts2@b.test>", lead_id=lead.id, status="needs_approval", match_method="thread",
+                       received_at=T0 + timedelta(hours=1), headline="FACTS FIRST",
+                       analysis_json={"kind": "fact_check", "reply_text": "beds?"})
+    db.add(row)
+    db.commit()
+    assert gm.asked_facts_before(db, lead.id, row.id)
+    sent = []
+    import engine.gmail_autopilot as g
+    orig = g.approve_all
+    g.approve_all = lambda **kw: sent.append(kw.get("ids")) or {"sent": [], "failed": [], "stopped": None}
+    try:
+        gm.auto_approve(smtp_factory=FakeSMTP)
+    finally:
+        g.approve_all = orig
+    assert not sent or row.id not in (sent[0] or [])
