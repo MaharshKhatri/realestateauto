@@ -344,7 +344,13 @@ def cloud_run(task: str = "run", *, root: Path = ROOT, now: datetime | None = No
     _reload(root)
     from db.database import init_db
     init_db()
-    cfg = latest_bundle(user, pw, "config", newer_than=_state_get("config_stamp"))
+    try:
+        cfg = latest_bundle(user, pw, "config", newer_than=_state_get("config_stamp"))
+    except (OSError, imaplib.IMAP4.error) as exc:
+        # Gmail dropped the line while looking for a config bundle from the Mac (2026-11-05: three runs failed with
+        # TimeoutError / "abort" here, before any work). It's looked for again on the next run.
+        cfg = None
+        out["config_check"] = type(exc).__name__
     if cfg is not None:
         apply_bundle(unseal(cfg[1], desk_key), root, db=False)
         _state_set(config_stamp=cfg[0])
@@ -363,6 +369,22 @@ def cloud_run(task: str = "run", *, root: Path = ROOT, now: datetime | None = No
         state.parent.mkdir(parents=True, exist_ok=True)
         state.write_bytes(lock(make_bundle(root, db=True, preset=1), desk_key))     # fast: it's rewritten every run
     return out
+
+
+def calendar_code(error: str) -> str:
+    """A calendar sync error as a short code that is safe for the public run log (no Google message text, no event
+    ids): busy-429 / busy-403 (Google's limits), offline-TimeoutError, auth (sign in again), error-400, error."""
+    e = error or ""
+    m = re.search(r"Google is busy \((\d{3})\)", e)
+    if m:
+        return "busy-" + m.group(1)
+    m = re.search(r"can't reach Google \((\w+)\)", e)
+    if m:
+        return "offline-" + m.group(1)
+    if "sign-in expired" in e or "refused the request" in e or "setup-calendar" in e:
+        return "auth"
+    m = re.search(r"Google said (\d{3})", e)
+    return "error-" + m.group(1) if m else "error"
 
 
 def gm_now(now: datetime | None) -> datetime:
@@ -656,7 +678,9 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
         try:
             with session_scope() as s:
                 res = gcal_sync.sync(s, now=t.replace(tzinfo=None))
-            out["calendar"] = "ok" if not res.error else "error"
+            out["calendar"] = "ok" if not res.error else calendar_code(res.error)
+            if res.error:
+                out["calendar_queued"] = int(res.queued or 0)
         except Exception as exc:                   # noqa: BLE001 - the calendar never stops the desk
             out["calendar"] = type(exc).__name__
     if t.hour >= 20 and _state_get("backup_day") != t.date().isoformat():

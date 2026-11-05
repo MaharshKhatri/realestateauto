@@ -151,6 +151,38 @@ def test_the_cloud_waits_for_the_handoff_then_runs_from_its_own_encrypted_state(
     assert sqlite3.connect(cloud / "wholesaling.db").execute("select count(*) from t").fetchone()[0] == 3
 
 
+def test_a_gmail_drop_while_looking_for_a_config_bundle_doesnt_fail_the_run(courier, tmp_path, monkeypatch):
+    """2026-11-05: three runs failed with TimeoutError / IMAP "abort" in the config-bundle check before any work."""
+    import imaplib
+    import db.database as database
+    cloud = tmp_path / "cloud"
+    cloud.mkdir()
+    monkeypatch.setenv("WHOLESALING_DATABASE_URL", f"sqlite:///{cloud / 'wholesaling.db'}")
+    monkeypatch.setattr(database, "_engine", None)
+    monkeypatch.setattr(database, "_SessionFactory", None)
+    monkeypatch.setattr(cd, "_reload", lambda root: None)
+    ran = []
+    monkeypatch.setattr(cd, "_work", lambda task, **kw: ran.append(task) or {"sent": 0})
+    cd.cloud_run(root=cloud, smtp_factory=courier)                     # posts "ready"
+    cd.mac_handoff(root=_root(tmp_path), smtp_factory=courier)
+    real = cd.latest_bundle
+
+    def flaky(user, pw, kind, **kw):
+        if kind == "config":
+            raise imaplib.IMAP4.abort("socket error: EOF")
+        return real(user, pw, kind, **kw)
+    monkeypatch.setattr(cd, "latest_bundle", flaky)
+    r = cd.cloud_run(root=cloud, smtp_factory=courier)
+    assert r["state"] == "ok" and r["config_check"] == "abort" and ran == ["run"]
+
+
+def test_calendar_errors_reach_the_public_log_as_safe_codes():
+    assert cd.calendar_code("Google is busy (403); queued for the next sync") == "busy-403"
+    assert cd.calendar_code("can't reach Google (TimeoutError); queued for the next sync") == "offline-TimeoutError"
+    assert cd.calendar_code("Google sign-in expired or was revoked: run python manage.py setup-calendar") == "auth"
+    assert cd.calendar_code("Google said 400: <event body with a street>") == "error-400"
+
+
 def test_without_its_secrets_the_cloud_desk_does_nothing(monkeypatch, tmp_path):
     monkeypatch.delenv("DESK_KEY", raising=False)
     assert cd.cloud_run(root=tmp_path) == {"state": "not_configured"}
