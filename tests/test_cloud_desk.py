@@ -261,6 +261,22 @@ def test_a_cell_number_heard_on_a_call_goes_on_the_agents_card(db, monkeypatch):
     assert cs.agent_line(db, lead)[0] == "(732) 555-0177"                      # the sheet dials the cell first
 
 
+def test_the_office_names_the_real_listing_agent(db, monkeypatch):
+    """2026-11-04: the brokerage office said Patricia handles 1802 Clinton St and gave her number."""
+    from tests.factories import add_contact, make_lead
+    lead = make_lead(db, sheriff_days=None, stale_listing=True)
+    add_contact(db, lead, contact_type="LISTING_AGENT", name="Premier", phone="9085550100", email="office@b.test")
+    db.commit()
+    key = "k" * 32
+    note = cd.seal_note([{"lead": lead.id, "agent_phone": "908-555-0178", "agent_name": "Patricia Agent"}],
+                        cd.public_hex(key))
+    assert cd.apply_note(note, key)["note_done"] == 1
+    db.expire_all()
+    new = [c for c in lead.contacts if c.phone == "9085550178"]
+    assert new and new[0].name == "Patricia Agent" and new[0].email is None
+    assert any(c.name == "Premier" and c.phone == "9085550100" for c in lead.contacts)     # the office card stays
+
+
 def test_a_note_closes_the_replies_it_settled_and_logs_an_email_outcome(db, monkeypatch):
     """2026-11-04: Claude read the business inbox (Jon: 'received the offer, sharing with the sellers'). The note
     closes the waiting reply so the desk sends nothing more, and logs what was heard as an e-mail outcome."""

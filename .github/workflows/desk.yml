@@ -119,6 +119,11 @@ jobs:
             echo "After hours: night.yml starts the 5:17 AM refresh."; exit 0
           fi
           if [ "$hour" -lt 7 ]; then
+            # A note or approval before 5:17 must not replace the sleeper that starts the morning refresh.
+            if [ "$TASK" != "refresh" ] && [ "$(date +%H%M)" -lt 0517 ]; then
+              gh workflow run night.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f wake=05:17 -f task=refresh
+              echo "Early: night.yml still starts the 5:17 AM refresh."; exit 0
+            fi
             gh workflow run night.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f wake=07:00 -f task=run
             echo "Early: night.yml starts the day at 7:00."; exit 0
           fi

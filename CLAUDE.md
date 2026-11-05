@@ -990,6 +990,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - desk.yml checks for a queued run before its ~6-minute wait, so a note or approval starts at once;
   - task `stats` (`engine/outreach_stats.py::funnel`) prints counts only: listed, valued, tiers + top skip reasons,
     convertible, reachable, never e-mailed, cold / all e-mail in 24 h, replies and bounce % in 7 days;
+  - a note item's "agent_phone" + "agent_name" saves a different person the office named as the listing agent (her own
+    contact, not the office's e-mail); a note or approval run before 5:17 AM hands back to night.yml for the 5:17 refresh
+    (it used to hand off with wake 07:00, which would have replaced the sleeper and skipped the morning refresh);
   - a sealed note item `{"operator": {"phone": ...}}` changes the operator's details on the desk (validated, saved in
     its settings.local.yaml): every e-mail, LOI, call script and voicemail line follows.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a

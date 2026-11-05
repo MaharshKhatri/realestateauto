@@ -414,7 +414,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       with "notes" and "followup_at" (Eastern, ISO), logged with `crm.log_call` after any reply, so its follow-up
       (the next call on the calendar) wins; "followup_at" with no "call" sets the lead's next touch after the reply
       (a check-in date the agent agreed to);
-    - "agent_phone": a better number for the listing agent (a cell the office gave out), saved on the agent's card;
+    - "agent_phone": a better number for the listing agent (a cell the office gave out), saved on the agent's card
+      ("agent_name" with it: the office named a different person, saved as her own contact);
     - "code" (+ "result", "notes", "date"): a call-sheet result, resolved on that day's frozen sheet;
     - "street" in place of "lead": the lead found by its street ("2507 Columbia Ave"), a unique match only;
     - "agent_email" (+ "agent_name"): the person now handling the listing (an agent's "contact Geri, I've CC'd her"),
@@ -469,8 +470,11 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                     base = ao.agent_contact(lead) or next(
                         (x for x in lead.contacts if x.contact_type == "LISTING_AGENT"), None)
                     if num and base is not None:
+                        # "agent_name": the office handed us the real listing agent ("Patricia handles it"): a new
+                        # person with her own number, not the office's e-mail.
+                        other = str(item.get("agent_name") or "").strip()
                         c, _ = upsert_contact(s, lead=lead, contact_type="LISTING_AGENT", source="chat_note",
-                                              name=base.name, phone=num, email=base.email)
+                                              name=other or base.name, phone=num, email=None if other else base.email)
                         c.phone_type, c.company = "wireless", c.company or base.company
                         c.confidence_score = max(float(c.confidence_score or 0), 0.9)
                         s.flush()
