@@ -870,7 +870,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     hints. It holds:
     - the house (multi-family, beds / baths / sqft / year / days on market / ask);
     - our open / aim / walk-away, or "Don't name a price" with the pre-flight reason, never above an offer
-      already sent;
+      already sent; an ask-first house whose own number needs a check (no living area, old comps: "agree to
+      nothing" on the call sheet) gets no yes on the call either, only "let me run it" and the square-footage question;
     - the exact opener (name, phone, purpose) and a "bad time" line;
     - who we are, and the questions for that fact kind (condo, units, basics);
     - the answers to "what's your offer?" (priced, too low, their number under / over the walk-away; or no price),

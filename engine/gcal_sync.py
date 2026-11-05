@@ -391,7 +391,18 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
         firm = None
     priced = bool(not fact and firm is not None and (firm.priced or (written and firm.final)))
     ask_theirs = bool(not fact and not priced and firm is not None and firm.tier == "ask_first" and firm.final)
-    if ask_theirs:
+    # Same test as the call sheet (call_sheet._say): our own number needs a check (no living area, old comps, value
+    # far above the ask), so no yes on the call, only the number written down (2026-11-05: the reply event for 139
+    # Aycrigg said "at or under $682,100 it can work" while its call-sheet row said "agree to nothing").
+    doubts = [r for r in (firm.reasons if firm is not None else [])
+              if "of the ask: ask what the seller needs first" not in r] if ask_theirs else []
+    extra_q = ["About how many square feet is it, and how many bedrooms and bathrooms?"] \
+        if doubts and "living area" in doubts[0] else []
+    if ask_theirs and doubts:
+        kind, issue = "basics", ""
+        numbers = (f"Don't name a price, and say yes to no number on this call ({doubts[0]}). Ask what the seller "
+                   "needs and write it down; the desk checks the numbers after the call.")
+    elif ask_theirs:
         kind, issue = "basics", ""
         numbers = (f"Don't name a price first ({firm.reasons[0] if firm.reasons else 'ask what the seller needs'}). "
                    f"Ask what the seller needs. At or under {_money(firm.final)} it can work; above it, you're too far "
@@ -426,6 +437,13 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
                  f'   Their number at or under {walk}: "That might work. Let me confirm my numbers and send it in '
                  f'writing." Above {walk}: "That\'s more than I can do. If anything changes, I\'d love to hear from '
                  'you."']
+    elif ask_theirs and doubts:
+        offer = ['4) Don\'t say a price first. Ask: "What number would the seller sign at for cash, as is, with a quick '
+                 'close?" Write it down.',
+                 '   Whatever number they say: "Thanks. Let me run it and I\'ll get back to you today." Don\'t say yes '
+                 'or no to it on this call.',
+                 '   "What\'s your offer?" first: "I\'d rather not guess at the seller\'s number. What would they need to '
+                 'walk away with?"']
     elif ask_theirs:
         fin = _money(firm.final)
         offer = ['4) Don\'t say a price first. Ask: "What number would the seller sign at for cash, as is, with a quick '
@@ -447,7 +465,7 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
         '2) Who you are: "I\'m a real estate investor. I buy for myself or with a partner investor. I\'m not a realtor '
         'and I don\'t have an agent."',
         "3) Ask one at a time and write every answer down:",
-        *[f'   - "{q}"' for q in _QUESTIONS.get(kind, _QUESTIONS["basics"])],
+        *[f'   - "{q}"' for q in extra_q + _QUESTIONS.get(kind, _QUESTIONS["basics"])],
         *offer,
         '5) "Are you a wholesaler?" / "Will you assign it?": "I\'m an investor. I may buy it myself or assign the '
         'contract to a partner investor. That\'s in writing, and the seller\'s attorney reviews everything."',

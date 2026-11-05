@@ -681,6 +681,34 @@ def test_every_call_event_carries_the_script_and_the_background(db, monkeypatch)
     assert "Does it need any work" in text and "Say no number on this call" in text and "That might work" not in text
 
 
+def test_an_uncertain_ask_first_script_says_yes_to_nothing(db, monkeypatch):
+    """2026-11-05: 139 Aycrigg's reply event said "at or under $682,100 it can work" while its call-sheet row said
+    "agree to nothing (the living area isn't on record)". The script follows the sheet: write the number down."""
+    from db.models import Interaction
+    from engine import offer_math
+    lead, agent = agent_lead(db)
+    sent, call = datetime(2026, 11, 3, 14, 16), datetime(2026, 11, 3, 17, 15)
+    db.add(Interaction(lead_id=lead.id, contact_id=agent.id, channel="email_smtp", outcome="AGENT_FOLLOWUP_SENT",
+                       occurred_at=sent, next_followup_at=call, debrief_json={"packet": {"kind": "followup"}}))
+    lead.next_followup_at = call
+    db.flush()
+    unsure = offer_math.FirmOffer(tier="ask_first", final=682_100, buyer_max=687_100, ask=869_000,
+                                  reasons=["the living area isn't on record"])
+    monkeypatch.setattr(offer_math, "firm_offer", lambda lead, session=None, **kw: unsure)
+    monkeypatch.setattr(offer_math, "locked", lambda lead, firm: firm)
+    [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
+    text = d.body["description"]
+    assert "say yes to no number on this call (the living area isn't on record)" in text
+    assert "Don't say yes or no to it on this call" in text and "it can work" not in text and "$682,100" not in text
+    assert "About how many square feet is it" in text
+    # Only the reach is short (the numbers themselves are sound): the ceiling stays a yes.
+    sure = offer_math.FirmOffer(tier="ask_first", final=682_100, buyer_max=687_100, ask=869_000,
+                                reasons=["our final is 78% of the ask: ask what the seller needs first"])
+    monkeypatch.setattr(offer_math, "firm_offer", lambda lead, session=None, **kw: sure)
+    [d] = gs.followup_events(db, lead, datetime(2026, 11, 3, 14, 20))
+    assert "At or under $682,100 it can work" in d.body["description"]
+
+
 def test_from_the_cloud_desk_events_carry_no_dead_dashboard_link(db, monkeypatch):
     lead, agent = agent_lead(db)
     ao.record_sent(db, lead, offer_packet(lead, agent), "email", now=datetime(2026, 11, 3, 14, 15, tzinfo=ET))
