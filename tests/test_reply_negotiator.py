@@ -66,6 +66,7 @@ def listed(db, **kw):
     ("Can you send proof of funds and your POF letter?", None, {"POF_REQUEST"}),
     ("Good morning, we just arip'd it. Feel free to show for backup.", None, {"BACKUP"}),   # backup wins
     ("It's ARIP right now, attorney review in progress.", None, {"UNDER_CONTRACT"}),
+    ("Hi Maharsh,\nThe home is still available!\nAre you interested in a tour?", None, {"AVAILABLE", "ASKS_SHOWING"}),
 ])
 def test_parse_reply(text, counter, intents):
     p = rn.parse_reply(text)

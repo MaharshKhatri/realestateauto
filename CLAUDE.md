@@ -1024,6 +1024,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     after Claude's 7:51 answer and sent a second, contradicting note at 8:04.
   - "We just arip'd it" (ARIP = attorney review in progress) reads as under contract, and "feel free to show for
     backup" / "as a backup" as BACKUP (which wins, so the backup offer can go out). 2026-11-06, 5 Linden St.
+    "Are you interested in a tour?" is ASKS_SHOWING (photos / video first), not an open question.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a
   color … I will have class and miss some calls"):
   - call blocks: the title counts what is left ("📞 Call block B: 9 to call · ✅ 16 done"); reported rows are ✅ in a

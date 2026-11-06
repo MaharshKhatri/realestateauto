@@ -130,7 +130,9 @@ PHRASES: dict[str, list[str]] = {
                   r"are you (working with|representing) (a|the) buyer"],
     "ASKS_SHOWING": [r"(interested in|want to|like to|care to) (see|seeing|view|viewing|tour|touring) (it|the (house|home|property))",
                      r"schedule (a )?(showing|tour|walk-?through|viewing)", r"come (see|look at) it", r"want a showing",
-                     r"when (can|would) you (like to )?(see|view|tour) it"],
+                     r"when (can|would) you (like to )?(see|view|tour) it",
+                     # "Are you interested in a tour?" (2026-11-06, 228 Washington Avenue)
+                     r"(interested in|want|like|care for) (a |taking a |to take a )?(tour|showing|viewing|walk-?through)\b"],
     "CALL_ME": [r"(please |pls |kindly )?(call|phone|ring) me", r"give me a (call|ring|buzz)", r"call (to|and) discuss",
                 r"let'?s (talk|chat|speak)", r"(call|reach) me (at|on)", r"best to call", r"easier to (talk|call)"],
     "BACKUP": [r"(have|has|got) a contract,? but", r"not sure (it'?s|it is|if it'?s|if it is|it will|it'?ll) (going|go) through",
