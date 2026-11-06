@@ -673,3 +673,28 @@ def test_only_follow_up_rows_wait_for_their_call(live):
     crm.log_call(db, follow, "NO_ANSWER", contact=follow.contacts[0], now=day.replace(hour=11, tzinfo=crm.TZ))
     db.flush()
     assert gm.held_for_calls(db, day.date()) == set()
+
+
+def test_a_reply_we_already_answered_never_gets_a_second_email(live):
+    """2026-11-06: the desk read an agent's reply only after Claude's answer had gone out from the chat, then sent a
+    second, contradicting note on it 14 minutes later. A reply with one of our e-mails after it is closed instead."""
+    db = live
+    lead = listed(db)
+    ours = opener(db, lead)["Message-ID"]
+    gm.set_imap_factory(lambda: FakeIMAP({210: mail(210, "Never happen. We are at 470.00 Sorry.", in_reply_to=ours,
+                                                    when=T0 + timedelta(minutes=30))}))
+    # Claude's own answer (a sealed note) went out at :35, before the desk had read the :30 reply.
+    db.add(Interaction(lead_id=lead.id, channel="email_smtp", outcome="AGENT_FOLLOWUP_SENT", notes="Re: q",
+                       occurred_at=gm.now_eastern(T0 + timedelta(minutes=35))))
+    db.commit()
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=40), smtp_factory=FakeSMTP)
+    db.expire_all()
+    [row] = db.query(InboundReply).all()
+    ok, held = gm.approvable(db)
+    assert row.id not in {r.id for r in ok} and (row, gm.ANSWERED_ALREADY) in held
+    n = len(FakeSMTP.sent)
+    assert gm.auto_approve(now=T0 + timedelta(minutes=50), smtp_factory=FakeSMTP)["sent"] == []
+    assert len(FakeSMTP.sent) == n
+    db.expire_all()
+    row = db.get(InboundReply, row.id)
+    assert row.status == "dismissed" and row.note == gm.ANSWERED_ALREADY

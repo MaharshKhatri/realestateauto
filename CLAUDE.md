@@ -1018,6 +1018,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     answered from the vault (`jv_partner_vault.pof_answer`): "Yes, it comes with the written offer" only when an
     active partner's proof of funds is verified, else "Not a letter today. I'm lining up the funding with a partner
     investor ..." (CFA: every claim true). The battle card no longer offers to close in our company's name.
+  - A reply we already answered is never answered again (`gmail_autopilot.answered_since`): when one of our e-mails
+    to that lead went out after the reply came in (a sealed note, an approval, the operator's Gmail), `approvable`
+    holds it and `auto_approve` closes it ("answered already"). 2026-11-06: the desk read Jean's 7:37 reply only
+    after Claude's 7:51 answer and sent a second, contradicting note at 8:04.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a
   color … I will have class and miss some calls"):
   - call blocks: the title counts what is left ("📞 Call block B: 9 to call · ✅ 16 done"); reported rows are ✅ in a

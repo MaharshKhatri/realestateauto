@@ -1074,16 +1074,36 @@ def approve(session: Session, reply_id: int, *, subject: str | None = None, body
             "loi_attached": bool(files.get("pdf")), "warnings": warnings}
 
 
+ANSWERED_ALREADY = "answered already: an e-mail went to them after this reply"
+
+
+def answered_since(session: Session, row: InboundReply) -> bool:
+    """We already wrote to this agent after their reply came in (a note from the chat, an approved draft, the operator's
+    own Gmail). 2026-11-06: a reply the desk read only after Claude's answer went out was answered a second time 14
+    minutes later, with a note that contradicted the first."""
+    if not row.lead_id:
+        return False
+    since = row.received_at or row.created_at
+    if since is None:
+        return False
+    return session.scalar(select(Interaction.id).where(
+        Interaction.lead_id == row.lead_id, Interaction.occurred_at > since,
+        Interaction.id != row.interaction_id, Interaction.outcome.in_(ao.TOUCH_OUTCOMES)).limit(1)) is not None
+
+
 def approvable(session: Session) -> tuple[list[InboundReply], list[tuple[InboundReply, str]]]:
     """Replies `approve_all` may send (a drafted answer, matched by thread or the agent's own address) and the ones it
-    leaves for the operator, with why (no draft, matched only by a street in the subject, the agent asked to stop)."""
+    leaves for the operator, with why (no draft, matched only by a street in the subject, the agent asked to stop,
+    already answered by a later e-mail)."""
     ok: list[InboundReply] = []
     held: list[tuple[InboundReply, str]] = []
     for row in session.scalars(select(InboundReply).where(InboundReply.status == "needs_approval")
                                .order_by(InboundReply.received_at)):
         an = row.analysis_json or {}
         agent = session.get(Contact, row.contact_id) if row.contact_id else None
-        if not (an.get("reply_text") or "").strip():
+        if answered_since(session, row):
+            held.append((row, ANSWERED_ALREADY))
+        elif not (an.get("reply_text") or "").strip():
             held.append((row, "no drafted answer: call them or dismiss it"))
         elif (row.match_method or "").startswith("voice"):
             held.append((row, "they texted or left a voicemail: a call (or a text from your phone)"))
@@ -1113,7 +1133,10 @@ def auto_approve(*, now: datetime | None = None, smtp_factory: Any = None) -> di
     if not _cfg().get("auto_approve", True):
         return empty
     with session_scope() as s:
-        ok, _ = approvable(s)
+        ok, held = approvable(s)
+        for r, why in held:
+            if why == ANSWERED_ALREADY:            # closed, so the 📊 report and the call sheet stop asking about it
+                r.status, r.resolved_at, r.note = "dismissed", now_eastern(), why
         ids = []
         for r in ok:
             an = r.analysis_json or {}
