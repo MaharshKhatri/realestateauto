@@ -108,6 +108,8 @@ PHRASES: dict[str, list[str]] = {
     "AVAILABLE": [r"\A\W*(?:hello|hi|hey)?\b[^.!?\n]{0,30}?\b(yes|yep|yup|yeah|absolutely)\b(?![^.!?\n]*\b(but|however|under contract|"
                   r"attorney|pending|sold)\b)",          # "Yes it is." answers our "is it still available?"
                   r"still available", r"(it'?s|it is|yes,? it'?s|yes it is|yes,? still) available", r"\bavailable\b",
+                  # typos: "It is still aviilable" (2026-11-06, 492 Booth Ct), "availble", "avaliable"
+                  r"\b(?:still|is|it'?s) av(?!oid)[a-z]{2,6}ble\b",
                   r"still (on the market|active|listed|for sale)", r"no offers (yet|so far)", r"haven'?t (had|gotten|received) any offers",
                   r"not (yet )?under contract", r"no accepted offer", r"what'?s your (offer|number|price)", r"how much",
                   r"what number", r"send (me )?(your|the|an) (offer|numbers?|details)", r"make an offer", r"submit (an|your) offer",

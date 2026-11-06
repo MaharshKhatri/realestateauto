@@ -395,3 +395,10 @@ def test_multiple_offers_get_no_written_number_until_ours_is_firm(db, operator, 
     monkeypatch.setattr(offer_math, "firm_offer", lambda lead, session=None, **kw:
                         offer_math.FirmOffer(**{**real(lead, session).__dict__, "tier": "firm"}))
     assert "BEST AND FINAL AT" in rn.analyze(db, lead, text, now=datetime(2026, 10, 20, 9, 0)).headline
+
+
+def test_available_typos_still_read_as_available():
+    # 2026-11-06, 492 Booth Ct: "It is still aviilable" waited as an open question
+    for text in ("It is still aviilable\n\nBeverly Lyons", "Yes it's availble", "still avaliable"):
+        assert "AVAILABLE" in rn.parse_reply(text).intents, text
+    assert "AVAILABLE" not in rn.parse_reply("That is avoidable").intents
