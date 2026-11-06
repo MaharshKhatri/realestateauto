@@ -338,3 +338,22 @@ def test_sold_as_is_is_the_condition_not_a_sale():
         assert "UNDER_CONTRACT" in rn.parse_reply(sold).intents, sold
     for as_is in ("Being sold as-is.", "Property sold strictly as is", "sold in as is condition"):
         assert "UNDER_CONTRACT" not in rn.parse_reply(as_is).intents, as_is
+
+
+def test_just_started_review_is_under_contract():
+    # 2026-11-06, 2360 Colonial Dr: "Just started review" answers our "or already in attorney review?"
+    assert rn.parse_reply("Just started review\n\nTom Minkina\nKeller Williams Realty").intents == {"UNDER_CONTRACT"}
+    assert "UNDER_CONTRACT" in rn.parse_reply("Currently in review").intents
+    # ...but our offer being reviewed by the seller is not a contract
+    assert "UNDER_CONTRACT" not in rn.parse_reply("Your offer is in review with the seller").intents
+    assert "UNDER_CONTRACT" not in rn.parse_reply("I'll review your offer with the seller").intents
+
+
+def test_nothing_the_seller_would_consider_is_a_no():
+    # 2026-11-06, 73 Terrace Ave (typo kept, line break mid-sentence)
+    text = ("Called you, but no answer.\n\nI am in no position to speak on the seller's behalf regarding their\n"
+            "flexibility on price. You're welcome to make an offer like any other buyer.\nBased on this conversation, "
+            "I anticipate it not being anyhting the seller\nwould consider.")
+    assert "REJECT" in rn.parse_reply(text).intents
+    assert "REJECT" in rn.parse_reply("The seller won't even consider anything under asking").intents
+    assert "REJECT" not in rn.parse_reply("Yes, still available. The seller would consider offers").intents

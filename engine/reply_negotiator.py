@@ -100,7 +100,11 @@ PHRASES: dict[str, list[str]] = {
                # "No where close to what the seller needs. Best of luck" (Nov 4): a polite no, never a fresh fact-check
                r"no ?where close", r"(?:best|good) (?:of|if) luck|good luck",
                # "We had 2 offers over 5 so no." (Juliet, Nov 4, to our max): a closing "so no" / "that's a no"
-               r"\bso,? no\s*(?:[.!]|$)", r"\bthat'?s a no\b"],
+               r"\bso,? no\s*(?:[.!]|$)", r"\bthat'?s a no\b",
+               # "I anticipate it not being anyhting the seller would consider" (Nov 6, 73 Terrace Ave): a no
+               r"\bnot\s+(?:being\s+)?any\w*\s+(?:the\s+|my\s+)?(?:sellers?|owners?|clients?)\s+(?:would|will)\s+"
+               r"(?:ever\s+)?(?:consider|entertain|accept)",
+               r"(?:wouldn'?t|won'?t|would\s+not|will\s+not)\s+(?:even\s+)?(?:consider|entertain)"],
     "AVAILABLE": [r"\A\W*(?:hello|hi|hey)?\b[^.!?\n]{0,30}?\b(yes|yep|yup|yeah|absolutely)\b(?![^.!?\n]*\b(but|however|under contract|"
                   r"attorney|pending|sold)\b)",          # "Yes it is." answers our "is it still available?"
                   r"still available", r"(it'?s|it is|yes,? it'?s|yes it is|yes,? still) available", r"\bavailable\b",
@@ -115,7 +119,10 @@ PHRASES: dict[str, list[str]] = {
                        r"\bsold\b(?![\s-]+(?:in\s+)?(?:as[\s-]*is|where[\s-]*is|strictly as))", r"no longer available",
                        r"went under contract", r"off the market", r"\bclosed\b", r"in contract", r"contract signed",
                        # "we just arip'd it" (2026-11-06): ARIP = attorney review in progress
-                       r"\barip(?:'?d|'?ed|ped)?\b", r"attorney review in progress"],
+                       r"\barip(?:'?d|'?ed|ped)?\b", r"attorney review in progress",
+                       # "Just started review" (Nov 6, 2360 Colonial Dr) answers our "or already in attorney review?"
+                       r"\b(?:started|starting|began|begun|entered|went into|going into) (?:attorney )?review\b",
+                       r"\b(?:it'?s|it is|house is|property is|now|currently|already) in review\b(?!\s+(?:of|with|by))"],
     "POF_REQUEST": [r"proof of funds", r"\bpof\b", r"bank statement", r"verif(y|ication of) (your )?funds", r"show (me |us )?(the )?funds",
                     r"funds letter", r"pre-?qual", r"pre-?approval", r"where('s| is) the money coming from", r"source of funds"],
     "HIGHEST_AND_BEST": [r"highest and best", r"best and final", r"multiple offers", r"other offers?", r"bidding war",

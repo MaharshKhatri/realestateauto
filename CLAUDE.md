@@ -1025,6 +1025,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - "We just arip'd it" (ARIP = attorney review in progress) reads as under contract, and "feel free to show for
     backup" / "as a backup" as BACKUP (which wins, so the backup offer can go out). 2026-11-06, 5 Linden St.
     "Are you interested in a tour?" is ASKS_SHOWING (photos / video first), not an open question.
+    "Just started review" / "currently in review" is under contract (it answers our opener's "or already in attorney
+    review?"); "your offer is in review with the seller" is not. "I anticipate it not being anything the seller would
+    consider" / "won't even consider" is a no. A call slot set by a bounce is titled "📞 Call <agent> about <street>
+    (your e-mail bounced)" and its script opens "my e-mail to you bounced", never "they asked you to call".
     "It is sold as is" is the condition, never SOLD (the desk had congratulated an agent on a contract that
     didn't exist); "the asking price is $549k" / "listing price is 525,000" / "asking is 395, make an offer" is
     the list price quoted back, not the seller's number (`_LIST_BEFORE`), unless "firm" / "net" follows.

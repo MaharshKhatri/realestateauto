@@ -347,7 +347,7 @@ _QUESTIONS = {
 
 
 def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Place, *,
-               ask_shown: bool = False) -> list[str]:
+               ask_shown: bool = False, bounced: bool = False) -> list[str]:
     """A word-for-word call script on every call event (2026-11-03: the operator handles calls only, is new to real
     estate and asked for full scripts): the house, our numbers or why there's no price yet, the exact opener, the
     questions, the answers to what agents ask (offer, wholesaler / assign, proof of funds, a showing), the close and
@@ -460,8 +460,10 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
         "--- Call script (word for word) ---",
         "The house: " + ", ".join(house) + "." if house else None,
         numbers,
-        f'1) Open: "Hi, is this {first}? Hi {first}, this is {full}, {phone}. I\'m following up on my e-mail about '
-        f'{place.street}. Do you have two minutes?"',
+        (f'1) Open: "Hi, is this {first}? Hi {first}, this is {full}, {phone}. I\'m calling about your listing at '
+         f'{place.street}; my e-mail to you bounced. Do you have two minutes?"' if bounced else
+         f'1) Open: "Hi, is this {first}? Hi {first}, this is {full}, {phone}. I\'m following up on my e-mail about '
+         f'{place.street}. Do you have two minutes?"'),
         '   Bad time? "No problem. When\'s a better time to call you back?" Write it down, say thanks, hang up.',
         '2) Who you are: "I\'m a real estate investor. I buy for myself or with a partner investor. I\'m not a realtor '
         'and I don\'t have an agent."',
@@ -502,6 +504,11 @@ def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired
     # That call is the event, at that time (2026-11-03: two "call me" agents landed on the calendar two days late).
     # (record_sent's own follow-up is two business days out, never under a day: only a call slot is this close)
     asked_call = bool(touch and sent and sent < due < sent + timedelta(hours=20))
+    # A bounce sets the same near call slot (gmail_autopilot: a dead e-mail with a phone on the card): that call is
+    # not "they asked you to call" (2026-11-06, 344 Daniele Dr: the agent never got our e-mail).
+    bounced = bool(asked_call and session.scalar(
+        select(InboundReply.id).where(InboundReply.lead_id == lead.id, InboundReply.status == "bounce",
+                                      InboundReply.received_at >= sent).limit(1)))
     start = callable_slot(sent + timedelta(hours=hours), minutes) if touch and sent and unmoved and not asked_call \
         else due
     if start < now:
@@ -521,14 +528,18 @@ def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired
         # Only notes written through the chat channel reach the calendar: Claude keeps them to business facts (no
         # homeowner names or phones); notes typed elsewhere might name a seller.
         chat_note = called and (inter.debrief_json or {}).get("source") == "chat_note"
-        if asked_call:
+        if bounced:
+            summary = f"📞 Call {who} about {place.street} (your e-mail bounced)"
+        elif asked_call:
             summary = f"📞 Call {who} about {place.street} (they asked you to call)"
         elif called:
             summary = (f"📞 Try {who} again about {place.street} (no answer last time)" if missed else
                        f"📞 Call {who} back about {place.street} (check in)")
         else:
             summary = f"🔥 Follow Up: {place.street} Agent ({who})"
-        lead_line = (f"They asked you to call. Your e-mail answer went out {_when(sent)}; this is the call."
+        lead_line = (f"Your e-mail of {_when(sent)} bounced (the address is dead and off the card): call instead."
+                     if bounced else
+                     f"They asked you to call. Your e-mail answer went out {_when(sent)}; this is the call."
                      if asked_call else
                      f"You called {_when(sent)} and they didn't pick up. Try once more; if it goes to voicemail, "
                      "leave the voicemail below." if missed else
@@ -544,7 +555,7 @@ def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired
                  f"Asking price: {_money(place.ask)}" if place.ask else None, offer,
                  f"Open the lead card: {card}" if card else None,
                  "Call 8am-9pm Eastern. If they asked you to stop, don't call: the card checks the do-not-call lists.",
-                 *call_brief(session, lead, agent, place, ask_shown=True)]
+                 *call_brief(session, lead, agent, place, ask_shown=True, bounced=bounced)]
         kind = "followup"
     else:
         summary = f"📞 Call back: {place.street}"

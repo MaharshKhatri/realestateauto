@@ -63,6 +63,13 @@ def test_a_bounced_agent_with_a_phone_becomes_a_call_on_the_calendar(live):
     agent = db.query(Contact).filter_by(lead_id=lead.id).one()
     assert agent.email is None and agent.phone
     assert db.get(type(lead), lead.id).next_followup_at is not None
+    # The call is labelled as a bounce, not "they asked you to call" (2026-11-06, 344 Daniele Dr)
+    from engine import gcal_sync as gc
+    ev = gc.followup_events(db, db.get(type(lead), lead.id), (T0 + timedelta(minutes=31)).replace(tzinfo=None))
+    assert ev, "the bounce's call slot is on the calendar"
+    body = ev[0].body
+    assert "(your e-mail bounced)" in body["summary"] and "asked you to call" not in body["summary"]
+    assert "my e-mail to you bounced" in body["description"] and "following up on my e-mail" not in body["description"]
 
 
 # -- self-update -------------------------------------------------------------------------------------------------
