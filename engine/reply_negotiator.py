@@ -105,7 +105,9 @@ PHRASES: dict[str, list[str]] = {
                   r"open to offers", r"bring (me |us )?an offer"],
     "UNDER_CONTRACT": [r"under contract", r"in attorney review", r"attorney review (now|already|period)", r"accepted an offer",
                        r"has an accepted offer", r"\bpending\b", r"already sold", r"\bsold\b", r"no longer available",
-                       r"went under contract", r"off the market", r"\bclosed\b", r"in contract", r"contract signed"],
+                       r"went under contract", r"off the market", r"\bclosed\b", r"in contract", r"contract signed",
+                       # "we just arip'd it" (2026-11-06): ARIP = attorney review in progress
+                       r"\barip(?:'?d|'?ed|ped)?\b", r"attorney review in progress"],
     "POF_REQUEST": [r"proof of funds", r"\bpof\b", r"bank statement", r"verif(y|ication of) (your )?funds", r"show (me |us )?(the )?funds",
                     r"funds letter", r"pre-?qual", r"pre-?approval", r"where('s| is) the money coming from", r"source of funds"],
     "HIGHEST_AND_BEST": [r"highest and best", r"best and final", r"multiple offers", r"other offers?", r"bidding war",
@@ -132,7 +134,9 @@ PHRASES: dict[str, list[str]] = {
     "CALL_ME": [r"(please |pls |kindly )?(call|phone|ring) me", r"give me a (call|ring|buzz)", r"call (to|and) discuss",
                 r"let'?s (talk|chat|speak)", r"(call|reach) me (at|on)", r"best to call", r"easier to (talk|call)"],
     "BACKUP": [r"(have|has|got) a contract,? but", r"not sure (it'?s|it is|if it'?s|if it is|it will|it'?ll) (going|go) through",
-               r"(might|may|could) fall (through|apart)", r"back-?up offer", r"second position", r"in case (it|the deal) falls"],
+               r"(might|may|could) fall (through|apart)", r"back-?up offer", r"second position", r"in case (it|the deal) falls",
+               # "Feel free to show for backup" (2026-11-06): under contract, backup offers welcome
+               r"(show|showing|offers?|submit)( it)? (for|as) (a )?back-?up", r"\bas (a )?back-?up\b"],
     "EXPIRED": [r"listing (has )?expired", r"\bexpired\b", r"no longer (listed|on the market|with (me|us|our office))",
                 r"(i|we) (no longer|don'?t) (have|represent) (it|the listing|that listing)", r"listing (was )?cancell?ed",
                 # "The house was withdrawn" (Asher, Nov 5): pulled off the market, not sold (it was read as under

@@ -64,6 +64,8 @@ def listed(db, **kw):
     ("The house needs a new CO and the seller is the estate executor. Who are you with?", None, {"CO", "ESTATE", "QUESTION"}),
     ("Bank has to approve it, it's a short sale.", None, {"SHORT_SALE"}),
     ("Can you send proof of funds and your POF letter?", None, {"POF_REQUEST"}),
+    ("Good morning, we just arip'd it. Feel free to show for backup.", None, {"BACKUP"}),   # backup wins
+    ("It's ARIP right now, attorney review in progress.", None, {"UNDER_CONTRACT"}),
 ])
 def test_parse_reply(text, counter, intents):
     p = rn.parse_reply(text)
