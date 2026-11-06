@@ -67,6 +67,11 @@ _ASK_WORDS = re.compile(r"(wants?|needs?|is at|would take|will take|would accept
 _HEDGE_BEFORE = re.compile(r"(?:^|\s)(prob(?:ably)?|maybe|around|about|roughly|approx(?:imately)?|likely|ballpark|~)\s*$",
                            re.I)
 _NEG = re.compile(r"\b(not|no|isn't|aren't|haven't|hasn't|never|nope|without|nor)\b", re.I)
+# "The asking price is $549k" / "The listing price is 525,000" / "asking is 395, make an offer" (2026-11-06, three
+# agents): the list price quoted back, not the seller's number. "Asking is 395 firm" still counts.
+_LIST_BEFORE = re.compile(r"(?:\b(?:list(?:ing)?|asking|sale|sales)(?:\s+price)?|\bthe price|\bprice)\s*(?:is|was|of|=|:)?"
+                          r"\s*(?:now|currently|still|at)?\s*$|\blisted\s+(?:at|for)\s*$|\bpriced\s+at\s*$", re.I)
+_FIRM_AFTER = re.compile(r"^\W{0,3}(?:and\s+)?(?:firm|net|bottom|no less|not a penny)", re.I)
 # "Full price" / "they want asking": their number is the list price (2026-11-05: Edison on 114 Sheridan Ave answered
 # "what would the seller need to net?" with "Full price", read as a question). Not after "below" / "under" / "less than"
 # / "not" (those offer room under the ask) and never a question ("what's the asking price?").
@@ -104,7 +109,10 @@ PHRASES: dict[str, list[str]] = {
                   r"what number", r"send (me )?(your|the|an) (offer|numbers?|details)", r"make an offer", r"submit (an|your) offer",
                   r"open to offers", r"bring (me |us )?an offer"],
     "UNDER_CONTRACT": [r"under contract", r"in attorney review", r"attorney review (now|already|period)", r"accepted an offer",
-                       r"has an accepted offer", r"\bpending\b", r"already sold", r"\bsold\b", r"no longer available",
+                       r"has an accepted offer", r"\bpending\b", r"already sold",
+                       # "it is sold as is" (2026-11-06, 228 Washington Ave) is the condition, not a sale: the desk
+                       # had answered "congratulations on getting it under contract"
+                       r"\bsold\b(?![\s-]+(?:in\s+)?(?:as[\s-]*is|where[\s-]*is|strictly as))", r"no longer available",
                        r"went under contract", r"off the market", r"\bclosed\b", r"in contract", r"contract signed",
                        # "we just arip'd it" (2026-11-06): ARIP = attorney review in progress
                        r"\barip(?:'?d|'?ed|ped)?\b", r"attorney review in progress"],
@@ -212,6 +220,9 @@ def parse_reply(text: str) -> ParsedReply:
             continue                                   # a year
         if _UNIT_AFTER.search(window_after) or _LABEL_BEFORE.search(window_before):
             continue                                   # 1,400 sqft / 30 days / taxes are $9,800 / rent $2,100 a month
+        if _LIST_BEFORE.search(window_before) and not _FIRM_AFTER.search(window_after):
+            out.notes.append(f"'{m.group(0).strip()}' is the list price quoted back, not their number")
+            continue
         if value < 20000 and not suffix:
             continue
         if value > 50_000_000:

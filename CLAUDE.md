@@ -1025,6 +1025,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - "We just arip'd it" (ARIP = attorney review in progress) reads as under contract, and "feel free to show for
     backup" / "as a backup" as BACKUP (which wins, so the backup offer can go out). 2026-11-06, 5 Linden St.
     "Are you interested in a tour?" is ASKS_SHOWING (photos / video first), not an open question.
+    "It is sold as is" is the condition, never SOLD (the desk had congratulated an agent on a contract that
+    didn't exist); "the asking price is $549k" / "listing price is 525,000" / "asking is 395, make an offer" is
+    the list price quoted back, not the seller's number (`_LIST_BEFORE`), unless "firm" / "net" follows.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a
   color … I will have class and miss some calls"):
   - call blocks: the title counts what is left ("📞 Call block B: 9 to call · ✅ 16 done"); reported rows are ✅ in a

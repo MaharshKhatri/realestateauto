@@ -67,6 +67,9 @@ def listed(db, **kw):
     ("Good morning, we just arip'd it. Feel free to show for backup.", None, {"BACKUP"}),   # backup wins
     ("It's ARIP right now, attorney review in progress.", None, {"UNDER_CONTRACT"}),
     ("Hi Maharsh,\nThe home is still available!\nAre you interested in a tour?", None, {"AVAILABLE", "ASKS_SHOWING"}),
+    ("Good morning.\nThe asking price is $549k.", None, set()),
+    ("They want maximum return as per the condition of the house, asking is 395\nMake an offer", None, {"AVAILABLE"}),
+    ("Asking is 395 firm.", 395000, {"COUNTER"}),
 ])
 def test_parse_reply(text, counter, intents):
     p = rn.parse_reply(text)
@@ -322,3 +325,16 @@ def test_withdrawn_is_off_the_market_not_under_contract():
     """2026-11-05: "The house was withdrawn" got "congratulations on getting it under contract"."""
     p = rn.parse_reply("The house was withdrawn")
     assert "EXPIRED" in p.intents and "UNDER_CONTRACT" not in p.intents
+
+
+def test_sold_as_is_is_the_condition_not_a_sale():
+    """2026-11-06: "However, it is sold as is." read as SOLD, and the desk congratulated the agent on a contract."""
+    text = ("The listing price is 525,000. The sellers are willing negotiate. Given the comps, they are willing to "
+            "negotiate now lower than 510,000.\nThe roof, deck (trex) and water heater are about 3 years old. The "
+            "bathroom upstairs is not operational. However, it is sold as is.")
+    p = rn.parse_reply(text)
+    assert "UNDER_CONTRACT" not in p.intents and p.counter_amount == 510000 and not p.counter_explicit
+    for sold in ("Sorry, it sold last week.", "It's already sold.", "We sold it."):
+        assert "UNDER_CONTRACT" in rn.parse_reply(sold).intents, sold
+    for as_is in ("Being sold as-is.", "Property sold strictly as is", "sold in as is condition"):
+        assert "UNDER_CONTRACT" not in rn.parse_reply(as_is).intents, as_is
