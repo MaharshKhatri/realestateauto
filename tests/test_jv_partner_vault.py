@@ -175,3 +175,18 @@ def test_partner_endpoints_and_deck_phase0(db, client, operator, tmp_path, monke
     assert lp["partner"] and lp["partner"]["id"] == pid and "proof of funds attached" in lp["pof_sentence"]
     cal = client.get("/api/pricing/calibration").json()
     assert cal["model"] in ("quant", "fixed_pct") and "statewide" in cal
+
+
+def test_call_scripts_promise_proof_of_funds_only_when_one_is_on_file(db, tmp_path):
+    """2026-11-06: every call script answered "Proof of funds?" with "Yes, it comes with the written offer" while the
+    vault held none (CFA: every claim must be true)."""
+    from engine import call_sheet as cs
+    lead = make_lead(db, sheriff_days=None, upset=None, vacant=True, verdict="STRONG")
+    buyer(db, "A", "RIVER HOMES LLC", contact="Sam Rivera", purchases=[buy(300000), buy(350000)])
+    assert lead is not None
+    (pa,) = vault.seed(db, top=1)
+    script = "\n".join(cs.block_script("A", db))
+    assert vault.POF_NOT_YET in script and vault.POF_ON_FILE not in script
+    assert vault.pof_answer(None) == vault.POF_NOT_YET
+    vault.attach_pof(db, pa, "pof.pdf", b"%PDF-1.4 x", root=tmp_path)
+    assert vault.pof_on_file(db) and vault.POF_ON_FILE in "\n".join(cs.block_script("A", db))

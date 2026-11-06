@@ -168,6 +168,24 @@ def best_partner(session: Session, lead: Lead, *, need_pof: bool = False, price:
     return cands[0][5]
 
 
+POF_ON_FILE = "Yes, it comes with the written offer."
+POF_NOT_YET = ("Not a letter today. I'm lining up the funding with a partner investor. I can send the written offer "
+               "now, and the seller's attorney reviews everything before it's binding.")
+
+
+def pof_on_file(session: Session) -> bool:
+    """A verified proof of funds from an active partner is on file (the vault). Until then no call script says one
+    comes with the offer (2026-11-06: the scripts said "Yes, it comes with the written offer" with none on file)."""
+    return any(p.pof_verified for p in partners(session, "ACTIVE_PARTNER"))
+
+
+def pof_answer(session: Session | None) -> str:
+    try:
+        return POF_ON_FILE if session is not None and pof_on_file(session) else POF_NOT_YET
+    except Exception:                              # noqa: BLE001 - a script line never breaks a calendar sync
+        return POF_NOT_YET
+
+
 def pof_language(session: Session, lead: Lead, price: float | None = None) -> str | None:
     """One true sentence for offers and replies, only when a verified partner backs this deal."""
     p = best_partner(session, lead, need_pof=True, price=price)

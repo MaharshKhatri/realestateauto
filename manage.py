@@ -656,7 +656,7 @@ def cmd_call_sheet(args: argparse.Namespace) -> None:
                 letter = r.code[0]
                 console.print(f"\n[bold]Block {letter}[/bold]")
                 if args.script:
-                    console.print("\n".join(cs.block_script(letter)))
+                    console.print("\n".join(cs.block_script(letter, s)))
             console.print(r.line())
         console.print(f"\n{len(rows)} calls. Report each block in one line: manage.py call-sheet --report \"A01 vm, A02 340\"")
 

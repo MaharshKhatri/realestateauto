@@ -231,11 +231,11 @@ def objection_matrix(f: dict[str, Any], playbook: str) -> list[Objection]:
                       "certainty, a clean as-is offer with no financing contingency and a fast close is on the table. "
                       "Can I send an LOI so you have it in the file?"),
             Objection("no_assign", "We don't do assignable contracts",
-                      "No problem — we can close in our company's name, or I can disclose the end buyer up front. "
-                      "What does the seller need to feel comfortable?"),
+                      "Understood, thanks for telling me. I'd rather be upfront about how I buy: I may assign to a "
+                      "partner investor. If anything changes, I'd still be glad to make an offer."),
             Objection("proof", "Send proof of funds first",
-                      "Of course — I'll send proof of funds with the LOI (from our funding partner/buyer), plus the "
-                      "title company we use."),
+                      "Not a letter today. I'm lining up the funding with a partner investor. I can send the written "
+                      "offer now, and the seller's attorney reviews everything before it's binding."),
             Objection("other_offers_agent", "We have other offers",
                       "Great — is the seller still taking offers? What would make ours stand out: price, close date, "
                       "or no contingencies?"),

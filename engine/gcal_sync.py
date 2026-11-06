@@ -355,6 +355,7 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
     the agent's first name."""
     from engine import preflight
     from engine.human_copy import operator
+    from engine.jv_partner_vault import pof_answer
     from engine.reply_negotiator import fact_check_issue
     try:
         pf = preflight.check(lead)
@@ -472,7 +473,7 @@ def call_brief(session: Session, lead: Lead, agent: Contact | None, place: _Plac
         '   "We don\'t work with wholesalers" / "the seller won\'t accept an assignment": "Understood, thanks for '
         'telling me. I\'d rather be upfront about how I buy. If anything changes, I\'d still be glad to make an '
         'offer." Then end the call politely; don\'t argue and don\'t promise to close in your own name.',
-        '6) "Do you have proof of funds?": "Yes, it comes with the written offer."',
+        f'6) "Do you have proof of funds?": "{pof_answer(session)}"',
         '7) "Do you want to see it?": "Photos or a short video first, please. My partner can walk it during the '
         'inspection period."',
         '8) Anything else: "Good question. Let me check and get back to you."',
@@ -919,7 +920,7 @@ def call_block_events(session: Session, now: datetime) -> list[Desired]:
         head = "--- The calls (code | number agent | house | facts | what to say) ---"
         if i["passed"] and open_:
             head = f"--- Not reached: moved to {where} (same codes) ---"
-        lines = [*cs.block_script(letter), "", head, *[r.line() for r in open_]]
+        lines = [*cs.block_script(letter, session), "", head, *[r.line() for r in open_]]
         if extra:
             lines += ["", f"--- Also from earlier blocks, if you have time ({len(extra)}; same codes) ---",
                       *[r.line() for r in extra]]
@@ -942,7 +943,7 @@ def call_block_events(session: Session, now: datetime) -> list[Desired]:
                 lines = ["Calls from today's blocks that time ran out on (class, no time). Same codes as their block, "
                          'so report them the same way ("B07 vm, C03 340").',
                          "Call them any time before 8:30 PM; anything left goes on tomorrow's sheet by itself.",
-                         *cs.block_script(missed[0].code[0]), "", "--- Still to call ---",
+                         *cs.block_script(missed[0].code[0], session), "", "--- Still to call ---",
                          *[r.line() for r in missed]]
                 body = _body("catchup", summary, lines, *_timed(start, mins), reminders=[10])
             else:

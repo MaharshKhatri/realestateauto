@@ -423,10 +423,11 @@ def lead_ids_on(session: Session, day: date) -> set[int]:
 
 
 # -- the block script ---------------------------------------------------------------------------------
-def block_script(letter: str) -> list[str]:
+def block_script(letter: str, session: Session | None = None) -> list[str]:
     """One word-for-word script for every row in a block (the operator is new to real estate: spoken lines, not
-    hints). The row says which number to use."""
+    hints). The row says which number to use. "Proof of funds?" is answered from the vault (`pof_answer`)."""
     from engine.human_copy import operator
+    from engine.jv_partner_vault import pof_answer
     op = operator()
     full = op["name"] or op["first"] or "your name"
     phone = op["phone"] or "your phone number"
@@ -449,7 +450,7 @@ def block_script(letter: str) -> list[str]:
         '4c) Row says NO PRICE: ask the questions in 3, then "Let me run it and I\'ll e-mail you a number."',
         '5) "Are you a wholesaler?" / "Will you assign?": "I\'m an investor. I may buy it myself or assign the contract '
         'to a partner investor. That\'s in writing, and the seller\'s attorney reviews everything."',
-        '6) "Proof of funds?": "Yes, it comes with the written offer."  7) "Want to see it?": "Photos or a short video '
+        f'6) "Proof of funds?": "{pof_answer(session)}"  7) "Want to see it?": "Photos or a short video '
         'first, please. My partner walks it during the inspection period."',
         '8) Anything else: "Good question. Let me check and get back to you."',
         f'Voicemail: "Hi [first name], this is {full}, {phone}, about [street]. Please call me back at {phone}. '

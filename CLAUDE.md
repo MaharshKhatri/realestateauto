@@ -1014,6 +1014,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - A config bundle from the Mac (a calendar re-connect) brings the Mac's settings.local.yaml, but operator details
     changed on the desk by a sealed `operator` note stay (`set_operator` lists them under `cloud_desk.operator_keys`;
     `apply_bundle` keeps them). 2026-11-06: the Mac's re-connect had put the old phone back into every script.
+  - "Proof of funds?" in every call script (block events, call briefs, `call-sheet --script`) and the battle card is
+    answered from the vault (`jv_partner_vault.pof_answer`): "Yes, it comes with the written offer" only when an
+    active partner's proof of funds is verified, else "Not a letter today. I'm lining up the funding with a partner
+    investor ..." (CFA: every claim true). The battle card no longer offers to close in our company's name.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a
   color … I will have class and miss some calls"):
   - call blocks: the title counts what is left ("📞 Call block B: 9 to call · ✅ 16 done"); reported rows are ✅ in a
