@@ -357,3 +357,41 @@ def test_nothing_the_seller_would_consider_is_a_no():
     assert "REJECT" in rn.parse_reply(text).intents
     assert "REJECT" in rn.parse_reply("The seller won't even consider anything under asking").intents
     assert "REJECT" not in rn.parse_reply("Yes, still available. The seller would consider offers").intents
+
+
+def test_back_on_the_market_is_available_not_under_contract():
+    # 2026-11-06, 36 Curtis Ave: the desk congratulated the agent on a contract that had fallen through a month ago
+    for text in ("I was under contract a little over a month ago, but it's back on the market.\n\nNecker Jean",
+                 "I said it's back on the market. It WAS under contract."):
+        intents = rn.parse_reply(text).intents
+        assert "AVAILABLE" in intents and "UNDER_CONTRACT" not in intents
+    assert rn.parse_reply("It's under contract.").intents == {"UNDER_CONTRACT"}
+    assert "UNDER_CONTRACT" in rn.parse_reply("It is now under contract again").intents
+
+
+def test_multiple_offers_get_no_written_number_until_ours_is_firm(db, operator, monkeypatch):
+    """2026-11-06, 4 Richard Ter: "We do have a few offers" was drafted as a written best and final ($372,600) on a house
+    with no living area on record and an ask-first reach. Facts (or the seller's number) first, never a guess in writing."""
+    from core.config import settings
+    from engine import offer_math
+    from engine import human_copy as hc
+    lead = listed(db)
+    text = "Yes it is still available. We do have a few offers and are expecting another offer."
+    monkeypatch.setitem(settings(), "firm", {**dict(settings().get("firm") or {}), "enforce": True})
+    monkeypatch.setattr(offer_math, "certainty_issues", lambda lead, session=None, today=None:
+                        ["the living area isn't on record"])
+    a = rn.analyze(db, lead, text, now=datetime(2026, 10, 20, 9, 0))
+    body = a.reply_text.split("---")[0]
+    assert "FACTS FIRST" in a.headline and "$297,000" not in a.reply_text and "best and final" not in body.lower()
+    assert "square footage" in body and a.numbers.get("our_counter") is None and hc.lint(a.reply_text) == []
+    # No doubts, but an ask-first house: ask the seller's number instead of naming ours.
+    monkeypatch.setattr(offer_math, "certainty_issues", lambda lead, session=None, today=None: [])
+    real = offer_math.firm_offer
+    monkeypatch.setattr(offer_math, "firm_offer", lambda lead, session=None, **kw:
+                        offer_math.FirmOffer(**{**real(lead, session).__dict__, "tier": "ask_first"}))
+    a = rn.analyze(db, lead, text, now=datetime(2026, 10, 20, 9, 0))
+    assert "FACTS FIRST" in a.headline and "net" in a.reply_text.split("---")[0] and "$297,000" not in a.reply_text
+    # A firm number keeps the written best and final.
+    monkeypatch.setattr(offer_math, "firm_offer", lambda lead, session=None, **kw:
+                        offer_math.FirmOffer(**{**real(lead, session).__dict__, "tier": "firm"}))
+    assert "BEST AND FINAL AT" in rn.analyze(db, lead, text, now=datetime(2026, 10, 20, 9, 0)).headline

@@ -272,6 +272,15 @@ def parse_reply(text: str) -> ParsedReply:
             break
     if out.counter_amount and ("ACCEPT" not in out.intents or _ASK_WORDS.search(low)):
         out.intents.add("COUNTER")
+    # "I was under contract a little over a month ago, but it's back on the market" (2026-11-06, 36 Curtis Ave): the
+    # contract is past; the desk had congratulated the agent. Back on the market = available.
+    if "UNDER_CONTRACT" in out.intents and re.search(
+            r"back on (?:the )?market|back (?:to )?active|active again|relisted|(?:fell|fallen) (?:through|apart)|"
+            r"\b(?:was|were) under contract", low) and not re.search(
+            r"(?:is|it'?s|now|currently) (?:back )?(?:under contract|pending|in attorney review)", low):
+        out.intents.discard("UNDER_CONTRACT")
+        out.intents.add("AVAILABLE")
+        out.notes.append("back on the market: the contract is past")
     if "UNDER_CONTRACT" in out.intents and "AVAILABLE" in out.intents and not re.search(r"not (yet )?under contract|no accepted",
                                                                                         low):
         out.intents.discard("AVAILABLE")                   # "no longer available" style replies
@@ -790,6 +799,28 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         return an
 
     # -- no number from them ------------------------------------------------------------------------------------
+    if "HIGHEST_AND_BEST" in intents and not nums.get("last_offer") and not _backup_context(session, lead, intents):
+        # "We have a few offers" with nothing of ours in writing yet (2026-11-06, 4 Richard Ter): a written best and
+        # final is only for a firm number. An ask-first house, or one whose own number still needs a check (no living
+        # area, old comps), gets the fact or the seller's number first, never a guess in writing.
+        from engine.offer_math import _cfg as _firm_cfg, certainty_issues, firm_offer
+        if _firm_cfg().get("enforce", True):
+            doubts = certainty_issues(lead, session)
+            if doubts or firm_offer(lead, session).tier != "firm":
+                why = doubts[0] if doubts else "an ask-first house"
+                an.verdict, an.headline = "INFO", f"MULTIPLE OFFERS: FACTS FIRST, NO NUMBER ({why[:60]})"
+                nums.update({"our_counter": None, "fee_at_our_counter": None})
+                need = (f"could you send me {_doubt_ask(doubts[0])}?" if doubts else
+                        "what would the seller need to net to pick a clean cash, as-is offer?")
+                sentences = [f"Thanks for the heads-up on the other offers on {st}.",
+                             f"Before I put a number in writing I want to get it right: {need}",
+                             "With that I can send a written cash, as-is offer quickly."]
+                an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
+                an.sms_text = f"Hi {first}, it's {me}. Thanks on {st}; {need}" + sms_tail
+                an.actions = [f"No number in writing yet ({why}); several offers are in. Never above the walk-away "
+                              f"({hc.money(adj_walk)})."] + an.actions
+                an.followup_at = _followup(now, int(ncfg.get("yellow_followup_days", 2)))
+                return an
     if "HIGHEST_AND_BEST" in intents:
         price = adj_walk if not (last_offer and last_offer >= adj_walk) else float(last_offer)
         an.verdict, an.headline = "YELLOW", f"BEST AND FINAL AT {hc.money(price)}"
