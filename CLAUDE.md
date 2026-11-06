@@ -1028,6 +1028,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     "It is sold as is" is the condition, never SOLD (the desk had congratulated an agent on a contract that
     didn't exist); "the asking price is $549k" / "listing price is 525,000" / "asking is 395, make an offer" is
     the list price quoted back, not the seller's number (`_LIST_BEFORE`), unless "firm" / "net" follows.
+  - A sealed note item's "sqft" / "beds" / "baths" (an agent's e-mail or a call) is saved on the property
+    (`sqft_source` "agent") and the house is re-valued live (`cloud_desk.save_facts` → `offer_math.firm_up`): most
+    "agree to nothing (the living area isn't on record)" rows wait only on the size. The run log adds
+    `facts_saved` / `now_firm` counts.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a
   color … I will have class and miss some calls"):
   - call blocks: the title counts what is left ("📞 Call block B: 9 to call · ✅ 16 done"); reported rows are ✅ in a

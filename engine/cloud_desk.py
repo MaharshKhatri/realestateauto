@@ -480,6 +480,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       saved as the lead's listing-agent e-mail; a "reply" in the same item goes to that address in the thread;
     - "operator" (no "lead"): the operator's own details for every e-mail, LOI, script and voicemail line, e.g.
       {"operator": {"phone": "9085550100"}} (validated like My Setup, saved in the desk's settings.local.yaml).
+    - "sqft" / "beds" / "baths": facts the agent gave (an e-mail, a call), saved on the property, and the house is
+      re-valued live, so an "agree to nothing (the living area isn't on record)" row can get a real number;
     - "close_replies": a short reason; every reply still waiting on the lead is closed (dismissed) with it, so the
       desk sends nothing more on it (the operator or Claude settled it: a call, a polite no, a "sharing with the
       sellers"); "channel" (call / email) is how the "call" outcome was heard.
@@ -493,7 +495,7 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         items = open_note(blob, desk_key)
     except Exception:                              # noqa: BLE001 - a bad note is reported, never printed
         return {"note_error": "unreadable"}
-    done, errors = 0, []
+    done, errors, facts, firmed = 0, [], 0, 0
     for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("operator"), dict)]:
         try:
             set_operator(item["operator"])
@@ -549,6 +551,13 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                     c.company = c.company or (base.company if base else None)
                     c.confidence_score = max(float(c.confidence_score or 0), 0.95)
                     s.flush()
+                if item.get("sqft") or item.get("beds") or item.get("baths"):
+                    # Facts an agent gave us (2026-11-06: "2 beds, 2 full baths" by e-mail, the size on a call): most
+                    # "agree to nothing" rows wait only on the living area. Saved on the property and the house is
+                    # re-valued live, so the next script / reply can say a real number.
+                    tier = save_facts(s, lead, item)
+                    facts += 1
+                    firmed += int(tier == "firm")
                 if (item.get("reply") or "").strip():
                     gm.send_custom_reply(s, lead_id, item["reply"], price=item.get("price") or None, now=now,
                                          smtp_factory=smtp_factory, to=new_email or None,
@@ -570,9 +579,30 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         except Exception as exc:                   # noqa: BLE001 - one bad item never stops the rest
             errors.append(type(exc).__name__)
     out: dict[str, Any] = {"note_done": done}
+    if facts:
+        out["facts_saved"], out["now_firm"] = facts, firmed
     if errors:
         out["note_errors"] = ",".join(errors)
     return out
+
+
+def save_facts(session: Any, lead: Any, item: dict[str, Any]) -> str:
+    """Living area / beds / baths an agent stated, saved on the property ("agent" as the source; a public record or
+    listing figure already there is replaced, since the agent's sheet describes the house as it is now) and the lead
+    re-valued live (`offer_math.firm_up`). Returns the new tier."""
+    from engine import offer_math
+    prop = lead.property
+    sqft = int(float(str(item.get("sqft") or 0).replace(",", "") or 0))
+    if sqft:
+        if not 300 <= sqft <= 15000:
+            raise ValueError("sqft out of range")
+        prop.sqft, prop.sqft_source = sqft, "agent"
+    if item.get("beds"):
+        prop.beds = float(item["beds"])
+    if item.get("baths"):
+        prop.baths = float(item["baths"])
+    session.flush()
+    return offer_math.firm_up(session, lead).tier
 
 
 def _reload(root: Path) -> None:

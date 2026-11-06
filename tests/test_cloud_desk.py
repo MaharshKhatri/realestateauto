@@ -472,3 +472,28 @@ def test_a_note_hands_the_listing_to_the_colleague_the_agent_named(db, monkeypat
     assert geri and geri[0].name == "Geri Agent" and geri[0].company == "Sample Realty"
     bad = cd.seal_note([{"lead": lead.id, "agent_email": "not-an-address"}], cd.public_hex(key))
     assert cd.apply_note(bad, key)["note_errors"] == "ValueError"
+
+
+def test_a_note_saves_the_size_an_agent_gave_and_revalues_the_house(db, monkeypatch):
+    """2026-11-06: Mitchell sent "2 beds, 2 full baths" and the rows that said "agree to nothing (the living area
+    isn't on record)" had no way to take the size an agent states. The note saves it and re-values the house live."""
+    from engine import offer_math
+    from tests.factories import make_lead
+    lead = make_lead(db, sheriff_days=None, stale_listing=True)
+    lead.property.sqft = None
+    db.commit()
+    seen = []
+
+    class Firm:
+        tier = "firm"
+
+    monkeypatch.setattr(offer_math, "firm_up", lambda s, l, **kw: seen.append((l.id, l.property.sqft)) or Firm())
+    key = "k" * 32
+    note = cd.seal_note([{"lead": lead.id, "sqft": "1,450", "beds": 2, "baths": 2}], cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 1, "facts_saved": 1, "now_firm": 1}
+    db.expire_all()
+    prop = db.get(type(lead.property), lead.property.id)
+    assert (prop.sqft, prop.sqft_source, prop.beds, prop.baths) == (1450, "agent", 2, 2)
+    assert seen == [(lead.id, 1450)]
+    bad = cd.seal_note([{"lead": lead.id, "sqft": 14}], cd.public_hex(key))
+    assert cd.apply_note(bad, key) == {"note_done": 0, "note_errors": "ValueError"}
