@@ -54,6 +54,9 @@ def test_a_bounced_agent_with_a_phone_becomes_a_call_on_the_calendar(live):
     b["From"], b["To"], b["Subject"] = "Mail Delivery Subsystem <mailer-daemon@googlemail.com>", "jordan@example.test", \
         "Delivery Status Notification (Failure)"
     b["Message-ID"], b["In-Reply-To"] = "<bounce-1@mail.gmail.com>", ours
+    # A 550 comes straight back: its Date can be a second before our logged send time (2026-11-06, 344 Daniele Dr)
+    from email.utils import format_datetime
+    b["Date"] = format_datetime(T0 - timedelta(seconds=1))
     b.set_content("Address not found\n\nYour message wasn't delivered to pat@broker.test because the address couldn't "
                   "be found.\n\nFinal-Recipient: rfc822; pat@broker.test\nStatus: 5.1.1")
     gm.set_imap_factory(lambda: FakeIMAP({71: b.as_bytes(policy=policy.SMTP)}))

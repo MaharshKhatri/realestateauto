@@ -506,9 +506,10 @@ def followup_events(session: Session, lead: Lead, now: datetime) -> list[Desired
     asked_call = bool(touch and sent and sent < due < sent + timedelta(hours=20))
     # A bounce sets the same near call slot (gmail_autopilot: a dead e-mail with a phone on the card): that call is
     # not "they asked you to call" (2026-11-06, 344 Daniele Dr: the agent never got our e-mail).
+    # The bounce's Date header can be a second before our logged send time (a 550 comes back at once): 10 minutes slack.
     bounced = bool(asked_call and session.scalar(
         select(InboundReply.id).where(InboundReply.lead_id == lead.id, InboundReply.status == "bounce",
-                                      InboundReply.received_at >= sent).limit(1)))
+                                      InboundReply.received_at >= sent - timedelta(minutes=10)).limit(1)))
     start = callable_slot(sent + timedelta(hours=hours), minutes) if touch and sent and unmoved and not asked_call \
         else due
     if start < now:
