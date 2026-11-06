@@ -1011,6 +1011,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     green, and the next run picks up from the last UID it saw. The config-bundle check at the start of every run is
     guarded the same way (`config_check` = the exception name); a calendar error reaches the public log only as a
     short code (`cloud_desk.calendar_code`: busy-403 / busy-429, offline-<Exception>, auth, error-<status>).
+  - A config bundle from the Mac (a calendar re-connect) brings the Mac's settings.local.yaml, but operator details
+    changed on the desk by a sealed `operator` note stay (`set_operator` lists them under `cloud_desk.operator_keys`;
+    `apply_bundle` keeps them). 2026-11-06: the Mac's re-connect had put the old phone back into every script.
 - **Done is visible** (learned 2026-11-04, the operator: "anytime I confirm I did something it gets a check mark or a
   color … I will have class and miss some calls"):
   - call blocks: the title counts what is left ("📞 Call block B: 9 to call · ✅ 16 done"); reported rows are ✅ in a

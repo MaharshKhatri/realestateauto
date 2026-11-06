@@ -148,12 +148,41 @@ def apply_bundle(data: bytes, root: Path = ROOT, *, db: bool = True) -> list[str
             dest = root / m.name
             dest.parent.mkdir(parents=True, exist_ok=True)
             tmp = dest.with_name(dest.name + ".incoming")
-            tmp.write_bytes(f.read())
+            body = f.read()
+            if m.name == "config/settings.local.yaml" and dest.is_file():
+                body = _keep_desk_settings(dest.read_text(), body)
+            tmp.write_bytes(body)
             os.replace(tmp, dest)
             if m.name == "config/token.json":
                 dest.chmod(0o600)
             written.append(m.name)
     return written
+
+
+def _keep_desk_settings(current: str, incoming: bytes) -> bytes:
+    """A config bundle from the Mac brings its settings.local.yaml (a new calendar sign-in), but the operator details
+    changed on the desk from a chat note stay (2026-11-06: the Mac's re-connect put the old phone back into every
+    script and e-mail). Those keys are listed under cloud_desk.operator_keys; everything else comes from the Mac."""
+    import yaml
+    from engine.operator_setup import HEADER
+    try:
+        old = yaml.safe_load(current) or {}
+        new = yaml.safe_load(incoming.decode("utf-8")) or {}
+    except (yaml.YAMLError, UnicodeDecodeError):
+        return incoming
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return incoming
+    keep = old.get("cloud_desk") if isinstance(old.get("cloud_desk"), dict) else {}
+    keys = [k for k in (keep.get("operator_keys") or []) if k in OPERATOR_FIELDS]
+    old_op = old.get("operator") if isinstance(old.get("operator"), dict) else {}
+    if not keys or not any(k in old_op for k in keys):
+        return incoming
+    op = new.get("operator") if isinstance(new.get("operator"), dict) else {}
+    for k in keys:
+        if k in old_op:
+            op[k] = old_op[k]
+    new["operator"], new["cloud_desk"] = op, keep
+    return (HEADER + yaml.safe_dump(new, sort_keys=False, allow_unicode=True)).encode("utf-8")
 
 
 # -- Gmail as the courier ----------------------------------------------------------------------------------------
@@ -425,6 +454,11 @@ def set_operator(values: dict[str, Any]) -> dict[str, str]:
         clean[key] = text
     for key, text in clean.items():
         operator_setup.save_preference("operator", key, text)
+    if clean:
+        # Remembered, so a later config bundle from the Mac (its own, older settings.local.yaml) doesn't undo them.
+        from core.config import settings
+        had = list((settings().get("cloud_desk") or {}).get("operator_keys") or [])
+        operator_setup.save_preference("cloud_desk", "operator_keys", sorted(set(had) | set(clean)))
     return clean
 
 

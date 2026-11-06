@@ -94,6 +94,48 @@ def test_a_bundle_carries_the_database_and_config_and_nothing_else(tmp_path):
     assert not (tmp_path / "escape.txt").exists() and not (dest / ".env").exists()
 
 
+def test_a_config_bundle_from_the_mac_keeps_the_phone_the_desk_was_told(tmp_path):
+    """2026-11-06: the Mac's calendar re-connect mailed its own settings.local.yaml with the old phone, and every
+    call script went back to it. Operator details set on the desk from a chat note survive; the rest is the Mac's."""
+    import yaml
+    desk = tmp_path / "desk"
+    (desk / "config").mkdir(parents=True)
+    (desk / "config" / "settings.local.yaml").write_text(
+        "operator:\n  name: Jordan Operator\n  phone: (908) 555-0100\ncalendar:\n  account: old@example.com\n"
+        "cloud_desk:\n  operator_keys: [phone]\n")
+    mac = tmp_path / "mac"
+    (mac / "config").mkdir(parents=True)
+    (mac / "config" / "settings.local.yaml").write_text(
+        "operator:\n  name: Jordan Operator\n  phone: (732) 555-0199\n  company_name: Sample Homes\n"
+        "calendar:\n  account: new@example.com\n")
+    (mac / "config" / "token.json").write_text('{"token": "t"}')
+    cd.apply_bundle(cd.make_bundle(mac, db=False), desk, db=False)
+    got = yaml.safe_load((desk / "config" / "settings.local.yaml").read_text())
+    assert got["operator"]["phone"] == "(908) 555-0100"                  # the desk's own change stays
+    assert got["operator"]["company_name"] == "Sample Homes"             # everything else comes from the Mac
+    assert got["calendar"]["account"] == "new@example.com"
+    assert got["cloud_desk"]["operator_keys"] == ["phone"]
+    plain = tmp_path / "plain"                                            # nothing set on the desk: the Mac's file
+    (plain / "config").mkdir(parents=True)
+    (plain / "config" / "settings.local.yaml").write_text("operator:\n  phone: (908) 555-0100\n")
+    cd.apply_bundle(cd.make_bundle(mac, db=False), plain, db=False)
+    assert "(732) 555-0199" in (plain / "config" / "settings.local.yaml").read_text()
+
+
+def test_set_operator_remembers_which_details_the_desk_owns(tmp_path, monkeypatch):
+    import yaml
+    from core import config
+    from engine import operator_setup
+    local = tmp_path / "settings.local.yaml"
+    monkeypatch.setattr(operator_setup, "LOCAL_SETTINGS", local)
+    assert cd.set_operator({"phone": "908-555-0100"}) == {"phone": "(908) 555-0100"}
+    cd.set_operator({"company_name": "Sample Homes"})
+    got = yaml.safe_load(local.read_text())
+    assert got["operator"]["phone"] == "(908) 555-0100"
+    assert got["cloud_desk"]["operator_keys"] == ["company_name", "phone"]
+    config.reload_settings()
+
+
 def test_gmail_carries_a_bundle_in_parts_and_checks_it(courier, monkeypatch):
     monkeypatch.setattr(cd, "PART_BYTES", 1000)
     blob = bytes(range(256)) * 13
