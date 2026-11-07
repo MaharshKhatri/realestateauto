@@ -989,6 +989,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - a call-sheet lead is held from e-mail only until it is dialed: a reported no-answer / voicemail
     (`gmail_autopilot.unanswered_today`) gets the e-mail the same day;
   - desk.yml checks for a queued run before its ~6-minute wait, so a note or approval starts at once;
+  - every hand-off (desk.yml's next run, night.yml's hop / wake) goes through `dispatch()`: a GitHub 5xx is retried
+    after 15 / 45 / 90 / 180 s, and a run that got queued despite the error counts as done (2026-11-06 7:38 PM: one
+    HTTP 502 on the dispatch had stopped the evening chain);
   - task `stats` (`engine/outreach_stats.py::funnel`) prints counts only: listed, valued, tiers + top skip reasons,
     convertible, reachable, never e-mailed, cold / all e-mail in 24 h, replies and bounce % in 7 days;
   - a note item's "agent_phone" + "agent_name" saves a different person the office named as the listing agent (her own

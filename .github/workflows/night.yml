@@ -36,6 +36,22 @@ jobs:
     steps:
       - name: Wait, then start the desk (or hop)
         run: |
+          # GitHub's API sometimes answers a dispatch with a 5xx (2026-11-06 7:38 PM: HTTP 502 broke the chain for the
+          # evening). Retry with backoff; a run that got queued anyway counts as done, so nothing is dispatched twice.
+          dispatch() {
+            wf="$1"; shift
+            for w in 0 15 45 90 180; do
+              sleep "$w"
+              if gh workflow run "$wf" -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" "$@"; then return 0; fi
+              sleep 10
+              q=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" --limit 10 --json status \
+                  --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length' \
+                  2>/dev/null || echo 0)
+              if [ "${q:-0}" != "0" ]; then echo "The dispatch errored but the run is queued."; return 0; fi
+              echo "Dispatch failed; trying again."
+            done
+            return 1
+          }
           case "$WAKE" in [0-2][0-9]:[0-5][0-9]) ;; *) echo "bad wake time"; exit 1;; esac
           case "$TASK" in run|refresh) ;; *) echo "bad task"; exit 1;; esac
           now=$(date +%s)
@@ -45,7 +61,7 @@ jobs:
           max=$(( 330 * 60 ))
           if [ "$left" -gt "$max" ]; then
             sleep "$max"
-            gh workflow run night.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f wake="$WAKE" -f task="$TASK"
+            dispatch night.yml -f wake="$WAKE" -f task="$TASK"
             echo "Hopped: the next wait ends at $WAKE."
             exit 0
           fi
@@ -53,7 +69,7 @@ jobs:
           busy=$(gh run list -R "$GITHUB_REPOSITORY" --workflow desk.yml --limit 20 --json status \
                  --jq '[.[] | select(.status != "completed")] | length')
           if [ "$busy" = "0" ]; then
-            gh workflow run desk.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f task="$TASK"
+            dispatch desk.yml -f task="$TASK"
             echo "Started the desk ($TASK)."
           else
             echo "The desk is already running or queued."

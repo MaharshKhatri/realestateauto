@@ -102,6 +102,22 @@ jobs:
           CYCLE_SECONDS: "360"
           TASK: ${{ github.event.inputs.task || 'run' }}
         run: |
+          # GitHub's API sometimes answers a dispatch with a 5xx (2026-11-06 7:38 PM: HTTP 502 broke the chain for the
+          # evening). Retry with backoff; a run that got queued anyway counts as done, so nothing is dispatched twice.
+          dispatch() {
+            wf="$1"; shift
+            for w in 0 15 45 90 180; do
+              sleep "$w"
+              if gh workflow run "$wf" -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" "$@"; then return 0; fi
+              sleep 10
+              q=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" --limit 10 --json status \
+                  --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length' \
+                  2>/dev/null || echo 0)
+              if [ "${q:-0}" != "0" ]; then echo "The dispatch errored but the run is queued."; return 0; fi
+              echo "Dispatch failed; trying again."
+            done
+            return 1
+          }
           hour=$((10#$(date +%H)))
           # Overnight: night.yml waits on GitHub's side and starts the 5:17 AM refresh; the refresh (or any run before
           # 7 AM) hands the morning start to night.yml again (wake 07:00). GitHub's cron can't be relied on here.
@@ -112,19 +128,19 @@ jobs:
             # the 5:17 AM refresh. A queued note or approval is never replaced: it runs first and hands off itself.
             if [ "$(count_queued)" != "0" ]; then echo "A run is queued: it hands off the night."; exit 0; fi
             if [ "$TASK" != "value" ]; then
-              gh workflow run desk.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f task=value
+              dispatch desk.yml -f task=value
               echo "After hours: pricing the new listings first."; exit 0
             fi
-            gh workflow run night.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f wake=05:17 -f task=refresh
+            dispatch night.yml -f wake=05:17 -f task=refresh
             echo "After hours: night.yml starts the 5:17 AM refresh."; exit 0
           fi
           if [ "$hour" -lt 7 ]; then
             # A note or approval before 5:17 must not replace the sleeper that starts the morning refresh.
             if [ "$TASK" != "refresh" ] && [ "$(date +%H%M)" -lt 0517 ]; then
-              gh workflow run night.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f wake=05:17 -f task=refresh
+              dispatch night.yml -f wake=05:17 -f task=refresh
               echo "Early: night.yml still starts the 5:17 AM refresh."; exit 0
             fi
-            gh workflow run night.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f wake=07:00 -f task=run
+            dispatch night.yml -f wake=07:00 -f task=run
             echo "Early: night.yml starts the day at 7:00."; exit 0
           fi
           # One queued run at most: a note or approval someone dispatched meanwhile goes first, and carries the chain.
@@ -134,7 +150,7 @@ jobs:
           if [ "$wait" -gt 0 ]; then sleep "$wait"; fi
           queued=$(count_queued)
           if [ "$queued" = "0" ]; then
-            gh workflow run desk.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f task=run
+            dispatch desk.yml -f task=run
           else
             echo "A run is already queued: it continues the chain."
           fi
