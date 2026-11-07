@@ -85,6 +85,23 @@ def full_price_asked(text: str) -> bool:
     return bool(_FULL_PRICE.search(t)) and not re.search(r"\bwhat(?:'s| is)? the (?:asking|list) price\b", t, re.I)
 
 
+# "It is near asking price" (2026-11-07, 5 Fitch Rd, the answer to "what would the seller need to net?"): their number is
+# about the ask. Approximate, so never "stated plainly" (no priced answer goes out by itself on it). Not "nowhere near" /
+# "not near" / "not close to" (those say the offers are far under the ask) and never a question.
+_NEAR_ASK = re.compile(r"(?<!nowhere )(?<!not )(?<!isn't )\b(?:near|close to|around|about|approximately|approx\.?|right at|"
+                       r"at or near|somewhere near|pretty close to|very close to|just under|a little under|slightly under)"
+                       r"\s+(?:the\s+)?(?:full\s+)?(?:asking|list(?:ing)?|full)(?:\s+price)?\b", re.I)
+
+
+def near_ask_asked(text: str) -> bool:
+    t = text or ""
+    if not _NEAR_ASK.search(t):
+        return False
+    m = _NEAR_ASK.search(t)
+    sentence = re.split(r"[.!\n]", t[m.start():], maxsplit=1)[0]
+    return "?" not in sentence
+
+
 _ASKS_MAX = re.compile(r"what(?:'s| is|s)? (?:your|ur|the) (?:max(?:imum)?|best|highest|top|ceiling)\b|how high (?:can|could|will|would) "
                        r"you go|best you can do", re.I)
 
@@ -639,6 +656,11 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         # "Full price": the seller's number is the asking price, stated plainly.
         counter = parsed.counter_amount = ask_now
         parsed.counter_explicit = True
+        intents.add("COUNTER")
+    elif not counter and ask_now and near_ask_asked(text):
+        # "Near asking price": their number is about the ask, approximate (never stated plainly).
+        counter = parsed.counter_amount = ask_now
+        parsed.counter_explicit = False
         intents.add("COUNTER")
     frfpa_floor = nums.get("frfpa_floor")
     priced = bool(nums) and nums.get("verdict") not in NO_PRICE_VERDICTS and nums.get("mao_walkaway", 0) > 0

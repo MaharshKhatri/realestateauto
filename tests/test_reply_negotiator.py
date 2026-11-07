@@ -143,6 +143,21 @@ def test_full_price_is_their_number(db, operator):
     assert rn.full_price_asked("Seller wants full asking") and rn.full_price_asked("They're firm on list price")
 
 
+def test_near_asking_is_their_number_approximately(db, operator):
+    """2026-11-07: Nicole answered "what would the seller need to net?" on 5 Fitch Rd with "It is near asking price", and
+    the desk drafted "answer them, then ask for a number" again. Their number is about the ask, never stated plainly."""
+    from engine import agent_outreach as ao
+    lead = listed(db)
+    ask = float(ao.listing_gap(lead)["list_price"])
+    a = rn.analyze(db, lead, "It is near asking price\n\nNicole Curtis\nREALTOR\u00ae", now=datetime(2026, 10, 20, 9, 0))
+    assert a.parsed.counter_amount == ask and not a.parsed.counter_explicit and "COUNTER" in a.parsed.intents
+    assert a.headline and "ANSWER THEM" not in a.headline
+    for no in ("Offers are nowhere near asking", "Is it near asking price?", "We're not close to asking", "close to accepting"):
+        assert not rn.near_ask_asked(no), no
+    for yes in ("Seller wants close to asking.", "Around list price", "near full price", "just under asking"):
+        assert rn.near_ask_asked(yes), yes
+
+
 def test_their_number_above_an_unsure_final_gets_facts_not_a_ceiling(db, operator, monkeypatch):
     """2026-11-05: "Full price" on 114 Sheridan Ave was drafted as "hold at $499K" while the call sheet said agree to
     nothing (no living area on record). With our own number unsure, nothing goes in writing: ask for the fact."""
