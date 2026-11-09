@@ -1139,6 +1139,12 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   cash-buyer family in the town for each fixer listing (0.15 otherwise, capped at 12 so volume can't win), +3 if the
   agent already wrote back; shared office inboxes (info@, office@, ...), bounced / stopped agents and stop-listed phones
   are left out.
+- **✅ Today's ten** (`deal_desk.daily_actions`, `gcal_sync.actions_event`, key `actions:<YYYYMMDD>`, blueberry):
+  replaces the 100-call blocks. One weekday block of at most ten actions, fitted into the first free 45 minutes
+  from 11:00 around classes: agent replies waiting (≤ 4, "send #id"), call-backs due with agents who talked to us
+  (≤ 3), then flipper pitches (prospect follow-ups due, prospects with a business e-mail to forward the digest to; only
+  when nobody has a contact, "find a business e-mail for ..."). With DAILY_OPENERS "0" the recurring 🎯 daily-goal
+  event is not desired and is deleted from the calendar.
 - **The desk's own number in a note** (2026-11-09, warm threads answered from the chat): a sealed note item with
   `"price": "firm" | "final" | "sent"` and `{price}` in its "reply" gets the desk's locked number written in and the LOI
   attached at it (`offer_math.note_price`): "firm" = the one offer (on a house whose only gap is the reach, the same

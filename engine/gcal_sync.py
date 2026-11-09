@@ -778,8 +778,15 @@ def note_reconnected(session: Session, when: datetime) -> None:
     session.flush()
 
 
-def daily_goal_event(session: Session, today: date) -> Desired:
+def openers_paused() -> bool:
+    """2026-11-09: cold openers paused on the cloud desk (DAILY_OPENERS "0"): no "daily outreach" goal on the calendar."""
+    return os.environ.get("DAILY_OPENERS", "").strip() == "0" or not cfg().get("daily_goal_event", True)
+
+
+def daily_goal_event(session: Session, today: date) -> Desired | None:
     from engine.autopilot import daily_goal
+    if openers_paused():
+        return None
     goal = daily_goal()
     row = session.scalar(select(CalendarEvent).where(CalendarEvent.key == "daily_goal"))
     first = parse_start((row.body_json or {}).get("start")) if row and row.body_json else None
@@ -1033,6 +1040,34 @@ def desk_status_event(session: Session, now: datetime) -> Desired | None:
                    _body("desk", summary, lines, s, e, reminders=[], transparent=True), day0)
 
 
+def actions_event(session: Session, now: datetime) -> Desired | None:
+    """✅ Today's ten (2026-11-09 pivot, `deal_desk.daily_actions`): one block of at most ten high-leverage actions in
+    the first free 45 minutes from `actions_time` (11:00), fitted around classes like the old call blocks. Weekdays
+    only; nothing to do = no event."""
+    from engine import deal_desk
+    if not cfg().get("actions_event", True) or now.weekday() >= 5:
+        return None
+    items = deal_desk.daily_actions(session, now)
+    if not items:
+        return None
+    st = _state(session).value_json or {}
+    b = st.get("busy") or {}
+    busy = []
+    if b.get("date") == now.date().isoformat():
+        for a0, b0 in b.get("spans") or []:
+            busy.append(tuple(datetime.combine(now.date(), time(*(int(x) for x in v.split(":")))) for v in (a0, b0)))
+    placed = place_blocks(now.date(), [("T", str(cfg().get("actions_time") or "11:00"), 45)], busy,
+                          min_minutes=30).get("T")
+    start, mins = placed if placed else (datetime.combine(now.date(), time(11, 0)), 45)
+    s, e = _timed(start, mins)
+    lines = [f"{i}. {x}" for i, x in enumerate(items, 1)]
+    lines += ["", "Tell Claude in the chat what you did (\"1 done, 3 no answer, 5 sent\") and it updates the desk.",
+              f"Updated {_when(now)} by {'the cloud desk' if in_cloud() else 'your Mac'}."]
+    return Desired(f"actions:{now:%Y%m%d}", "actions", None,
+                   _body("actions", f"✅ Today's {len(items)}: replies, call-backs, flipper pitches", lines, s, e,
+                         reminders=[10]), start)
+
+
 def desired_events(session: Session, lead_ids: set[int] | None = None, now: datetime | None = None
                    ) -> dict[str, Desired]:
     """Everything the calendar should hold: all of it, or (lead_ids) only those leads' events."""
@@ -1062,6 +1097,10 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
             put([desk_status_event(session, now)])
         except Exception:                                # noqa: BLE001 - a status line never blocks the real events
             log.exception("calendar: desk status event skipped")
+        try:
+            put([actions_event(session, now)])
+        except Exception:                                # noqa: BLE001
+            log.exception("calendar: daily actions skipped")
         try:
             put(call_block_events(session, now))
         except Exception:                                # noqa: BLE001
@@ -1180,7 +1219,11 @@ def reconcile(session: Session, lead_ids: set[int] | None = None, now: datetime 
                 r.status = "pending"
             stats["changed"] += 1
     for key, r in rows.items():
-        if key in want or r.status not in ("pending", "synced") or r.kind == "daily_goal":
+        if key in want or r.status not in ("pending", "synced") or (r.kind == "daily_goal" and not openers_paused()):
+            continue
+        if r.kind == "daily_goal":
+            r.status = "cancel" if r.google_event_id else "cancelled"     # the recurring goal goes with the openers
+            stats["cancelled"] += 1
             continue
         if str((r.body_json or {}).get("summary") or "").startswith(("✅", "⏩")):
             continue                                     # already marked done / moved: it stays as the record

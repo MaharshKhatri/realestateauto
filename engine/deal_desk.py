@@ -568,3 +568,60 @@ def agents_csv(rows: list[dict[str, Any]]) -> bytes:
         w.writerow([i, a["name"], a["company"], a["email"], a["phone"], a["score"], a["resales"], a["fixers"],
                     a["listings"], a["towns"], "yes" if a["warm"] else ""])
     return buf.getvalue().encode("utf-8")
+
+
+# -- the daily ten ------------------------------------------------------------------------------------------------
+MAX_ACTIONS = 10
+
+
+def daily_actions(session: Session, now: Any) -> list[str]:
+    """The operator's day after the pivot (2026-11-09): at most ten actions, highest leverage first.
+
+    1. agent replies waiting on the operator (answer or call; "send #id" to Claude sends the drafted answer);
+    2. call-backs due today with agents who talked to us (a conversation beats a cold dial);
+    3. flipper pitches: prospects with a business e-mail and no touch yet (forward their digest), then prospect
+       follow-ups that are due; when nobody has a contact yet, look up the top prospects' business contacts.
+    Streets and entity names only; never a homeowner's name or a phone (the call events carry the number)."""
+    from db.models import InboundReply, Prospect
+    from engine import crm
+    from engine.call_sheet import _talked
+    from engine.gcal_sync import _place
+    out: list[str] = []
+    waiting = list(session.scalars(select(InboundReply).where(InboundReply.status == "needs_approval")
+                                   .order_by(InboundReply.created_at)))
+    seen: set[int] = set()
+    for r in waiting:
+        if r.lead_id in seen or len(out) >= 4:
+            continue
+        seen.add(r.lead_id)
+        lead = session.get(Lead, r.lead_id) if r.lead_id else None
+        where = _place(session, lead).street if lead is not None else "an agent reply"
+        out.append(f"Answer the agent on {where} (reply #{r.id}): read it in Gmail, then say \"send #{r.id}\" to "
+                   "Claude or call them.")
+    end = now.replace(hour=23, minute=59)
+    due = [ld for ld in crm.due_followups(session, end) if ld.id not in seen]
+    talked = _talked(session, [ld.id for ld in due])
+    for lead in [ld for ld in due if ld.id in talked][:3]:
+        if len(out) >= 7:
+            break
+        out.append(f"Call back the agent on {_place(session, lead).street} (they talked to you; script on the 📞 event).")
+    prospects = list(session.scalars(select(Prospect).where(Prospect.stage.notin_(("PAYING", "LOST")))
+                                     .order_by(Prospect.purchases_36m.desc())))
+    fresh = [p for p in prospects if p.stage == "NEW" and p.email]
+    later = [p for p in prospects if p.stage in ("CONTACTED", "SAMPLE_SENT", "CALL_BOOKED", "TRIAL")
+             and p.next_touch_at is not None and p.next_touch_at <= end.replace(tzinfo=None)]
+    for p in later:
+        if len(out) >= MAX_ACTIONS:
+            break
+        out.append(f"Follow up with {p.entity_name} ({p.stage.lower().replace('_', ' ')}): {p.email or p.phone or p.website}.")
+    for p in fresh:
+        if len(out) >= MAX_ACTIONS:
+            break
+        out.append(f"Pitch {p.entity_name}: forward their Weekly Deal Digest (the [njw-digest] mail) to {p.email} with "
+                   "the 3-line note from the chat.")
+    if len(out) < MAX_ACTIONS and not fresh:
+        need = [p for p in prospects if p.stage == "NEW" and not (p.email or p.phone)][:MAX_ACTIONS - len(out)]
+        for p in need[:3]:
+            out.append(f"Find a business e-mail for {p.entity_name} (their website / LinkedIn page; no people-search "
+                       "sites), then tell Claude.")
+    return out[:MAX_ACTIONS]

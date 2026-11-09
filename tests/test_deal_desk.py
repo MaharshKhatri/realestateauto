@@ -180,3 +180,27 @@ def test_task_agents_sends_only_the_agents_report(db, monkeypatch, tmp_path):
 
     r = cd.send_digests("me@example.com", "pw", smtp_factory=FakeSMTP, out_dir=tmp_path, digests=False)
     assert r["digest_mails"] == 0 and [x.split()[0] for x in sent] == ["[njw-agents]"]
+
+
+def test_todays_ten_puts_replies_first_then_flipper_pitches_and_drops_the_paused_goal(db, monkeypatch):
+    from datetime import datetime
+
+    from db.models import InboundReply, Prospect
+    from engine import gcal_sync
+    lead = make_lead(db, sheriff_days=None, stale_listing=True)
+    db.add(InboundReply(message_id="<r1@example>", lead_id=lead.id, from_email="pat@brokerage.example",
+                        subject="Re: offer", body_text="what's your number?", status="needs_approval"))
+    db.add(Prospect(key="QUIETRIVERLLC", entity_name="QUIET RIVER LLC", stage="NEW", email="office@quietriver.example",
+                    purchases_36m=9))
+    db.add(Prospect(key="NOEMAILLLC", entity_name="NO EMAIL LLC", stage="NEW", purchases_36m=3))
+    db.commit()
+    now = datetime(2026, 11, 10, 9, 0)                               # a Tuesday
+    items = dd.daily_actions(db, now)
+    assert items[0].startswith("Answer the agent on") and "send #" in items[0]
+    assert any(x.startswith("Pitch QUIET RIVER LLC") and "office@quietriver.example" in x for x in items)
+    assert len(items) <= 10 and not any("NO EMAIL" in x for x in items)  # look-ups only when nobody has a contact
+    ev = gcal_sync.actions_event(db, now)
+    assert ev.key == "actions:20261110" and ev.body["summary"].startswith("✅ Today's")
+    assert "1. Answer the agent" in ev.body["description"]
+    monkeypatch.setenv("DAILY_OPENERS", "0")
+    assert gcal_sync.daily_goal_event(db, now.date()) is None
