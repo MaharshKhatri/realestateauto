@@ -1133,7 +1133,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
 - **Prospects** (`prospects` table, `deal_desk.seed_prospects` / `update_prospect`): one row per digest buyer, stages
   NEW → CONTACTED → SAMPLE_SENT → CALL_BOOKED → TRIAL → PAYING (or LOST), with public business contacts (website,
   business e-mail / phone, LinkedIn URL) and their source. A sealed note item `{"prospect": {"entity", "stage",
-  "email", "website", "phone", "linkedin", "source", "notes", "next_touch", "fee"}}` updates it. Contacts come from
+  "email", "website", "phone", "linkedin", "source", "notes", "next_touch", "fee", "alias"}}` updates it; "alias" (the
+  deed name, e.g. "Owner @ <mailing>") lets the company found for an unnamed cluster buyer name its digest. Contacts come from
   business sources only (never people-search sites, OpenCorporates or a guessed e-mail pattern).
 - **Flipper-connected agents** (`deal_desk.flipper_agents`, sent with every digest run and alone by task `agents` as
   "[njw-agents] <date>" + CSV): +5 per listing of a house a recorded cash buyer owns (a flip resale), +0.5 per active

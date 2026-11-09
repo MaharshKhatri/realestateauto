@@ -679,6 +679,7 @@ class Prospect(Base):
     key: Mapped[str] = mapped_column(String(200), unique=True)          # normalized entity name
     family_key: Mapped[str | None] = mapped_column(String(200), index=True)
     entity_name: Mapped[str] = mapped_column(String(200))
+    alias: Mapped[str | None] = mapped_column(String(200), index=True)   # the deed record's name ("Owner @ <mailing>")
     principal_name: Mapped[str | None] = mapped_column(String(200))
     stage: Mapped[str] = mapped_column(String(16), default="NEW", index=True)
     website: Mapped[str | None] = mapped_column(String(250))

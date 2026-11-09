@@ -214,3 +214,20 @@ def test_unnamed_cluster_buyers_and_near_empty_digests_are_left_out(db, tmp_path
     db.commit()
     assert [p.entity for p in dd.select_buyers(db, today=TODAY)] == ["QUIET RIVER LLC"]
     assert dd.write_all(db, tmp_path, today=TODAY) == []                  # no deals in its box: no page
+
+
+def test_a_company_found_for_an_unnamed_cluster_buyer_names_its_digest(db):
+    from engine import cloud_desk as cd
+    _buyer(db, "Owner @ 4 SAMPLE AVE, PARSIPPANY, NJ", None, 9)
+    db.commit()
+    assert dd.select_buyers(db, today=TODAY) == []
+    key = "k" * 32
+    note = cd.seal_note([{"prospect": {"entity": "Sample Home Buyers", "alias": "Owner @ 4 SAMPLE AVE, PARSIPPANY, NJ",
+                                       "email": "team@samplehomebuyers.example",
+                                       "phone": "973-555-0005 (website); (973) 555-0006 (BBB)"}}], cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 1}
+    db.expire_all()
+    [p] = dd.select_buyers(db, today=TODAY)
+    assert (p.entity, p.kind) == ("Sample Home Buyers", "named")
+    from db.models import Prospect
+    assert db.query(Prospect).one().phone == "9735550005"

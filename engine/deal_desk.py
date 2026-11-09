@@ -156,6 +156,13 @@ def buyer_profiles(session: Session, today: date | None = None) -> list[BuyerPro
     principals = {jp.buyer_id: jp.principal_name for jp in session.scalars(select(JVPartner)) if jp.principal_name}
     out = [p for k, bs in fams.items()
            if (p := profile(bs, k, today, next((principals[b.id] for b in bs if b.id in principals), None)))]
+    # A prospect's company found from business sources names a family the deeds only know as "Owner @ <mailing>"
+    from db.models import Prospect
+    names = {prospect_key(x.alias): x.entity_name for x in session.scalars(select(Prospect).where(
+        Prospect.alias.is_not(None)))}
+    for p in out:
+        if prospect_key(p.entity) in names:
+            p.entity, p.kind = names[prospect_key(p.entity)], "named"
     return sorted(out, key=lambda p: -p.score)
 
 
@@ -440,7 +447,9 @@ def seed_prospects(session: Session, digests: list[Digest], now: Any = None) -> 
 
 def update_prospect(session: Session, item: dict[str, Any], now: Any = None) -> str:
     """A sealed note's {"prospect": {...}}: public business contacts found for a flipper, or where the pitch stands
-    ("stage", "notes", "next_touch" ISO, "fee"). Matched by entity name; created when new. Returns the stage."""
+    ("stage", "notes", "next_touch" ISO, "fee"). Matched by entity name; created when new. "alias": the deed record's
+    name for the same buyer (an "Owner @ <mailing>" family the company now names, so its digest can be addressed).
+    Returns the stage."""
     from datetime import datetime
 
     from db.models import Prospect, utcnow
@@ -463,9 +472,12 @@ def update_prospect(session: Session, item: dict[str, Any], now: Any = None) -> 
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", email):
             raise ValueError("bad prospect email")
         p.email = email
-    for f in ("website", "phone", "linkedin", "source", "principal_name"):
+    for f in ("website", "linkedin", "source", "principal_name", "alias"):
         if item.get(f):
-            setattr(p, f, str(item[f]).strip()[:400])
+            setattr(p, f, str(item[f]).strip()[:200 if f == "alias" else 400])
+    if item.get("phone"):
+        m = re.search(r"\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4}", str(item["phone"]))
+        p.phone = re.sub(r"\D", "", m.group(0)) if m else None
     if item.get("notes"):
         p.notes = ((p.notes + "\n") if p.notes else "") + f"{now:%Y-%m-%d}: {str(item['notes'])[:600]}"
     if item.get("next_touch"):
