@@ -336,3 +336,20 @@ def test_s2_never_names_a_person_as_the_company():
                                                                                                     "fixers": 3})
     subject, body = s2.pitch_body(agent, d, {"first": "Sam"}, follow=False)
     assert body.startswith("Hi JC,") and "3 fixer listings and 1 investor resale around Rutherford" in body
+
+
+def test_targets_are_seeded_when_the_file_appears_or_changes_not_only_once_a_day(live, monkeypatch, tmp_path):
+    # 2026-11-09: the first live run came before the target file was committed and marked the day "seeded"; every
+    # specialty stream then had nobody to pitch
+    db = live
+    y = tmp_path / "targets.yaml"
+    monkeypatch.setattr(swarm_firm, "TARGETS_FILE", y)
+    monkeypatch.setattr(swarm_firm, "run_streams", lambda **kw: {})
+    assert "targets_seeded" not in swarm_firm.tick(now=TUE, send=False)          # no file: nothing marked done
+    y.write_text("targets:\n  - {kind: roofer, org: Sample Roofing, email: info@sampleroofing.example}\n")
+    assert swarm_firm.tick(now=TUE + timedelta(minutes=6), send=False)["targets_seeded"] == 1
+    assert "targets_seeded" not in swarm_firm.tick(now=TUE + timedelta(minutes=12), send=False)
+    y.write_text(y.read_text() + "  - {kind: roofer, org: Other Roofing, email: info@otherroofing.example}\n")
+    assert swarm_firm.tick(now=TUE + timedelta(minutes=18), send=False)["targets_seeded"] == 2
+    db.expire_all()
+    assert db.query(FirmTarget).count() == 2

@@ -14,6 +14,8 @@ revenue counted only from targets actually in TRIAL / PAYING (no projected pipel
 """
 from __future__ import annotations
 
+import hashlib
+
 import importlib
 import logging
 import tempfile
@@ -102,6 +104,11 @@ KIND_STREAM = {
     "property_tax_appeal_attorney": "s6", "cost_segregation_firm": "s9", "qualified_intermediary_1031": "s9",
     "real_estate_cpa": "s9", "investor_friendly_broker": "s2", "investor_agent": "s2", "flipper": "s2",
 }
+
+
+def targets_digest(path: Path | None = None) -> str:
+    path = path or TARGETS_FILE
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16] if path.exists() else ""
 
 
 def seed_targets(session: Any, path: Path | None = None) -> int:
@@ -207,9 +214,13 @@ def tick(*, now: datetime | None = None, smtp_factory: Any = None, send: bool = 
     out: dict[str, Any] = {}
     with session_scope() as s:
         st = _state(s)
-        if st.get("seeded") != t.date().isoformat():
+        # re-seeded daily and whenever the target file changes; never marked done while the file is missing (2026-11-09:
+        # the first live run came before config/b2b_targets.yaml was committed, marked the day seeded, and every
+        # specialty stream then had nobody to pitch until the next day)
+        digest = targets_digest()
+        if digest and (st.get("seeded") != t.date().isoformat() or st.get("seeded_hash") != digest):
             out["targets_seeded"] = seed_targets(s)
-            _set_state(s, seeded=t.date().isoformat())
+            _set_state(s, seeded=t.date().isoformat(), seeded_hash=digest)
     global _SMTP_FACTORY
     _SMTP_FACTORY = smtp_factory
     with tempfile.TemporaryDirectory() as tmp:
