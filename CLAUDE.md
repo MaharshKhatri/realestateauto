@@ -1115,6 +1115,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     (20, ~90 valuations at the ~13 s measured live: the cloud desk's run-all has a 45-minute limit); the daemon's nightly
     2:10 run gets 120 minutes (`agents.schedule_options`, passed only to scheduled runs). A try with no comps waits
     `new_listing_retry_days` (3). Unmatched listing parcels carry the listing's own coordinates, so they can be valued.
+- **Paused 2026-11-09 (operator pivot away from cold MLS wholesaling)**: desk.yml `DAILY_OPENERS: "0"` (no new cold openers or
+  48-hour nudges) and `CALL_SHEET: "off"` (`cloud_desk._work` builds no call sheet and clears today's frozen one, so the call
+  blocks leave the calendar). Replies to agents who already wrote back, the data harvest, valuations and the calendar keep
+  running. Set `"35"` / `"on"` to restore.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 
