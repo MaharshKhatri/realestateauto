@@ -385,6 +385,7 @@ class PreMlsDistressStream(Stream):
             path = ctx.out_dir / f"s10_pre_mls_queue_{y}-W{w:02d}.pdf"
             shown = render(path, rows[:int(lim["max_rows"])], ctx, stats, len(rows))
             res.products = 1
+            res.internal.append(path)                    # mailed to the operator's own inbox ("[njw-s10] <date>")
         if state is not None:
             _save(session, SNAPSHOT_KEY, state["snapshot"])
             _save(session, FRESH_KEY, state["fresh"])

@@ -130,6 +130,8 @@ def test_the_queue_is_internal_one_page_names_nobody_and_honors_suppression(db, 
     suppress_address(db, f"{hide.street_address}, {hide.city} NJ {hide.zip_code}", source="daniels_law")
     res = _run(db, tmp_path)
     assert res.outbound == [] and res.products == 1
+    # the queue goes to the operator's own inbox (2026-11-09: the PDF was written but never handed to the mailer)
+    assert len(res.internal) == 1 and res.internal[0].exists() and res.internal[0].suffix == ".pdf"
     assert res.found == 21 and res.metrics["suppressed"] == 1
     assert 1 <= res.metrics["rows_shown"] <= s10.DEFAULTS["max_rows"]
     text = _pdf(tmp_path)
