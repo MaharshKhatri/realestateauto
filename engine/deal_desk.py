@@ -25,7 +25,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.text import clean, muni_base, postal_title
+from core.text import clean, is_entity, muni_base, postal_title
 from db.models import CashBuyer, Lead, Property, SignalType
 
 TRIAL_FEE, MONTHLY_FEE = 500, 1000
@@ -114,7 +114,10 @@ def _quantile(xs: list[float], q: float) -> float:
     return xs[min(len(xs) - 1, max(0, round(q * (len(xs) - 1))))]
 
 
-def profile(buyers: list[CashBuyer], key: str, today: date | None = None) -> BuyerProfile | None:
+def profile(buyers: list[CashBuyer], key: str, today: date | None = None,
+            principal: str | None = None) -> BuyerProfile | None:
+    """A buyer family's box. "named" = a person behind it is on record (a deed-export contact that is a person, not
+    the entity again, or the likely principal `partner_principals` found); the name stays in the operator's inbox."""
     from engine.partner_principals import partner_score
     today = today or date.today()
     buys = _purchases(buyers, today)
@@ -126,7 +129,8 @@ def profile(buyers: list[CashBuyer], key: str, today: date | None = None) -> Buy
             towns[(str(x["mun_code"]), postal_title(muni_base(x["municipality"])), str(x.get("county") or "").title())] += 1
     prices = [float(x["price"]) for x in buys if x.get("price") and float(x["price"]) >= MIN_PRICE]
     counties = sorted({str(x.get("county") or "").title() for x in buys if x.get("county")})
-    named = next((clean(b.contact_name) for b in buyers if b.contact_name), None)
+    named = next((clean(b.contact_name) for b in buyers if b.contact_name and not is_entity(b.contact_name)),
+                 None) or (clean(principal) if principal else None)
     entities = sorted({clean(b.entity_name) for b in buyers if b.entity_name}, key=len)
     multi = sum(1 for x in buys if int(x.get("units") or 1) >= 2)
     last = max((str(x.get("deed_date") or "") for x in buys), default=None)
@@ -143,20 +147,24 @@ def profile(buyers: list[CashBuyer], key: str, today: date | None = None) -> Buy
 
 def buyer_profiles(session: Session, today: date | None = None) -> list[BuyerProfile]:
     """One profile per buyer family (records sharing a mailing address are one operator), best first."""
+    from db.models import JVPartner
     from engine.partner_principals import family_key
     fams: dict[str, list[CashBuyer]] = {}
     for b in session.scalars(select(CashBuyer)):
         fams.setdefault(family_key(b) or f"b{b.id}", []).append(b)
-    out = [p for k, bs in fams.items() if (p := profile(bs, k, today)) is not None]
+    principals = {jp.buyer_id: jp.principal_name for jp in session.scalars(select(JVPartner)) if jp.principal_name}
+    out = [p for k, bs in fams.items()
+           if (p := profile(bs, k, today, next((principals[b.id] for b in bs if b.id in principals), None)))]
     return sorted(out, key=lambda p: -p.score)
 
 
 def select_buyers(session: Session, named: int = 34, llcs: int = 20, min_llc_buys: int = 3,
                   today: date | None = None) -> list[BuyerProfile]:
-    """The digest list: every named principal family (best first, up to `named`), then the top multi-buy LLCs."""
+    """The digest list: every named principal family (best first, up to `named`), then the top multi-buy LLCs; when
+    fewer people are on record than `named`, more LLCs fill the list (named + llcs digests in all)."""
     ps = buyer_profiles(session, today)
     first = [p for p in ps if p.kind == "named"][:named]
-    rest = [p for p in ps if p.kind == "llc" and p.purchases_36m >= min_llc_buys][:llcs]
+    rest = [p for p in ps if p.kind == "llc" and p.purchases_36m >= min_llc_buys][:llcs + named - len(first)]
     return first + rest
 
 
@@ -317,7 +325,13 @@ def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None) -> Path:
     from reportlab.lib.pagesizes import LETTER, landscape
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import (
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     from engine import human_copy as hc
     from engine.contracts import _pdf_safe
@@ -333,7 +347,7 @@ def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None) -> Path:
     def P(t: str, st: ParagraphStyle = cell) -> Paragraph:
         return Paragraph(_pdf_safe(t), st)
 
-    k = lambda x: f"${x / 1000:,.0f}K" if x else "-"   # noqa: E731
+    k = lambda x: f"${x / 1000:,.0f}K" if x else "-"
     head = ["#", "Property", "Type / price", "ARV", "Repairs", "Max buy*", "Room", "Listing agent / note"]
     data = [[P(f"<b>{h}</b>") for h in head]]
     for i, r in enumerate(d.rows, 1):
@@ -390,3 +404,167 @@ def summary_text(pairs: list[tuple[Digest, Path]]) -> str:
         who = f"{d.profile.entity}" + (f" ({d.profile.principal})" if d.profile.principal else "")
         lines.append(f"{i:02d}. {who}: {len(d.rows)} deals, {d.profile.box_line()} -> {p.name}")
     return "\n".join(lines)
+
+
+# -- the prospect pipeline ----------------------------------------------------------------------------------------
+STAGES = ("NEW", "CONTACTED", "SAMPLE_SENT", "CALL_BOOKED", "TRIAL", "PAYING", "LOST")
+
+
+def prospect_key(entity: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (entity or "").upper().replace("L.L.C", "LLC"))[:200]
+
+
+def seed_prospects(session: Session, digests: list[Digest], now: Any = None) -> int:
+    """Every digest's buyer becomes (or stays) a prospect; the latest digest's size and date are kept. A stage is
+    never moved back."""
+
+    from db.models import Prospect, utcnow
+    now = now or utcnow()
+    made = 0
+    for d in digests:
+        k = prospect_key(d.profile.entity)
+        p = session.scalar(select(Prospect).where(Prospect.key == k))
+        if p is None:
+            p = Prospect(key=k, entity_name=d.profile.entity, stage="NEW")
+            session.add(p)
+            made += 1
+        p.family_key, p.principal_name = d.profile.key, d.profile.principal or p.principal_name
+        p.purchases_36m, p.buy_box = d.profile.purchases_36m, d.profile.box_line()[:300]
+        p.digest_rows, p.digest_at = len(d.rows), now
+    session.flush()
+    return made
+
+
+def update_prospect(session: Session, item: dict[str, Any], now: Any = None) -> str:
+    """A sealed note's {"prospect": {...}}: public business contacts found for a flipper, or where the pitch stands
+    ("stage", "notes", "next_touch" ISO, "fee"). Matched by entity name; created when new. Returns the stage."""
+    from datetime import datetime
+
+    from db.models import Prospect, utcnow
+    now = now or utcnow()
+    k = prospect_key(str(item.get("entity") or ""))
+    if not k:
+        raise ValueError("prospect needs an entity")
+    p = session.scalar(select(Prospect).where(Prospect.key == k))
+    if p is None:
+        p = Prospect(key=k, entity_name=clean(str(item["entity"]))[:200], stage="NEW")
+        session.add(p)
+    stage = str(item.get("stage") or "").strip().upper()
+    if stage:
+        if stage not in STAGES:
+            raise ValueError("unknown prospect stage")
+        if stage != p.stage:
+            p.stage, p.last_touch_at = stage, now
+    email = str(item.get("email") or "").strip().lower()
+    if email:
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", email):
+            raise ValueError("bad prospect email")
+        p.email = email
+    for f in ("website", "phone", "linkedin", "source", "principal_name"):
+        if item.get(f):
+            setattr(p, f, str(item[f]).strip()[:400])
+    if item.get("notes"):
+        p.notes = ((p.notes + "\n") if p.notes else "") + f"{now:%Y-%m-%d}: {str(item['notes'])[:600]}"
+    if item.get("next_touch"):
+        p.next_touch_at = datetime.fromisoformat(str(item["next_touch"])).replace(tzinfo=None)
+    if item.get("fee"):
+        p.monthly_fee = float(item["fee"])
+    session.flush()
+    return p.stage
+
+
+def pipeline_counts(session: Session) -> dict[str, int]:
+    from db.models import Prospect
+    c = Counter(session.scalars(select(Prospect.stage)))
+    return {s.lower(): int(c.get(s, 0)) for s in STAGES if c.get(s)}
+
+
+# -- flipper-connected listing agents -----------------------------------------------------------------------------
+def _num(x: Any) -> str:
+    return str(x or "").split(".")[0].lstrip("0")
+
+
+# a brokerage's shared inbox lists everyone's houses: it isn't a person a flipper works with
+OFFICE_MAILBOX = re.compile(r"(?i)^(info|office|admin|listings?|front ?desk|reception|contact|team|sales|broker|mls|"
+                            r"hello|support|mail|frontoffice|manager)[0-9._-]*@")
+
+
+def flipper_agents(session: Session, limit: int = 50, today: date | None = None) -> list[dict[str, Any]]:
+    """Listing agents closest to the flippers: +5 for each listing of a house a recorded cash buyer owns (a flip's
+    resale), +0.5 per active cash-buyer family in the town for each fixer listing (0.15 for any other listing, max 5
+    families; these town points cap at 12 so volume alone can't win), +3 when the agent already wrote back to us. Agents who asked to stop, bounced or sit on a stop list are
+    left out; a phone shows only when it is on no stop list."""
+    from db.models import ContactType, DistressSignal, InboundReply
+    from engine import offer_math
+    from engine.compliance import dnc_sources, is_fax_contact
+    today = today or date.today()
+    owned: set[tuple[str, str, str]] = set()
+    names: set[str] = set()
+    town_fams: Counter[str] = Counter()
+    for prof in buyer_profiles(session, today):
+        for m in prof.mun_codes:
+            town_fams[m] += 1
+    for b in session.scalars(select(CashBuyer)):
+        names.add(prospect_key(b.entity_name or ""))
+        for x in b.recent_purchases_json or []:
+            if isinstance(x, dict) and x.get("mun_code") and x.get("block") and x.get("lot"):
+                owned.add((str(x["mun_code"]), _num(x["block"]), _num(x["lot"])))
+    names.discard("")
+    replied = {str(e).lower() for e in session.scalars(select(InboundReply.from_email).where(
+        InboundReply.status.notin_(("bounce", "auto_reply")))) if e}
+    from engine import agent_outreach as ao
+    bounced = ao.bounced_emails(session)
+    props = session.scalars(select(Property).join(DistressSignal, DistressSignal.property_id == Property.id).where(
+        DistressSignal.signal_type.in_((SignalType.STALE_LISTING, SignalType.ACTIVE_LISTING)),
+        DistressSignal.active.is_(True))).unique().all()
+    agents: dict[str, dict[str, Any]] = {}
+    for p in props:
+        lead = p.lead
+        if lead is None or _suppressed(session, p):
+            continue
+        resale = (str(p.mun_code), _num(p.block), _num(p.lot)) in owned or prospect_key(p.owner_name or "") in names
+        try:
+            fixer = offer_math.condition(session, lead) == "fixer"
+        except Exception:                                  # noqa: BLE001 - no listing text: unknown condition
+            fixer = False
+        fams = min(int(town_fams.get(str(p.mun_code), 0)), 5)
+        for c in lead.contacts:
+            if c.contact_type != ContactType.LISTING_AGENT or not c.email or c.dnc_status == "dnc" \
+                    or (c.confidence_score or 0) <= 0 or c.email.lower() in bounced or OFFICE_MAILBOX.match(c.email):
+                continue
+            a = agents.setdefault(c.email.lower(), {"name": postal_title(c.name) if c.name else "", "company":
+                                                    clean(c.company) if c.company else "", "email": c.email.lower(),
+                                                    "phone": "", "score": 0.0, "resales": 0, "fixers": 0,
+                                                    "listings": 0, "towns": Counter(), "warm": False})
+            if c.phone and not a["phone"] and not is_fax_contact(c) and not (
+                    set(dnc_sources(session, c.phone)) & {"internal", "daniels_law"}):
+                a["phone"] = c.phone
+            a["listings"] += 1
+            a["resales"] += int(resale)
+            a["fixers"] += int(fixer and fams > 0)
+            a["resale_pts"] = a.get("resale_pts", 0.0) + 5.0 * resale
+            a["town_pts"] = a.get("town_pts", 0.0) + (0.5 if fixer else 0.15) * fams
+            a["towns"][postal_title(muni_base(p.municipality)) or ""] += 1
+    for e, a in agents.items():
+        # volume alone (a team / office inbox with 80 listings) can't outrank a flip resale: town points cap at 12
+        a["score"] = a.pop("resale_pts", 0.0) + min(a.pop("town_pts", 0.0), 12.0)
+        if e in replied:
+            a["warm"], a["score"] = True, a["score"] + 3.0
+    rows = sorted(agents.values(), key=lambda a: (-a["score"], -a["resales"], a["email"]))[:limit]
+    for a in rows:
+        a["towns"] = ", ".join(t for t, _ in a["towns"].most_common(3) if t)
+        a["score"] = round(a["score"], 1)
+    return rows
+
+
+def agents_csv(rows: list[dict[str, Any]]) -> bytes:
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["rank", "name", "brokerage", "email", "phone", "score", "flip_resales_listed",
+                "fixer_listings_in_flipper_towns", "active_listings", "towns", "already_wrote_back"])
+    for i, a in enumerate(rows, 1):
+        w.writerow([i, a["name"], a["company"], a["email"], a["phone"], a["score"], a["resales"], a["fixers"],
+                    a["listings"], a["towns"], "yes" if a["warm"] else ""])
+    return buf.getvalue().encode("utf-8")

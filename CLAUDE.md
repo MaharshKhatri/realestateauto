@@ -1127,6 +1127,18 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   licensed broker ... paid the flat fee only, never on a deal" (N.J.S.A. 45:15-3: one act for a fee is brokerage), the
   operator's contact, postal address and "no more". Desk task `digest` mails them to the operator's own inbox
   ("[njw-digest] <date> i/n", 10 PDFs each); the run log shows `digests` / `digest_rows` / `digest_mails` only.
+  "Named" = a person on record behind the family (a deed contact that isn't the entity again, or the vault's likely
+  principal); fewer named families leave room for more LLCs (54 digests in all).
+- **Prospects** (`prospects` table, `deal_desk.seed_prospects` / `update_prospect`): one row per digest buyer, stages
+  NEW → CONTACTED → SAMPLE_SENT → CALL_BOOKED → TRIAL → PAYING (or LOST), with public business contacts (website,
+  business e-mail / phone, LinkedIn URL) and their source. A sealed note item `{"prospect": {"entity", "stage",
+  "email", "website", "phone", "linkedin", "source", "notes", "next_touch", "fee"}}` updates it. Contacts come from
+  business sources only (never people-search sites, OpenCorporates or a guessed e-mail pattern).
+- **Flipper-connected agents** (`deal_desk.flipper_agents`, sent with every digest run and alone by task `agents` as
+  "[njw-agents] <date>" + CSV): +5 per listing of a house a recorded cash buyer owns (a flip resale), +0.5 per active
+  cash-buyer family in the town for each fixer listing (0.15 otherwise, capped at 12 so volume can't win), +3 if the
+  agent already wrote back; shared office inboxes (info@, office@, ...), bounced / stopped agents and stop-listed phones
+  are left out.
 - **The desk's own number in a note** (2026-11-09, warm threads answered from the chat): a sealed note item with
   `"price": "firm" | "final" | "sent"` and `{price}` in its "reply" gets the desk's locked number written in and the LOI
   attached at it (`offer_math.note_price`): "firm" = the one offer (on a house whose only gap is the reach, the same

@@ -111,9 +111,72 @@ def test_the_desk_mails_the_digests_to_the_operator_only_and_logs_counts(db, mon
             sent.append(msg)
 
     r = cd.send_digests("me@example.com", "pw", smtp_factory=FakeSMTP, out_dir=tmp_path)
-    assert r == {"digests": 1, "digest_rows": 1, "digest_mails": 1}
-    [msg] = sent
+    assert r == {"digests": 1, "digest_rows": 1, "digest_mails": 1, "flipper_agents": 0, "prospects_new": 1}
+    msg, agents = sent
     assert msg["To"] == "me@example.com" and msg["Subject"].startswith("[njw-digest] ")
     m = message_from_bytes(msg.as_bytes())
     files = [p.get_filename() for p in m.walk() if p.get_filename()]
     assert files == ["01_QUIET_RIVER_LLC.pdf"]
+    assert agents["Subject"].startswith("[njw-agents] ") and agents["To"] == "me@example.com"
+
+
+def test_the_prospect_pipeline_takes_business_contacts_and_stages_from_a_note(db):
+    from db.models import Prospect
+    from engine import cloud_desk as cd
+    _buyer(db, "QUIET RIVER LLC", None, 6, price=380000)
+    db.commit()
+    [d] = dd.build_digests(db, dd.select_buyers(db, today=TODAY), TODAY)
+    assert dd.seed_prospects(db, [d]) == 1 and dd.seed_prospects(db, [d]) == 0
+    db.commit()
+    key = "k" * 32
+    note = cd.seal_note([{"prospect": {"entity": "Quiet River, LLC", "email": "Office@QuietRiver.example",
+                                       "website": "https://quietriver.example", "source": "quietriver.example/contact",
+                                       "stage": "sample_sent", "notes": "sent the Newark digest"}},
+                         {"prospect": {"entity": "QUIET RIVER LLC", "stage": "MAYBE"}}], cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 1, "note_errors": "ValueError"}
+    db.expire_all()
+    [p] = db.query(Prospect).all()
+    assert (p.stage, p.email, p.website) == ("SAMPLE_SENT", "office@quietriver.example", "https://quietriver.example")
+    assert "sent the Newark digest" in p.notes and dd.pipeline_counts(db) == {"sample_sent": 1}
+
+
+def test_flipper_connected_agents_rank_flip_resales_and_fixers_in_flipper_towns(db):
+    b = _buyer(db, "QUIET RIVER LLC", None, 6, price=380000)
+    resale = make_lead(db, sheriff_days=None, stale_listing=True, list_price=450000, block="77", lot="3")
+    b.recent_purchases_json = b.recent_purchases_json + [{"address": "1 FLIP ST", "municipality": "NEWARK CITY",
+                                                         "county": "Essex", "mun_code": "0714", "block": "77",
+                                                         "lot": "3", "price": 250000,
+                                                         "deed_date": (TODAY - timedelta(days=200)).isoformat()}]
+    add_contact(db, resale, contact_type=ContactType.LISTING_AGENT, name="PAT AGENT", phone="9735550100",
+                email="pat@brokerage.example", company="SAMPLE REALTY")
+    fixer = make_lead(db, sheriff_days=None, stale_listing=True, list_price=300000, listing_text="Needs TLC, sold as-is")
+    add_contact(db, fixer, contact_type=ContactType.LISTING_AGENT, name="LEE BROKER", phone="9735550111",
+                email="lee@brokerage.example")
+    db.commit()
+    rows = dd.flipper_agents(db, 50, today=TODAY)
+    assert [r["email"] for r in rows] == ["pat@brokerage.example", "lee@brokerage.example"]
+    assert rows[0]["resales"] == 1 and rows[1]["fixers"] == 1 and rows[0]["phone"] == "9735550100"
+    assert b"pat@brokerage.example" in dd.agents_csv(rows)
+
+
+def test_task_agents_sends_only_the_agents_report(db, monkeypatch, tmp_path):
+    from engine import cloud_desk as cd
+    _buyer(db, "QUIET RIVER LLC", None, 6, price=380000)
+    db.commit()
+    sent = []
+
+    class FakeSMTP:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def login(self, *a):
+            pass
+
+        def send_message(self, msg):
+            sent.append(msg["Subject"])
+
+    r = cd.send_digests("me@example.com", "pw", smtp_factory=FakeSMTP, out_dir=tmp_path, digests=False)
+    assert r["digest_mails"] == 0 and [x.split()[0] for x in sent] == ["[njw-agents]"]

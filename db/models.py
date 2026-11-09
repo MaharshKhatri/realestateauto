@@ -669,6 +669,35 @@ class OpraRequest(Base):
     __table_args__ = (UniqueConstraint("county", "town", "year", name="uq_opra_request"),)
 
 
+class Prospect(Base):
+    """A flipper the operator pitches the flat-fee AI Deal Desk to (2026-11-09 pivot, engine/deal_desk.py): one row per
+    buyer family. Stages: NEW (digest ready) -> CONTACTED -> SAMPLE_SENT -> CALL_BOOKED -> TRIAL -> PAYING, or LOST.
+    Contact details are public business ones (website, business e-mail / phone) with their source."""
+    __tablename__ = "prospects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(200), unique=True)          # normalized entity name
+    family_key: Mapped[str | None] = mapped_column(String(200), index=True)
+    entity_name: Mapped[str] = mapped_column(String(200))
+    principal_name: Mapped[str | None] = mapped_column(String(200))
+    stage: Mapped[str] = mapped_column(String(16), default="NEW", index=True)
+    website: Mapped[str | None] = mapped_column(String(250))
+    email: Mapped[str | None] = mapped_column(String(120))
+    phone: Mapped[str | None] = mapped_column(String(32))
+    linkedin: Mapped[str | None] = mapped_column(String(250))
+    source: Mapped[str | None] = mapped_column(String(400))              # where the contact details were published
+    purchases_36m: Mapped[int] = mapped_column(Integer, default=0)
+    buy_box: Mapped[str | None] = mapped_column(String(300))
+    digest_rows: Mapped[int] = mapped_column(Integer, default=0)         # deals on the latest digest
+    digest_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_touch_at: Mapped[datetime | None] = mapped_column(DateTime)
+    next_touch_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    monthly_fee: Mapped[float | None] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class JVPartner(Base):
     """A local cash buyer / rehabber the operator has (or wants) as a funding partner: their LLC signs, their proof
     of funds and deposit back the offer, they walk the house, and the profit is split under a JV agreement

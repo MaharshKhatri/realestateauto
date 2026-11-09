@@ -222,7 +222,7 @@ SUBJECT_DIGEST = "[njw-digest]"
 
 
 def send_digests(user: str, password: str, *, now: datetime | None = None, smtp_factory: Any = None,
-                 out_dir: Path | None = None, per_mail: int = 10) -> dict[str, int]:
+                 out_dir: Path | None = None, per_mail: int = 10, digests: bool = True) -> dict[str, int]:
     """Task `digest` (2026-11-09 pivot): one-page Weekly Deal Digests for the named flippers and the top multi-buy
     LLCs (engine/deal_desk.py), mailed to the operator's own inbox in batches as "[njw-digest] <date> i/n". The
     operator forwards each PDF to the buyer it names. Counts only come back (the run log is public)."""
@@ -232,13 +232,28 @@ def send_digests(user: str, password: str, *, now: datetime | None = None, smtp_
     from engine import gmail_autopilot as gm
     day = gm.now_eastern(now).date()
     with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(out_dir or tmp)
         with session_scope() as s:
-            pairs = deal_desk.write_all(s, Path(out_dir or tmp), today=day)
-        batches = [pairs[i:i + per_mail] for i in range(0, len(pairs), per_mail)]
+            if digests:
+                pairs = deal_desk.write_all(s, folder, today=day)
+            else:
+                pairs = [(d, folder / "-") for d in deal_desk.build_digests(
+                    s, deal_desk.select_buyers(s, today=day), day)]
+            deal_desk.seed_prospects(s, [d for d, _ in pairs])
+            agents = deal_desk.flipper_agents(s, 50, today=day)
+            stages = deal_desk.pipeline_counts(s)
+        batches = [pairs[i:i + per_mail] for i in range(0, len(pairs), per_mail)] if digests else []
         for i, batch in enumerate(batches, 1):
             _send_self_files(user, password, f"{SUBJECT_DIGEST} {day:%Y-%m-%d} {i}/{len(batches)}",
                              deal_desk.summary_text(batch), [p for _, p in batch], smtp_factory)
-    return {"digests": len(pairs), "digest_rows": sum(len(d.rows) for d, _ in pairs), "digest_mails": len(batches)}
+        csv_path = folder / f"flipper_connected_agents_{day:%Y%m%d}.csv"
+        csv_path.write_bytes(deal_desk.agents_csv(agents))
+        _send_self_files(user, password, f"[njw-agents] {day:%Y-%m-%d} top {len(agents)} flipper-connected agents",
+                         "Listing agents closest to the flippers (score: +5 per flip resale they list, +0.5 per active "
+                         "cash-buyer family in the town for each fixer listing, capped at 12, +3 if they already wrote back to you).\n"
+                         "Pipeline: " + ", ".join(f"{k} {v}" for k, v in stages.items()), [csv_path], smtp_factory)
+    return {"digests": len(pairs), "digest_rows": sum(len(d.rows) for d, _ in pairs), "digest_mails": len(batches),
+            "flipper_agents": len(agents), **{f"prospects_{k}": v for k, v in stages.items()}}
 
 
 def send_bundle(user: str, password: str, sealed: bytes, kind: str, *, now: datetime | None = None,
@@ -524,7 +539,9 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       sellers"); "channel" (call / email) is how the "call" outcome was heard;
     - "price": "firm" / "final" / "sent" with "{price}" in the reply: the desk's own locked number is written in and
       the LOI attached at it (`offer_math.note_price`); a house that may not get a number in writing (HOLD, no living
-      area, old comps, retail, FRFPA, offered above today's final) is refused and nothing is sent.
+      area, old comps, retail, FRFPA, offered above today's final) is refused and nothing is sent;
+    - "prospect" (no "lead"): a flipper's public business contacts / pitch stage for the Deal Desk pipeline
+      ({"entity", "stage", "email", "website", "phone", "linkedin", "source", "notes", "next_touch", "fee"}).
     Counts only come back: the run log is public."""
     from db.database import session_scope
     from db.models import Lead
@@ -539,6 +556,16 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("operator"), dict)]:
         try:
             set_operator(item["operator"])
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
+            errors.append(type(exc).__name__)
+        items = [i for i in items if i is not item]
+    for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("prospect"), dict)]:
+        # A flipper's public business contacts or where the Deal Desk pitch stands (engine/deal_desk.py).
+        try:
+            from engine import deal_desk
+            with session_scope() as s:
+                deal_desk.update_prospect(s, item["prospect"], now=now)
             done += 1
         except Exception as exc:                   # noqa: BLE001 - reported by name only
             errors.append(type(exc).__name__)
@@ -781,9 +808,10 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             out["dismiss_error"] = type(exc).__name__
     if task == "note" and note:
         out.update(apply_note(note, desk_key, now=now, smtp_factory=smtp_factory))
-    if task == "digest":
+    if task in ("digest", "agents"):
+        # "agents": only the flipper-connected agents report + the prospect pipeline (no digests re-sent).
         try:
-            out.update(send_digests(user, pw, now=now, smtp_factory=smtp_factory))
+            out.update(send_digests(user, pw, now=now, smtp_factory=smtp_factory, digests=task == "digest"))
         except Exception as exc:                   # noqa: BLE001 - reported by name only (public log)
             out["digest_error"] = type(exc).__name__
     if task == "offer" and lead_id:
