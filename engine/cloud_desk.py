@@ -514,6 +514,18 @@ def set_operator(values: dict[str, Any]) -> dict[str, str]:
     return clean
 
 
+def fallback_code(reason: str) -> str:
+    """A short public code for why the desk wrote no number (the reason text itself can name a price)."""
+    r = reason.lower()
+    for code, words in (("old_comps", ("comparable sales are old", "old comps")), ("no_sqft", ("living area",)),
+                        ("hold", ("hold", "pre-flight")), ("retail", ("retail", "move-in")),
+                        ("frfpa", ("frfpa", "occupancy", "82%")), ("sent_above_final", ("already", "above")),
+                        ("not_underwritten", ("not underwritten", "no valuation")), ("verdict", ("verdict", "skip"))):
+        if any(w in r for w in words):
+            return code
+    return "other"
+
+
 def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_factory: Any = None) -> dict[str, Any]:
     """Each item names a lead and what the operator said or wants, applied through the normal gates:
 
@@ -553,6 +565,7 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     except Exception:                              # noqa: BLE001 - a bad note is reported, never printed
         return {"note_error": "unreadable"}
     done, errors, facts, firmed, priced, fallbacks = 0, [], 0, 0, 0, 0
+    why: list[str] = []
     for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("operator"), dict)]:
         try:
             set_operator(item["operator"])
@@ -673,12 +686,13 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                                                           at_least=float(item.get("at_least") or 0))
                             text, over = text.replace("{price}", hc.money(price)), True
                             priced += 1
-                        except ValueError:
+                        except ValueError as refused:
                             # No number allowed in writing on this house today: the item's "fallback" (a no-price
                             # answer, e.g. the one fact the number needs) goes instead, so the thread is still answered.
                             if not (item.get("fallback") or "").strip():
                                 raise
                             text, price, fallbacks = str(item["fallback"]), None, fallbacks + 1
+                            why.append(fallback_code(str(refused)))
                     elif isinstance(price, str):
                         price = float(price.replace(",", ""))
                     gm.send_custom_reply(s, lead_id, text, price=price, now=now,
@@ -706,6 +720,7 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         out["desk_priced"] = priced
     if fallbacks:
         out["desk_fallback"] = fallbacks
+        out["desk_fallback_why"] = ",".join(why)          # short codes only (the public log names no house)
     if errors:
         out["note_errors"] = ",".join(errors)
     return out

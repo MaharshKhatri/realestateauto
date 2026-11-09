@@ -601,5 +601,12 @@ def test_a_refused_desk_price_sends_the_items_fallback_and_never_undercuts_an_ol
                            reasons=["the living area isn't on record"])
     note = cd.seal_note([{"lead": lead.id, "reply": "my number is {price}", "price": "firm",
                           "fallback": "What's the square footage? I'll send a number the same day."}], cd.public_hex(key))
-    assert cd.apply_note(note, key) == {"note_done": 1, "desk_fallback": 1}
+    assert cd.apply_note(note, key) == {"note_done": 1, "desk_fallback": 1, "desk_fallback_why": "no_sqft"}
     assert sent == [("What's the square footage? I'll send a number the same day.", None)]
+
+
+def test_fallback_codes_name_the_reason_not_the_house():
+    assert cd.fallback_code("the comparable sales are old (median 30 months)") == "old_comps"
+    assert cd.fallback_code("the living area isn't on record") == "no_sqft"
+    assert cd.fallback_code("not underwritten") == "not_underwritten"
+    assert cd.fallback_code("something new") == "other"
