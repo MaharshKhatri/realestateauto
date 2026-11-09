@@ -301,14 +301,16 @@ def locked(lead: Any, f: FirmOffer) -> FirmOffer:
 REACH_REASONS = ("our final is ",)
 
 
-def note_price(session: Any, lead: Any, mode: str, *, today: date | None = None) -> float:
+def note_price(session: Any, lead: Any, mode: str, *, today: date | None = None, at_least: float = 0) -> float:
     """A sealed note's symbolic price (2026-11-09, the operator: "send the promised numbers"): Claude writes the words
     and the desk fills in its own number, so no figure is ever typed from memory. Raises ValueError (the reason) when
     the house may not get a number in writing:
 
     - "firm": the one offer (`firm_offer().offer`); on an ask-first or too-far-apart house whose only gap is the reach
       (the agent asked for our number), the same offer math (`opening`), never under a number already sent;
-    - "final": the best and final; "sent": the number already in writing, restated.
+    - "final": the best and final; "sent": the number already in writing, restated;
+    - at_least: a number already stated in writing that lead.offer_amount doesn't hold (an older two-option offer's
+      higher option): the price is never under it, and refused when it is above today's final.
 
     Never on HOLD, retail, FRFPA or verdict skips, a certainty issue (no living area, old comps: get the fact first) or
     a house whose re-check puts the final under what was already offered (the operator decides that one)."""
@@ -319,11 +321,11 @@ def note_price(session: Any, lead: Any, mode: str, *, today: date | None = None)
     gaps = [r for r in f.reasons if not r.startswith(REACH_REASONS)]
     if not f.final or gaps:
         raise ValueError(gaps[0] if gaps else "no number for this house")
-    sent = float(lead.offer_amount or 0)
+    sent = max(float(lead.offer_amount or 0), float(at_least or 0))
     if sent > f.final:
         raise ValueError(f"already offered {sent:,.0f}, above today's final {f.final:,.0f}: the operator decides")
     if mode == "sent":
-        if not sent:
+        if not lead.offer_amount and not at_least:
             raise ValueError("no number in writing yet")
         return sent
     if mode == "final":

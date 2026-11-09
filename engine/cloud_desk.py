@@ -498,7 +498,7 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         items = open_note(blob, desk_key)
     except Exception:                              # noqa: BLE001 - a bad note is reported, never printed
         return {"note_error": "unreadable"}
-    done, errors, facts, firmed, priced = 0, [], 0, 0, 0
+    done, errors, facts, firmed, priced, fallbacks = 0, [], 0, 0, 0, 0
     for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("operator"), dict)]:
         try:
             set_operator(item["operator"])
@@ -572,9 +572,17 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                         from engine import human_copy as hc
                         if "{price}" not in text:
                             raise ValueError("a symbolic price needs {price} in the reply")
-                        price = offer_math.note_price(s, lead, price, today=gm.now_eastern(now).date())
-                        text, over = text.replace("{price}", hc.money(price)), True
-                        priced += 1
+                        try:
+                            price = offer_math.note_price(s, lead, price, today=gm.now_eastern(now).date(),
+                                                          at_least=float(item.get("at_least") or 0))
+                            text, over = text.replace("{price}", hc.money(price)), True
+                            priced += 1
+                        except ValueError:
+                            # No number allowed in writing on this house today: the item's "fallback" (a no-price
+                            # answer, e.g. the one fact the number needs) goes instead, so the thread is still answered.
+                            if not (item.get("fallback") or "").strip():
+                                raise
+                            text, price, fallbacks = str(item["fallback"]), None, fallbacks + 1
                     elif isinstance(price, str):
                         price = float(price.replace(",", ""))
                     gm.send_custom_reply(s, lead_id, text, price=price, now=now,
@@ -600,6 +608,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         out["facts_saved"], out["now_firm"] = facts, firmed
     if priced:
         out["desk_priced"] = priced
+    if fallbacks:
+        out["desk_fallback"] = fallbacks
     if errors:
         out["note_errors"] = ",".join(errors)
     return out

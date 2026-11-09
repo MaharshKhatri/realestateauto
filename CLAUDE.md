@@ -1120,7 +1120,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   attached at it (`offer_math.note_price`): "firm" = the one offer (on a house whose only gap is the reach, the same
   offer math, `FirmOffer.opening`), never under a number already sent; "final" = best and final; "sent" = restated.
   HOLD, retail, FRFPA, verdict skips, certainty issues (no living area, old comps) and an offer already above today's
-  final are refused and nothing is sent. Run log: `desk_priced` count only.
+  final are refused and nothing is sent, unless the item has a no-price `"fallback"` text, which goes instead;
+  `"at_least"` keeps an older two-option offer's higher option. Run log: `desk_priced` / `desk_fallback` counts only.
 - **Paused 2026-11-09 (operator pivot away from cold MLS wholesaling)**: desk.yml `DAILY_OPENERS: "0"` (no new cold openers or
   48-hour nudges) and `CALL_SHEET: "off"` (`cloud_desk._work` builds no call sheet and clears today's frozen one, so the call
   blocks leave the calendar). Replies to agents who already wrote back, the data harvest, valuations and the calendar keep

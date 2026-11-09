@@ -565,3 +565,28 @@ def test_a_note_can_ask_the_desk_for_its_own_number(db, monkeypatch):
     sent.clear()
     note = cd.seal_note([{"lead": lead.id, "reply": "my number is {price}", "price": "firm"}], cd.public_hex(key))
     assert cd.apply_note(note, key) == {"note_done": 0, "note_errors": "ValueError"} and sent == []
+
+
+def test_a_refused_desk_price_sends_the_items_fallback_and_never_undercuts_an_older_option(db, monkeypatch):
+    """2026-11-09: every warm thread had to be answered today. A house that may not get a number in writing (no living
+    area) gets the item's no-price "fallback" instead; "at_least" keeps an older two-option offer's higher option."""
+    from dataclasses import replace as fresh
+    from engine import offer_math
+    from engine.offer_math import FirmOffer
+    from tests.factories import make_lead
+    lead = make_lead(db, sheriff_days=None, stale_listing=True)
+    db.commit()
+    state = {"f": FirmOffer("firm", offer=270000, final=290000, buyer_max=295000, ask=380000, opening=270000)}
+    monkeypatch.setattr(offer_math, "firm_offer", lambda l, s=None, **kw: fresh(state["f"], reasons=list(state["f"].reasons)))
+    assert offer_math.note_price(db, lead, "firm", at_least=284700) == 284700
+    with pytest.raises(ValueError):
+        offer_math.note_price(db, lead, "firm", at_least=295000)        # above today's final: the operator decides
+    sent = []
+    monkeypatch.setattr(gm, "send_custom_reply", lambda s, lead_id, text, **kw: sent.append((text, kw["price"])))
+    key = "k" * 32
+    state["f"] = FirmOffer("ask_first", final=290000, buyer_max=295000, ask=380000, opening=270000,
+                           reasons=["the living area isn't on record"])
+    note = cd.seal_note([{"lead": lead.id, "reply": "my number is {price}", "price": "firm",
+                          "fallback": "What's the square footage? I'll send a number the same day."}], cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 1, "desk_fallback": 1}
+    assert sent == [("What's the square footage? I'll send a number the same day.", None)]
