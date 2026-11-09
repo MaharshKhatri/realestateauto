@@ -1056,8 +1056,11 @@ def actions_event(session: Session, now: datetime) -> Desired | None:
     if b.get("date") == now.date().isoformat():
         for a0, b0 in b.get("spans") or []:
             busy.append(tuple(datetime.combine(now.date(), time(*(int(x) for x in v.split(":")))) for v in (a0, b0)))
-    placed = place_blocks(now.date(), [("T", str(cfg().get("actions_time") or "11:00"), 45)], busy,
-                          min_minutes=30).get("T")
+    planned = str(cfg().get("actions_time") or "11:00")
+    soon = (now + timedelta(minutes=15 - now.minute % 15)).replace(second=0, microsecond=0)
+    if soon.date() == now.date() and f"{soon:%H:%M}" > planned:
+        planned = f"{soon:%H:%M}"                 # built after 11:00: the block starts from now, never in the past
+    placed = place_blocks(now.date(), [("T", planned, 45)], busy, min_minutes=30).get("T")
     start, mins = placed if placed else (datetime.combine(now.date(), time(11, 0)), 45)
     s, e = _timed(start, mins)
     lines = [f"{i}. {x}" for i, x in enumerate(items, 1)]

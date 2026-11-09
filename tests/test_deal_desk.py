@@ -231,3 +231,14 @@ def test_a_company_found_for_an_unnamed_cluster_buyer_names_its_digest(db):
     assert (p.entity, p.kind) == ("Sample Home Buyers", "named")
     from db.models import Prospect
     assert db.query(Prospect).one().phone == "9735550005"
+
+
+def test_todays_ten_built_in_the_afternoon_starts_from_now(db):
+    from datetime import datetime
+
+    from db.models import Prospect
+    from engine import gcal_sync
+    db.add(Prospect(key="QUIETRIVERLLC", entity_name="QUIET RIVER LLC", stage="NEW", email="office@quietriver.example"))
+    db.commit()
+    ev = gcal_sync.actions_event(db, datetime(2026, 11, 10, 14, 29))
+    assert ev.starts_at == datetime(2026, 11, 10, 14, 30)
