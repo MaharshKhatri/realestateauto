@@ -43,7 +43,9 @@ jobs:
       SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
       DESK_KEY: ${{ secrets.DESK_KEY }}
       TZ: America/New_York
-      DAILY_OPENERS: "35"          # new cold openers per weekday, shared by the waves below (cap: outreach.daily_email_limit)
+      DAILY_OPENERS: "0"           # PAUSED 2026-11-09 (pivot away from cold MLS wholesaling); was "35" new cold openers
+                                   # per weekday, shared by the waves below (cap: outreach.daily_email_limit)
+      CALL_SHEET: "off"            # PAUSED 2026-11-09: no daily call sheet / call blocks ("on" restores them)
       OPENER_WAVES: "10:30,14:00,16:30"
     steps:
       - name: Start the clock

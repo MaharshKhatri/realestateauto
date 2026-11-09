@@ -497,3 +497,18 @@ def test_a_note_saves_the_size_an_agent_gave_and_revalues_the_house(db, monkeypa
     assert seen == [(lead.id, 1450)]
     bad = cd.seal_note([{"lead": lead.id, "sqft": 14}], cd.public_hex(key))
     assert cd.apply_note(bad, key) == {"note_done": 0, "note_errors": "ValueError"}
+
+
+def test_the_call_sheet_can_be_paused_and_todays_blocks_cleared(db, monkeypatch, tmp_path):
+    """2026-11-09: the operator stopped the 100-call MLS sheet. CALL_SHEET=off builds no sheet and clears today's
+    frozen one, so its call blocks leave the calendar on the next sync."""
+    from db.models import SwarmState
+    from engine import call_sheet as cs
+    db.add(SwarmState(key=cs.STATE_KEY, value_json={"date": "2026-11-09", "rows": [{"code": "A01"}]}))
+    db.commit()
+    monkeypatch.setenv("CALL_SHEET", "off")
+    kw = dict(now=datetime(2026, 11, 9, 7, 30), smtp_factory=None, user=ME, pw="p", desk_key=KEY, root=tmp_path)
+    assert cd._work("run", approve_id=None, **kw)["call_sheet"] == 0
+    db.expire_all()
+    assert not (db.get(SwarmState, cs.STATE_KEY).value_json or {}).get("rows")
+    assert cs.stored(db, datetime(2026, 11, 9).date()) == []

@@ -681,7 +681,17 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
         from engine.outreach_stats import flat, funnel
         with session_scope() as s:
             out.update(flat(funnel(s, t.replace(tzinfo=None))))
-    if t.weekday() < 6 and 7 <= t.hour < 21:
+    if os.environ.get("CALL_SHEET", "on").strip().lower() == "off":
+        # Paused (2026-11-09, the operator stopped the 100-call MLS sheet): no new sheet, and today's frozen one is
+        # cleared so its call blocks and catch-up event leave the calendar on the next sync.
+        from db.models import SwarmState
+        from engine import call_sheet as cs
+        with session_scope() as s:
+            row = s.get(SwarmState, cs.STATE_KEY)
+            if row is not None and (row.value_json or {}).get("rows"):
+                row.value_json = {}
+        out["call_sheet"] = 0
+    elif t.weekday() < 6 and 7 <= t.hour < 21:
         # The day's call sheet (engine/call_sheet.py), frozen at its first build so codes mean the same call all day;
         # task `sheet` rebuilds the blocks nobody has called yet with today's rules.
         from engine import call_sheet as cs
