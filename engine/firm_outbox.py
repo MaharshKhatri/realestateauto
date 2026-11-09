@@ -200,7 +200,11 @@ def compose(row: FirmOutbox, op: dict[str, str], message_id: str, user: str) -> 
     first = (op.get("first") or "").strip()
     if first and body.splitlines() and body.splitlines()[-1].strip().lower() == first.lower():
         body = "\n".join(body.splitlines()[:-1]).rstrip()          # the signature carries the name
-    msg.set_content(body + "\n" + footer(op, row.kind in ("pitch", "followup")))
+    lines = body.splitlines()
+    if not (lines and re.fullmatch(r"(?i)(thanks|thank you|best|regards|best regards|sincerely|cheers)[,.!]?",
+                                   lines[-1].strip())):
+        body += "\n\nThanks,"                         # the house sign-off above the signature, as in agent e-mails
+    msg.set_content(body + footer(op, row.kind in ("pitch", "followup")))
     for a in row.attachments_json or []:
         try:
             msg.add_attachment(base64.b64decode(a["b64"]), maintype="application",
