@@ -512,3 +512,56 @@ def test_the_call_sheet_can_be_paused_and_todays_blocks_cleared(db, monkeypatch,
     db.expire_all()
     assert not (db.get(SwarmState, cs.STATE_KEY).value_json or {}).get("rows")
     assert cs.stored(db, datetime(2026, 11, 9).date()) == []
+
+
+def test_a_note_can_ask_the_desk_for_its_own_number(db, monkeypatch):
+    """2026-11-09: the operator wants every warm thread answered with our number today. Claude writes the words with
+    "{price}" and "price": "firm" / "final" / "sent"; the desk writes in its own locked number (never one typed from
+    memory) and refuses a house that may not get a number in writing."""
+    from engine import offer_math
+    from engine.offer_math import FirmOffer
+    from tests.factories import make_lead
+    lead = make_lead(db, sheriff_days=None, stale_listing=True)
+    db.commit()
+    state = {"f": FirmOffer("firm", offer=300000, final=305000, buyer_max=310000, ask=330000, opening=300000)}
+    from dataclasses import replace as fresh
+    monkeypatch.setattr(offer_math, "firm_offer", lambda l, s=None, **kw: fresh(state["f"], reasons=list(state["f"].reasons)))
+    assert offer_math.note_price(db, lead, "firm") == 300000
+    assert offer_math.note_price(db, lead, "final") == 305000
+    with pytest.raises(ValueError):
+        offer_math.note_price(db, lead, "sent")                     # nothing in writing yet
+    lead.offer_amount = 302000
+    assert offer_math.note_price(db, lead, "firm") == 302000        # never under a number already sent
+    assert offer_math.note_price(db, lead, "sent") == 302000
+    # ask-first or too far apart only on the reach: the agent asked, so the same offer math is stated
+    state["f"] = FirmOffer("skip", final=305000, buyer_max=310000, ask=480000, opening=280000,
+                           reasons=["our final is 64% of the ask (under 65%): too far apart to call or write"])
+    lead.offer_amount = None
+    assert offer_math.note_price(db, lead, "firm") == 280000
+    for reasons in (["the living area isn't on record"], ["wrong parcel"],
+                    ["move-in-ready or new listing: retail buyers outbid an investor"]):
+        state["f"] = FirmOffer("ask_first", final=305000, buyer_max=310000, ask=330000, opening=290000, reasons=reasons)
+        with pytest.raises(ValueError):
+            offer_math.note_price(db, lead, "firm")
+    state["f"] = FirmOffer("firm", offer=300000, final=305000, buyer_max=310000, ask=330000, opening=300000)
+    lead.offer_amount = 320000                                      # a re-check fell under what we already offered
+    with pytest.raises(ValueError):
+        offer_math.note_price(db, lead, "final")
+    lead.offer_amount = None
+    db.commit()
+
+    sent = []
+    monkeypatch.setattr(gm, "send_custom_reply", lambda s, lead_id, text, **kw: sent.append((lead_id, text, kw)))
+    key = "k" * 32
+    note = cd.seal_note([{"lead": lead.id, "reply": "Hi Pat, my number is {price}, cash, as-is.", "price": "firm"},
+                         {"lead": lead.id, "reply": "Hi Pat, my number is 300K.", "price": "final"}],
+                        cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 1, "desk_priced": 1, "note_errors": "ValueError"}
+    [(lid, text, kw)] = sent
+    assert lid == lead.id and text == "Hi Pat, my number is $300,000, cash, as-is."
+    assert kw["price"] == 300000 and kw["allow_over_walkaway"] is True
+    state["f"] = FirmOffer("ask_first", final=305000, buyer_max=310000, ask=330000, opening=290000,
+                           reasons=["the comparable sales are old (median 20 months)"])
+    sent.clear()
+    note = cd.seal_note([{"lead": lead.id, "reply": "my number is {price}", "price": "firm"}], cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 0, "note_errors": "ValueError"} and sent == []

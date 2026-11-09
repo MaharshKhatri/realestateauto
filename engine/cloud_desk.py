@@ -484,7 +484,10 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       re-valued live, so an "agree to nothing (the living area isn't on record)" row can get a real number;
     - "close_replies": a short reason; every reply still waiting on the lead is closed (dismissed) with it, so the
       desk sends nothing more on it (the operator or Claude settled it: a call, a polite no, a "sharing with the
-      sellers"); "channel" (call / email) is how the "call" outcome was heard.
+      sellers"); "channel" (call / email) is how the "call" outcome was heard;
+    - "price": "firm" / "final" / "sent" with "{price}" in the reply: the desk's own locked number is written in and
+      the LOI attached at it (`offer_math.note_price`); a house that may not get a number in writing (HOLD, no living
+      area, old comps, retail, FRFPA, offered above today's final) is refused and nothing is sent.
     Counts only come back: the run log is public."""
     from db.database import session_scope
     from db.models import Lead
@@ -495,7 +498,7 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         items = open_note(blob, desk_key)
     except Exception:                              # noqa: BLE001 - a bad note is reported, never printed
         return {"note_error": "unreadable"}
-    done, errors, facts, firmed = 0, [], 0, 0
+    done, errors, facts, firmed, priced = 0, [], 0, 0, 0
     for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("operator"), dict)]:
         try:
             set_operator(item["operator"])
@@ -559,9 +562,23 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                     facts += 1
                     firmed += int(tier == "firm")
                 if (item.get("reply") or "").strip():
-                    gm.send_custom_reply(s, lead_id, item["reply"], price=item.get("price") or None, now=now,
-                                         smtp_factory=smtp_factory, to=new_email or None,
-                                         allow_over_walkaway=bool(item.get("over_walkaway")))
+                    text, price = str(item["reply"]), item.get("price") or None
+                    over = bool(item.get("over_walkaway"))
+                    if isinstance(price, str) and not re.fullmatch(r"[\d,.]+", price.strip()):
+                        # "firm" / "final" / "sent": the desk's own locked number fills "{price}" (2026-11-09: warm
+                        # threads answered from the chat without a figure typed from memory); refused with the reason
+                        # when the house may not get a number in writing. It never exceeds the final.
+                        from engine import offer_math
+                        from engine import human_copy as hc
+                        if "{price}" not in text:
+                            raise ValueError("a symbolic price needs {price} in the reply")
+                        price = offer_math.note_price(s, lead, price, today=gm.now_eastern(now).date())
+                        text, over = text.replace("{price}", hc.money(price)), True
+                        priced += 1
+                    elif isinstance(price, str):
+                        price = float(price.replace(",", ""))
+                    gm.send_custom_reply(s, lead_id, text, price=price, now=now,
+                                         smtp_factory=smtp_factory, to=new_email or None, allow_over_walkaway=over)
                 if (item.get("close_replies") or "").strip():
                     gm.close_open_replies(s, lead_id, "closed from the chat: " + str(item["close_replies"])[:120])
                 if item.get("followup_at") and not item.get("call"):
@@ -581,6 +598,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     out: dict[str, Any] = {"note_done": done}
     if facts:
         out["facts_saved"], out["now_firm"] = facts, firmed
+    if priced:
+        out["desk_priced"] = priced
     if errors:
         out["note_errors"] = ",".join(errors)
     return out

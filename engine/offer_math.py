@@ -134,6 +134,7 @@ class FirmOffer:
     ask: float | None = None
     reasons: list[str] = field(default_factory=list)    # why it isn't firm (or why skip)
     terms: tuple[str, ...] = FOLLOW_TERMS
+    opening: float | None = None               # the number we'd state if asked (offer math before the tier gates)
 
     @property
     def priced(self) -> bool:
@@ -252,7 +253,7 @@ def firm_offer(lead: Any, session: Any = None, *, today: date | None = None,
                              reasons=["the payoff is above our final: only a lender short sale could work"])
         if debt > offer:
             offer = min(final, math.ceil(debt / 1000.0) * 1000.0)
-    out = FirmOffer("skip", offer=offer, final=final, buyer_max=buyer_max, ask=ask)
+    out = FirmOffer("skip", offer=offer, final=final, buyer_max=buyer_max, ask=ask, opening=offer)
     o = dict(settings().get("outreach") or {})
     firm_gate, ask_gate = float(o.get("min_list_to_mao_75", 0.80)), float(o.get("ask_first_min_reach", 0.65))
     reach = out.reach if ask else None
@@ -295,6 +296,42 @@ def locked(lead: Any, f: FirmOffer) -> FirmOffer:
             f.reasons = [*f.reasons, f"a re-check puts our final ({f.final:,.0f}) under the {sent:,.0f} already "
                                      "offered: honor it only after the operator confirms"]
     return f
+
+
+REACH_REASONS = ("our final is ",)
+
+
+def note_price(session: Any, lead: Any, mode: str, *, today: date | None = None) -> float:
+    """A sealed note's symbolic price (2026-11-09, the operator: "send the promised numbers"): Claude writes the words
+    and the desk fills in its own number, so no figure is ever typed from memory. Raises ValueError (the reason) when
+    the house may not get a number in writing:
+
+    - "firm": the one offer (`firm_offer().offer`); on an ask-first or too-far-apart house whose only gap is the reach
+      (the agent asked for our number), the same offer math (`opening`), never under a number already sent;
+    - "final": the best and final; "sent": the number already in writing, restated.
+
+    Never on HOLD, retail, FRFPA or verdict skips, a certainty issue (no living area, old comps: get the fact first) or
+    a house whose re-check puts the final under what was already offered (the operator decides that one)."""
+    mode = mode.strip().lower()
+    if mode not in ("firm", "final", "sent"):
+        raise ValueError(f"unknown price mode {mode!r}")
+    f = locked(lead, firm_offer(lead, session, today=today))
+    gaps = [r for r in f.reasons if not r.startswith(REACH_REASONS)]
+    if not f.final or gaps:
+        raise ValueError(gaps[0] if gaps else "no number for this house")
+    sent = float(lead.offer_amount or 0)
+    if sent > f.final:
+        raise ValueError(f"already offered {sent:,.0f}, above today's final {f.final:,.0f}: the operator decides")
+    if mode == "sent":
+        if not sent:
+            raise ValueError("no number in writing yet")
+        return sent
+    if mode == "final":
+        return f.final
+    num = f.offer if f.tier == "firm" and f.offer else f.opening
+    if not num:
+        raise ValueError("no number for this house")
+    return min(max(float(num), sent), f.final)
 
 
 # Certainty issues that fresh sold comps can clear (the rest need a fact from the agent or the operator).

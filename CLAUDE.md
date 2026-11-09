@@ -1115,6 +1115,12 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     (20, ~90 valuations at the ~13 s measured live: the cloud desk's run-all has a 45-minute limit); the daemon's nightly
     2:10 run gets 120 minutes (`agents.schedule_options`, passed only to scheduled runs). A try with no comps waits
     `new_listing_retry_days` (3). Unmatched listing parcels carry the listing's own coordinates, so they can be valued.
+- **The desk's own number in a note** (2026-11-09, warm threads answered from the chat): a sealed note item with
+  `"price": "firm" | "final" | "sent"` and `{price}` in its "reply" gets the desk's locked number written in and the LOI
+  attached at it (`offer_math.note_price`): "firm" = the one offer (on a house whose only gap is the reach, the same
+  offer math, `FirmOffer.opening`), never under a number already sent; "final" = best and final; "sent" = restated.
+  HOLD, retail, FRFPA, verdict skips, certainty issues (no living area, old comps) and an offer already above today's
+  final are refused and nothing is sent. Run log: `desk_priced` count only.
 - **Paused 2026-11-09 (operator pivot away from cold MLS wholesaling)**: desk.yml `DAILY_OPENERS: "0"` (no new cold openers or
   48-hour nudges) and `CALL_SHEET: "off"` (`cloud_desk._work` builds no call sheet and clears today's frozen one, so the call
   blocks leave the calendar). Replies to agents who already wrote back, the data harvest, valuations and the calendar keep
