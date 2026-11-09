@@ -489,6 +489,36 @@ def match(known: Known, mail: Mail) -> tuple[int | None, str | None]:
     return None, None
 
 
+def _firm_target(known: Known, fthread: dict[str, int], femails: dict[str, int], mail: Mail) -> int | None:
+    """A reply from a research-firm prospect: matched by our pitch's Message-ID, else by a pitched address that is
+    not one of our listing agents' threads (a listing agent answering a lead thread stays a lead reply)."""
+    from engine import firm_outbox as fo
+    if mail.message_id in known.seen or (known.own and mail.from_email == known.own) or mail.bounce:
+        return None
+    lead_id, method = match(known, mail)
+    if method == "thread":
+        return None
+    tid = fo.match(fthread, {}, mail)
+    if tid is not None:
+        return tid
+    if lead_id is not None:
+        return None
+    return fo.match({}, femails, mail)
+
+
+def firm_bounced(session: Session, mail: Mail) -> int:
+    """A pitch that bounced: the address is remembered (never written to again) and the target closed."""
+    from db.models import FirmTarget
+    n = 0
+    for addr in mail.bounced_addresses or []:
+        t = session.scalar(select(FirmTarget).where(FirmTarget.email == addr.lower()))
+        if t is not None:
+            ao.record_bounce(session, addr)
+            t.stage, t.notes = "LOST", ((t.notes or "") + f"\nbounced {now_eastern():%Y-%m-%d}").strip()
+            n += 1
+    return n
+
+
 def wanted(known: Known, mail: Mail) -> bool:
     """Header-only check: is this message worth downloading?"""
     if mail.message_id in known.seen or (known.own and mail.from_email == known.own):
@@ -677,6 +707,7 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
             if mail.bounced_addresses else []
         if not hit and leads:
             hit = [c for c in session.scalars(q.where(Contact.lead_id.in_(leads)))]
+        firm_bounced(session, mail)
         if not hit:
             return None
         row = InboundReply(message_id=mail.message_id, lead_id=hit[0].lead_id, contact_id=hit[0].id,
@@ -792,6 +823,8 @@ def poll_gmail_replies(*, now: datetime | None = None, smtp_factory: Any = None)
         with session_scope() as s:
             refresh_open_replies(s, now)
             known, state = load_known(s), _state(s)
+            from engine import firm_outbox as fo
+            fthread, femails = fo.known(s)
         since = now_eastern(now).date() - timedelta(days=int(_cfg().get("lookback_days", 14)))
         mails: list[Mail] = []
         with Mailbox(user, pw) as mb:
@@ -800,13 +833,26 @@ def poll_gmail_replies(*, now: datetime | None = None, smtp_factory: Any = None)
             uids = mb.search(last, since)
             for uid, raw in sorted(mb.headers(uids).items()):
                 head = parse_headers(raw, uid, mb.uidvalidity)
-                if wanted(known, head):
+                if wanted(known, head) or _firm_target(known, fthread, femails, head):
                     mails.append(parse_message(mb.message(uid), uid, mb.uidvalidity))
             uidvalidity = mb.uidvalidity
         counts = {"checked": len(uids), "matched": 0, "auto_queued": 0, "needs_approval": 0, "opted_out": 0,
                   "bounce": 0, "auto_reply": 0}
         failed: list[int] = []
         for mail in mails:
+            tid = None if mail.bounce else _firm_target(known, fthread, femails, mail)
+            if tid is not None:
+                # A B2B prospect of the research firm (engine/firm_outbox.py): stored there, never a lead reply.
+                try:
+                    with session_scope() as s:
+                        if fo.handle_reply(s, mail, tid, now) is not None:
+                            counts["firm_replies"] = counts.get("firm_replies", 0) + 1
+                except IntegrityError:
+                    pass
+                except Exception:                         # noqa: BLE001
+                    log.exception("gmail autopilot: firm reply uid %s", mail.uid)
+                    failed.append(mail.uid)
+                continue
             try:
                 with session_scope() as s:
                     row = handle(s, mail, known, now)
@@ -1120,7 +1166,7 @@ def approvable(session: Session) -> tuple[list[InboundReply], list[tuple[Inbound
 # a priced hold / counter only when the agent's number was stated plainly ("wants 355k", "we are at 470"), never one
 # read out of a signature. Accepts, unclassified questions and anything else stay for a call.
 SAFE_NO_PRICE = ("CONFIRM THE FACTS FIRST", "NUMBERS ON HOLD", "LISTING EXPIRED", "OFF THE TABLE", "TOO FAR APART",
-                 "NOT NOW")
+                 "NOT NOW", "CALL REQUEST: ANSWERED IN WRITING", "NO PROOF OF FUNDS YET")
 # A priced answer goes out by itself only when the agent stated their number plainly AND the valuation passes every
 # certainty check (engine/offer_math.py): a number we send is final, so it never rests on old comps or a guessed size.
 SAFE_PRICED = ("BACKUP AT", "HOLD FIRM AT", "HOLD AT", "COUNTER AT", "BEST AND FINAL AT")

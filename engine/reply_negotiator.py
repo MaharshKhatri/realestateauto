@@ -532,6 +532,10 @@ def is_checkin_ok(text: str) -> bool:
     return len(body) <= 100 and "?" not in body and not re.search(r"\d", body) and bool(_CHECKIN_OK.match(body))
 
 
+_NO_EMAIL_NEGOTIATION = re.compile(r"\b(don'?t|do not|won'?t|will not|never)\s+(negotiate|discuss (offers|price|numbers))"
+                                   r"\s+(via|by|over|through|on)\s+e-?mail\b", re.I)
+
+
 def fact_check_issue(pf: Any) -> tuple[str, str] | None:
     """(kind, the pre-flight issue) when a fact from the agent must come before a price; a HOLD always needs one."""
     for issue in pf.issues:
@@ -900,6 +904,22 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         an.sms_text = f"Hi {first}, it's {me}. Understood on {st}; if it falls out of contract I'd love the first call." + sms_tail
         an.followup_at = _followup(now, int(ncfg.get("under_contract_days", 45)))
         return an
+    if "POF_REQUEST" in intents and "AVAILABLE" not in intents and not (
+            ((partner_summary or {}).get("partner") or {}).get("pof_verified")):
+        # 2026-11-09: no verified capital partner, so no letter is coming. The old draft promised one ("I'm getting the
+        # proof of funds letter together now"): untrue (Consumer Fraud Act). The honest answer goes out by itself and
+        # asks for the facts a number needs, so the thread keeps moving in writing.
+        an.headline = "NO PROOF OF FUNDS YET: FACTS FIRST"
+        sentences = ["That's fair.",
+                     "I don't have a proof-of-funds letter to send today, so I won't ask you for a showing until I do.",
+                     f"Could you confirm the square footage and the main condition items on {st} (roof, heating, kitchen, "
+                     "baths, any oil tank) so I can tell you quickly whether I'm in the right range?"]
+        an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
+        an.sms_text = f"Hi {first}, it's {me}. No proof-of-funds letter today; could you send the sqft and condition on {st}?" + sms_tail
+        an.actions = ["Answered in writing: no proof of funds is claimed. When a capital partner's letter is on file "
+                      "(the Vault), the offer can say so."] + an.actions
+        an.followup_at = _followup(now, 3)
+        return an
     if "POF_REQUEST" in intents and "AVAILABLE" not in intents:
         an.headline = "SEND PROOF OF FUNDS"
         p = (partner_summary or {}).get("partner")
@@ -991,6 +1011,29 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         an.sms_text = f"Hi {first}, it's {me}. My max on {st} is {hc.money(adj_walk)} cash, as-is." + sms_tail
         an.actions = [f"Their question was your max: {hc.money(adj_walk)} is the best and final, nothing above it."] + an.actions
         an.followup_at = _followup(now, int(ncfg.get("yellow_followup_days", 2)))
+        return an
+    if "CALL_ME" in intents and not counter:
+        # 2026-11-09 (the operator: "do not leave leads stalled waiting for me to make phone calls"): a call request is
+        # answered in writing by itself. An agent who won't negotiate by e-mail gets a request for a call window.
+        no_email = bool(_NO_EMAIL_NEGOTIATION.search(text or ""))
+        an.headline = "CALL REQUEST: ANSWERED IN WRITING"
+        if no_email:
+            sentences = ["Understood, and thanks for being direct about how you work.",
+                         "I'm in classes most of the day, so I'd like to set up a short call at a time that suits you: "
+                         "what's a good window this week?",
+                         "If it's easier, the seller's as-is bottom line and any big repair items would help me come "
+                         "prepared, but I'm glad to cover it all by phone."]
+        else:
+            sentences = [f"Thanks for getting back to me on {st}.",
+                         "I'm in classes most of the day, so e-mail is the fastest way to reach me.",
+                         "What's the seller's realistic as-is bottom line, and are there any big items I should know about "
+                         "(roof, heating or AC, an oil tank, tenants)? If it's a number I can do, I'll put my written "
+                         "offer in front of you the same day."]
+        an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
+        an.sms_text = f"Hi {first}, it's {me}. I'm in class most of the day; e-mail is fastest. What's the seller's bottom line on {st}?" + sms_tail
+        an.actions = ["They asked for a call: answered in writing (the operator is in class). Call if you want to; the "
+                      "thread keeps moving by e-mail either way."] + an.actions
+        an.followup_at = _followup(now, 2)
         return an
     # a question, or nothing we could classify
     an.headline = "ANSWER THEM, THEN ASK FOR A NUMBER"

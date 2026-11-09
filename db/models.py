@@ -699,6 +699,93 @@ class Prospect(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class FirmTarget(Base):
+    """A B2B prospect of the 10-stream research firm (engine/swarm_firm.py): a flipper, an investor-friendly agent, an
+    attorney, a contractor, a lender, a CPA or a 1031 intermediary. Contacts are public business ones, each with the
+    page it was published on. Stages: NEW -> CONTACTED -> REPLIED -> INTERESTED -> TRIAL -> PAYING, or LOST / OPTED_OUT."""
+    __tablename__ = "firm_targets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(40), index=True)           # flipper / investor_agent / tax_appeal_attorney ...
+    stream: Mapped[str] = mapped_column(String(8), index=True)          # s2 ... s10: the product pitched to them
+    org: Mapped[str | None] = mapped_column(String(200))
+    name: Mapped[str | None] = mapped_column(String(200))               # a business contact's name, when published
+    email: Mapped[str | None] = mapped_column(String(160), unique=True)
+    phone: Mapped[str | None] = mapped_column(String(32))
+    website: Mapped[str | None] = mapped_column(String(250))
+    town: Mapped[str | None] = mapped_column(String(80))
+    county: Mapped[str | None] = mapped_column(String(40), index=True)
+    source: Mapped[str | None] = mapped_column(String(400))             # where the contact was published
+    stage: Mapped[str] = mapped_column(String(16), default="NEW", index=True)
+    score: Mapped[float] = mapped_column(Float, default=0)
+    touches: Mapped[int] = mapped_column(Integer, default=0)
+    last_contact_at: Mapped[datetime | None] = mapped_column(DateTime)
+    next_touch_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    data_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # buy box, towns, stats behind the score
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class FirmOutbox(Base):
+    """Every e-mail a stream wants to send, keyed so a re-run never sends twice (`key`), allocated by priority
+    (1 replies, 2 deal-desk pitches / warm follow-ups, 3 specialty B2B) under the daily caps."""
+    __tablename__ = "firm_outbox"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(200), unique=True)
+    stream: Mapped[str] = mapped_column(String(8), index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=3, index=True)
+    kind: Mapped[str] = mapped_column(String(24), default="pitch")      # pitch / followup / reply / packet
+    target_id: Mapped[int | None] = mapped_column(ForeignKey("firm_targets.id", ondelete="SET NULL"), index=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="SET NULL"), index=True)
+    to_email: Mapped[str] = mapped_column(String(160), index=True)
+    subject: Mapped[str] = mapped_column(String(250))
+    body: Mapped[str] = mapped_column(Text)
+    attachments_json: Mapped[list[Any]] = mapped_column(JSON, default=list)   # [{"name", "path"}], regenerated if gone
+    in_reply_to: Mapped[str | None] = mapped_column(String(250))
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # queued/sent/failed/skipped
+    reason: Mapped[str | None] = mapped_column(String(250))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    message_id: Mapped[str | None] = mapped_column(String(250), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+
+
+class FirmReply(Base):
+    """A reply from a B2B target, read from Gmail (only mail matched to a firm target is downloaded)."""
+    __tablename__ = "firm_replies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(250), unique=True)
+    target_id: Mapped[int | None] = mapped_column(ForeignKey("firm_targets.id", ondelete="SET NULL"), index=True)
+    stream: Mapped[str | None] = mapped_column(String(8))
+    from_email: Mapped[str | None] = mapped_column(String(160))
+    subject: Mapped[str | None] = mapped_column(String(250))
+    received_at: Mapped[datetime | None] = mapped_column(DateTime)
+    body_text: Mapped[str | None] = mapped_column(Text)
+    intent: Mapped[str] = mapped_column(String(20), default="question")  # opt_out / interested / not_interested / question
+    status: Mapped[str] = mapped_column(String(16), default="new", index=True)  # new / answered / closed
+    references_json: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class FirmStreamRun(Base):
+    """One stream run: what it looked at and produced (counts only; the public run log reads these)."""
+    __tablename__ = "firm_stream_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stream: Mapped[str] = mapped_column(String(8), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    processed: Mapped[int] = mapped_column(Integer, default=0)
+    found: Mapped[int] = mapped_column(Integer, default=0)
+    products: Mapped[int] = mapped_column(Integer, default=0)
+    queued: Mapped[int] = mapped_column(Integer, default=0)
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(String(250))
+
+
 class JVPartner(Base):
     """A local cash buyer / rehabber the operator has (or wants) as a funding partner: their LLC signs, their proof
     of funds and deposit back the offer, they walk the house, and the profit is split under a JV agreement

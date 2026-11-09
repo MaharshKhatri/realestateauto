@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "run | refresh | recalibrate | sheet (rebuild the blocks nobody called yet) | firmup (live re-value of today's call-sheet houses) | stats (pipeline counts) | value (price unvalued listings) | digest (weekly deal digests for flippers, mailed to you) | agents (flipper-connected agents report only) | approve | dismiss | offer | note"
+        description: "run | refresh | recalibrate | sheet (rebuild the blocks nobody called yet) | firmup (live re-value of today's call-sheet houses) | stats (pipeline counts) | value (price unvalued listings) | digest (weekly deal digests for flippers, mailed to you) | agents (flipper-connected agents report only) | firm (10-stream status counts) | firm-run (run every stream now) | approve | dismiss | offer | note"
         default: run
       reply:
         description: "with approve / dismiss: the reply #"
@@ -46,6 +46,7 @@ jobs:
       DAILY_OPENERS: "0"           # PAUSED 2026-11-09 (pivot away from cold MLS wholesaling); was "35" new cold openers
                                    # per weekday, shared by the waves below (cap: outreach.daily_email_limit)
       CALL_SHEET: "off"            # PAUSED 2026-11-09: no daily call sheet / call blocks ("on" restores them)
+      FIRM: "on"                   # 2026-11-09: the 10-stream research firm (engine/swarm_firm.py); "off" pauses it
       OPENER_WAVES: "10:30,14:00,16:30"
     steps:
       - name: Start the clock

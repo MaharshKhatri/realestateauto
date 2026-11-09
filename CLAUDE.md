@@ -1158,6 +1158,50 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   48-hour nudges) and `CALL_SHEET: "off"` (`cloud_desk._work` builds no call sheet and clears today's frozen one, so the call
   blocks leave the calendar). Replies to agents who already wrote back, the data harvest, valuations and the calendar keep
   running. Set `"35"` / `"on"` to restore.
+- **The 10-stream research firm** (2026-11-09, the operator: "route every listing, sheriff sale, deed and tax record
+  through 10 revenue streams"; `engine/swarm_firm.py`, `engine/firm_outbox.py`, `engine/streams/`):
+  - **Contract** (`engine/streams/base.py`): each `sN_*.py` defines `STREAM` (a `Stream` with `key`, `cadence_hours`,
+    `run_hours`); `run(session, ctx)` returns a `StreamResult` (counts, PDFs written to `ctx.out_dir`, proposed
+    `Outbound` e-mails). Streams never send. Flat-fee research only: no referral fees or pay tied to a deal or a client
+    (N.J.S.A. 45:15-3; NJ RPC 7.2(c) / Joint Opinion 741: per lead fine, never per retained client); no opinion of
+    value (N.J.S.A. 45:14F: an appraisal needs a license); no private individual's name in a product; every address
+    through `address_ok` (Daniel's Law); public records / listing text / our math only, never private e-mail content.
+  - **Outbox** (`firm_outbox`): `enqueue` stores each Outbound under its natural key (never twice) after the stop
+    lists (bounced, OPTED_OUT / LOST target, a listing agent's dnc contact, our own address) and the pitch gap (one cold
+    pitch per target per `pitch_gap_days` 6, `max_touches` 2). `send_due` sends by priority inside rolling-24 h caps
+    (`research_firm.caps`: p1 replies 150, p2 deal-desk pitches 15, p3 specialty 8; conservative because Gmail's
+    program policies forbid unsolicited commercial mail from a personal account: move cold B2B to a Workspace domain
+    with SPF / DKIM / DMARC before raising them), cold mail weekdays 9-5 Eastern, `per_run` 6, 8-20 s apart, under the
+    account-wide `reply_daily_limit`. Every message: signature, postal address, "no more" opt-out; pitches also the
+    commercial-message line and a `List-Unsubscribe` mailto header. A failing send retries up to 3 times.
+  - **B2B replies**: the inbox check (`gmail_autopilot.poll_gmail_replies`) downloads a message matched to a pitch's
+    Message-ID, or from a pitched address that isn't in a lead thread, into `firm_replies` (`firm_outbox.handle_reply`):
+    `classify` -> opt_out (target OPTED_OUT at once) / not_interested (LOST) / interested (INTERESTED, a warm action) /
+    question (REPLIED); a reply ends cold touches and skips queued pitches. A bounced pitch is remembered and the target
+    LOST. Sealed-note items: `{"firm_reply": id, "reply": "...", "stage": "TRIAL"}` answers in their thread (priority
+    1, no ad line) or closes it; `{"firm_target": {...}}` adds / updates a target.
+  - **Orchestrator** (`swarm_firm.tick`, every daytime desk run with `FIRM=on`): seeds `config/b2b_targets.yaml` once a
+    day, runs due streams one transaction each inside `budget_seconds` (150; a crash is recorded by name and never stops
+    the others; `firm_stream_runs`), then `send_due`. Task `firm` prints counts only (`sN_found` / `_products` / `_sent`
+    / `_queued` / `_error`, `firm_mrr`, `firm_waiting`, `firm_warm`); task `firm-run` runs every stream now (900 s).
+    `manage.py firm-status [--json]` / `firm-run [--only s2,s6] [--dry-run]`; `/firm-status`, `/check-in`. Recurring
+    revenue counts only targets in TRIAL / PAYING (no projected pipeline money).
+  - **s1 acquisitions** (`s1_acquisitions.py`, 6 h): the desk's funnel counts + every lead with a live agent conversation
+    matched to its top 3 recorded cash buyers (buyer_matches, internal: nothing is marketed before a contract's attorney
+    review). **s2 AI Deal Desk SaaS** (`s2_deal_desk_saas.py`, hourly 9-4 weekdays): flippers with a business e-mail
+    (prospects) and the top 150 flipper-connected agents become targets; each run pitches up to 4 due targets with a
+    digest built for them (flippers: their deed towns; agents: the towns they list in, never their own listings) and one
+    follow-up after the gap; never an agent we are in deal talks with (a reply or a lead e-mail in 30 days); greetings
+    use a person's first name only (a brokerage in the name field gets "there").
+  - **Written answers, no stalls** (`reply_negotiator`): a "call me" with no number gets "I'm in classes; e-mail is
+    fastest; the seller's as-is bottom line and big repair items?" (or a call-window ask when the agent won't negotiate
+    by e-mail); a proof-of-funds ask with no verified partner gets "no letter today; the sqft and condition?" instead of
+    the old promise of a letter. Both are `SAFE_NO_PRICE` (sent by themselves).
+  - **Calendar** (`calendar.mode: firm`, `gcal_sync.firm_mode`): only the 📊 10-Stream Firm Status (key `desk:<day>`,
+    the stream table above the desk's own lines), attorney-review / FRFPA / closing deadlines, the sign-in reminder and
+    a ✅ event of at most 5 warm actions (an agent accepted; a B2B prospect said yes). Follow-up / call-back / reply /
+    sheriff-sale / call-block / daily-goal / today's-ten events are no longer desired, so their future copies leave the
+    calendar on the next full sync. Tests pin the old full mode (`conftest._full_calendar`).
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

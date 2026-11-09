@@ -96,6 +96,8 @@ autopilot:
 
 calendar:                            # Google Calendar sync (engine/gcal_sync.py; `manage.py setup-calendar` once)
   enabled: true                      # syncs only once config/token.json exists
+  mode: firm                         # 2026-11-09: 📊 firm status + deadlines + <= 5 warm actions only ("" = the old
+                                     # follow-up / call-back / reply / sheriff-sale / call-block events)
   calendar_id: primary
   timezone: America/New_York
   dashboard_url: "http://127.0.0.1:8000"   # event links open the lead card here (/leads/<id>)
@@ -364,3 +366,30 @@ agents:
     gmail_replies: "*/5 * * * *"         # agent replies (the dashboard also checks every 5 minutes while it runs)
     buyer_matcher: "35 7 * * *"
     self_improvement: "45 7 * * *"
+
+research_firm:
+  # The 10-stream research firm (engine/swarm_firm.py, engine/firm_outbox.py, engine/streams/). Flat-fee research
+  # products only: no referral fees, no pay tied to a deal or a client (N.J.S.A. 45:15-3; NJ RPC 7.2(c)).
+  budget_seconds: 150                # stream time per desk run (the rest waits ~6 minutes for the next run)
+  per_run: 6                         # e-mails the outbox sends per desk run, 8-20 s apart
+  pace_seconds: [8, 20]
+  business_hours: [9, 17]            # cold B2B pitches: weekdays 9 AM-5 PM Eastern; replies: outreach.send_hours
+  caps: {p1: 150, p2: 15, p3: 8}     # rolling 24 h by priority: replies / deal-desk pitches + warm follow-ups / specialty.
+                                     # Conservative on purpose: Gmail's program policies forbid unsolicited commercial
+                                     # mail from a personal account (suspension risk for the inbox that holds every
+                                     # agent thread). Raise only after moving cold B2B to a Workspace domain with
+                                     # SPF / DKIM / DMARC, and while spam complaints stay under 0.1%.
+  pitch_gap_days: 6                  # one cold pitch per target per this many days
+  max_touches: 2                     # cold touches per target in all (a pitch + one follow-up); a reply ends them
+  max_attempts: 3                    # a send that keeps failing is marked failed
+  streams:
+    s1: {enabled: true}
+    s2: {enabled: true, price_trial: 500, price_monthly: 1000, pitches_per_run: 4, agents_top: 150}
+    s3: {enabled: true, price_monthly: 400, pitches_per_run: 2}
+    s4: {enabled: true, price_monthly: 500, pitches_per_run: 3}
+    s5: {enabled: true, price_monthly: 750, pitches_per_run: 2}
+    s6: {enabled: true, price_per_packet: 100, price_monthly: 500, pitches_per_run: 2, min_taxes: 12000}
+    s7: {enabled: true, pitches_per_run: 3}
+    s8: {enabled: true, review_days: 14}
+    s9: {enabled: true, price_monthly: 500, pitches_per_run: 2}
+    s10: {enabled: true}

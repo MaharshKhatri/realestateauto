@@ -570,6 +570,38 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         except Exception as exc:                   # noqa: BLE001 - reported by name only
             errors.append(type(exc).__name__)
         items = [i for i in items if i is not item]
+    for item in [i for i in items if isinstance(i, dict) and (i.get("firm_reply") or isinstance(i.get("firm_target"), dict))]:
+        # The research firm (engine/firm_outbox.py): an answer in a B2B prospect's thread, or a prospect's details /
+        # stage ("TRIAL" when they said yes, "PAYING" once they pay, "LOST").
+        try:
+            from engine import firm_outbox as fo
+            with session_scope() as s:
+                if item.get("firm_reply"):
+                    if (item.get("reply") or "").strip():
+                        fo.answer_reply(s, int(item["firm_reply"]), str(item["reply"]), stage=item.get("stage"), now=now)
+                    else:
+                        from db.models import FirmReply, FirmTarget
+                        r = s.get(FirmReply, int(item["firm_reply"]))
+                        if r is None:
+                            raise ValueError("no such firm reply")
+                        r.status = "closed"
+                        t = s.get(FirmTarget, r.target_id) if r.target_id else None
+                        if t is not None and item.get("stage"):
+                            fo.set_stage(s, t, str(item["stage"]))
+                else:
+                    t = dict(item["firm_target"])
+                    row = fo.upsert_target(s, kind=str(t.get("kind") or "other"), stream=str(t.get("stream") or "s2"),
+                                           email=t.get("email"), org=t.get("org"), name=t.get("name"),
+                                           phone=t.get("phone"), website=t.get("website"), town=t.get("town"),
+                                           county=t.get("county"), source=t.get("source"))
+                    if row is None:
+                        raise ValueError("firm target needs an e-mail or a website / phone")
+                    if t.get("stage"):
+                        fo.set_stage(s, row, str(t["stage"]))
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
+            errors.append(type(exc).__name__)
+        items = [i for i in items if i is not item]
     codes = [i for i in items if isinstance(i, dict) and i.get("code")]
     if codes:
         # Call-block results ("A07 vm", "A04 340"): resolved on that day's frozen call sheet.
@@ -847,6 +879,32 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             # read or sent is committed per message; the next run ~6 minutes later picks up from the last UID it saw.
             # The calendar still syncs and the run stays green.
             out["gmail_error"] = type(exc).__name__
+    if os.environ.get("FIRM", "on").strip().lower() != "off" and (7 <= t.hour < 21 or task == "firm-run"):
+        # The 10-stream research firm (engine/swarm_firm.py): due streams inside a time budget, then the priority
+        # outbox. task `firm-run` runs every stream now with a long budget.
+        try:
+            from engine import swarm_firm
+            r = swarm_firm.tick(now=now, smtp_factory=smtp_factory, send=True, force=task == "firm-run",
+                                budget_seconds=900 if task == "firm-run" else None)
+            ran = {k: v for k, v in (r.get("streams") or {}).items() if isinstance(v, dict) and "status" not in v}
+            out["firm_streams_run"] = len(ran)
+            errs = [k for k, v in ran.items() if v.get("error")]
+            if errs:
+                out["firm_errors"] = ",".join(errs)
+            box = r.get("outbox") or {}
+            out["firm_sent"] = int(box.get("sent") or 0)
+            if box.get("error"):
+                out["firm_send_error"] = str(box["error"])[:40]
+            if box.get("blocked"):
+                out["firm_blocked"] = str(box["blocked"])[:60]
+            if r.get("targets_seeded"):
+                out["firm_targets_seeded"] = int(r["targets_seeded"])
+        except Exception as exc:                   # noqa: BLE001 - the firm never stops the desk
+            out["firm_error"] = type(exc).__name__
+    if task in ("firm", "firm-run"):
+        from engine import swarm_firm
+        with session_scope() as s:
+            out.update(swarm_firm.flat(swarm_firm.status(s, t.replace(tzinfo=None))))
     if gcal_sync.configured():
         try:
             with session_scope() as s:

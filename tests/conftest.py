@@ -40,6 +40,13 @@ def _classic_offer_gates(monkeypatch, request):
                                                          "agent_cold_gap_hours": 0})
 
 
+@pytest.fixture(autouse=True)
+def _full_calendar(monkeypatch):
+    """The calendar tests were written for the full event set; the 2026-11-09 clean "firm" mode has its own tests."""
+    from core.config import settings
+    monkeypatch.setitem(settings()["calendar"], "mode", "")
+
+
 @pytest.fixture()
 def db(tmp_path, monkeypatch):
     """A fresh database; yields a session."""

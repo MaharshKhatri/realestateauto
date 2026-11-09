@@ -62,7 +62,9 @@ class BuyerProfile:
         band = (f"${self.price_lo / 1000:,.0f}K-${self.price_hi / 1000:,.0f}K" if self.price_lo and self.price_hi
                 else "any price")
         kind = "2-4 family" if self.multi_share >= 0.5 else "1-family" if self.multi_share <= 0.2 else "1-4 family"
-        return f"{towns} · {kind} · {band} · {self.purchases_36m} purchases in 36 months"
+        count = (f"{self.purchases_36m} active listings" if self.kind == "agent"
+                 else f"{self.purchases_36m} purchases in 36 months")
+        return f"{towns} · {kind} · {band} · {count}"
 
 
 @dataclass
@@ -315,12 +317,16 @@ def build_digests(session: Session, profiles: list[BuyerProfile], today: date | 
 
 
 # -- the page -----------------------------------------------------------------------------------------------------
-def pitch_lines(prof: BuyerProfile, op: dict[str, str]) -> list[str]:
+def pitch_lines(prof: BuyerProfile, op: dict[str, str], audience: str = "buyer") -> list[str]:
     who = prof.entity
-    return [
+    first = (f"<b>Want this running every day for your investor clients?</b> The AI Deal Desk finds deals like these "
+             "each morning, underwrites them, and drafts offers from <b>your own inbox</b> for your buyer clients to "
+             "approve. Your clients are the buyers; you keep your normal role and pay.") if audience == "agent" else (
         f"<b>Want this running every day for {who}?</b> The AI Deal Desk finds deals like these each morning, "
         "underwrites them, and drafts your offers to listing agents from <b>your own inbox</b> with <b>your</b> proof "
-        "of funds. You approve every offer and you are the buyer on every contract.",
+        "of funds. You approve every offer and you are the buyer on every contract.")
+    return [
+        first,
         f"<b>30-day trial: ${TRIAL_FEE:,} flat. Then ${MONTHLY_FEE:,}/month flat. Zero commission, zero per-deal fees "
         "or splits.</b> Reply \"activate\" to start the trial.",
         f"{op.get('name') or ''} provides software and research only: not a licensed real estate broker or agent, never "
@@ -329,7 +335,7 @@ def pitch_lines(prof: BuyerProfile, op: dict[str, str]) -> list[str]:
     ]
 
 
-def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None) -> Path:
+def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None, audience: str = "buyer") -> Path:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import LETTER, landscape
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -376,14 +382,16 @@ def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None) -> Path:
     contact = " · ".join(x for x in (op.get("name"), op.get("phone"), op.get("email"),
                                      op.get("postal")) if x)
     story = [P(f"Weekly Deal Digest for {d.profile.entity}", h1),
-             P(f"Week of {d.week_of:%B %-d, %Y} · Your buy box from recorded deeds: {d.profile.box_line()}", body),
+             P(f"Week of {d.week_of:%B %-d, %Y} · "
+               + ("Towns you list in: " if audience == "agent" else "Your buy box from recorded deeds: ")
+               + d.profile.box_line(), body),
              Spacer(1, 5), t, Spacer(1, 4),
              P("*Max buy: the most a rehabber can pay and still clear 15% net ROI and $45,000 after repairs + 10% "
                "contingency, 1.5% closing, 6 months of taxes, insurance, utilities and 11% + 2 pt money, a 5% "
                "commission and the NJ realty transfer fee on the resale. Room = max buy minus the ask or upset.", small),
              Spacer(1, 6),
-             P(" ".join(pitch_lines(d.profile, op)[:2]), box),
-             Spacer(1, 3), P(pitch_lines(d.profile, op)[2], small),
+             P(" ".join(pitch_lines(d.profile, op, audience)[:2]), box),
+             Spacer(1, 3), P(pitch_lines(d.profile, op, audience)[2], small),
              P(f"{contact} · Reply \"no more\" and you won't get these again.", small)]
     path.parent.mkdir(parents=True, exist_ok=True)
     SimpleDocTemplate(str(path), pagesize=landscape(LETTER), title=f"Weekly Deal Digest - {d.profile.entity}",

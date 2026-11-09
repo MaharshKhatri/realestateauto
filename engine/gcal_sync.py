@@ -1071,6 +1071,74 @@ def actions_event(session: Session, now: datetime) -> Desired | None:
                          reminders=[10]), start)
 
 
+def firm_mode() -> bool:
+    """2026-11-09 (the operator: "keep my calendar completely clean"): only the 📊 10-Stream Firm Status, the legal
+    deadlines (attorney review, FRFPA, closing milestones), the sign-in reminder and at most 5 warm actions. No call
+    blocks, follow-up / call-back / reply call events, sheriff-sale days or daily goal."""
+    return str(cfg().get("mode") or "").strip().lower() == "firm"
+
+
+def firm_status_event(session: Session, now: datetime) -> Desired | None:
+    """📊 The day's 10-stream report (the desk's own status lines below the stream table), all day, free, no reminder."""
+    from engine import swarm_firm
+    base = desk_status_event(session, now)
+    st = swarm_firm.status(session, now)
+    active = [r for r in st["streams"] if r["installed"]]
+    lines = ["10-STREAM FIRM (looked / found / PDFs / sent 24h / waiting / warm):"]
+    for r in active:
+        lines.append(f"- {r['key']} {r['name']}: {r['processed']} / {r['found']} / {r['products']} / {r['sent_24h']} / "
+                     f"{r['waiting']} / {r['warm']}" + (f" (last run failed: {r['error']})" if r["error"] else ""))
+    lines.append(f"Recurring revenue (trials + paying): ${st['mrr']:,.0f}/month")
+    for fr in fo_warm(session):
+        lines.append(f"WARM: {fr}")
+    lines.append("")
+    summary = (f"📊 10-Stream Firm Status: {st['sent_24h']} B2B sent · {st['waiting']} waiting · {st['warm']} warm")
+    s, e = _all_day(now.date())
+    desc = "\n".join(lines) + "\n" + ((base.body.get("description") or "") if base is not None else "")
+    return Desired(f"desk:{now:%Y%m%d}", "desk", None, _body("desk", summary, desc.splitlines(), s, e, reminders=[],
+                                                            transparent=True), datetime.combine(now.date(), time(0, 0)))
+
+
+def fo_warm(session: Session) -> list[str]:
+    from db.models import FirmTarget
+    from engine import firm_outbox as fo
+    out = []
+    for r in fo.warm(session):
+        t = session.get(FirmTarget, r.target_id) if r.target_id else None
+        out.append(f"{(t.org or t.email) if t else r.from_email} ({r.stream}) said yes: reply #{r.id}")
+    return out
+
+
+def warm_event(session: Session, now: datetime) -> Desired | None:
+    """✅ At most 5 actions, only when someone explicitly agreed: an agent accepted our number, or a B2B prospect said
+    yes to a trial. Nothing to close = no event."""
+    from db.models import FirmTarget
+    from engine import firm_outbox as fo
+    items: list[str] = []
+    since = now - timedelta(days=7)
+    for r in session.scalars(select(InboundReply).where(InboundReply.status.in_(("needs_approval", "auto_queued")),
+                                                        InboundReply.created_at >= since)):
+        if "ACCEPT" in (r.intents_json or []):
+            lead = session.get(Lead, r.lead_id) if r.lead_id else None
+            where = _place(session, lead).street if lead is not None else "a listing"
+            items.append(f"{where}: the agent accepted. Tell Claude \"lock it up\" and the desk sends the contract "
+                         f"step (reply #{r.id}).")
+    for r in fo.warm(session, limit=5):
+        t = session.get(FirmTarget, r.target_id) if r.target_id else None
+        who = (t.org or t.email) if t else (r.from_email or "a prospect")
+        items.append(f"{who} said yes ({r.stream}): tell Claude \"start the trial for #{r.id}\" to answer and set "
+                     "them up.")
+    items = items[:5]
+    if not items:
+        return None
+    start = datetime.combine(now.date(), time(max(now.hour + 1, 12), 0)) if now.hour < 20 else \
+        datetime.combine(now.date() + timedelta(days=1), time(12, 0))
+    s, e = _timed(start, 20)
+    return Desired(f"warm:{now:%Y%m%d}", "actions", None,
+                   _body("actions", f"✅ {len(items)} ready to close", [f"{i}. {x}" for i, x in enumerate(items, 1)]
+                         + ["", f"Updated {_when(now)}."], s, e, reminders=[10]), start)
+
+
 def desired_events(session: Session, lead_ids: set[int] | None = None, now: datetime | None = None
                    ) -> dict[str, Desired]:
     """Everything the calendar should hold: all of it, or (lead_ids) only those leads' events."""
@@ -1094,20 +1162,27 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
         leads = list(session.scalars(select(Lead).where(or_(Lead.next_followup_at >= now - timedelta(days=2),
                                                             Lead.contract_date.is_not(None),
                                                             Lead.id.in_(on_calendar), Lead.id.in_(waiting)))))
-        sale_ids = {lead.id for lead in priority_sale_leads(session, today)}
-        put([daily_goal_event(session, today), reconnect_event(session, now)])
-        try:
-            put([desk_status_event(session, now)])
-        except Exception:                                # noqa: BLE001 - a status line never blocks the real events
-            log.exception("calendar: desk status event skipped")
-        try:
-            put([actions_event(session, now)])
-        except Exception:                                # noqa: BLE001
-            log.exception("calendar: daily actions skipped")
-        try:
-            put(call_block_events(session, now))
-        except Exception:                                # noqa: BLE001
-            log.exception("calendar: call blocks skipped")
+        sale_ids = {lead.id for lead in priority_sale_leads(session, today)} if not firm_mode() else set()
+        put([reconnect_event(session, now)])
+        if firm_mode():
+            try:
+                put([firm_status_event(session, now), warm_event(session, now)])
+            except Exception:                            # noqa: BLE001 - a status line never blocks the deadlines
+                log.exception("calendar: firm status skipped")
+        else:
+            put([daily_goal_event(session, today)])
+            try:
+                put([desk_status_event(session, now)])
+            except Exception:                            # noqa: BLE001 - a status line never blocks the real events
+                log.exception("calendar: desk status event skipped")
+            try:
+                put([actions_event(session, now)])
+            except Exception:                            # noqa: BLE001
+                log.exception("calendar: daily actions skipped")
+            try:
+                put(call_block_events(session, now))
+            except Exception:                            # noqa: BLE001
+                log.exception("calendar: call blocks skipped")
     else:
         leads = [lead for lead in (session.get(Lead, i) for i in sorted(lead_ids)) if lead is not None]
         # A lead's sale event is refreshed here only when it is already on the calendar; which sales make the
@@ -1118,11 +1193,13 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
     from engine import call_sheet as cs
     on_sheet = cs.lead_ids_on(session, today)
     for lead in leads:
+        put(contract_events(session, lead, now))
+        if firm_mode():
+            continue                                     # deadlines only: replies and follow-ups move by e-mail
         # A lead on today's call sheet is called from its block: no second event for the same call today.
         put(d for d in followup_events(session, lead, now) if not (lead.id in on_sheet and d.starts_at.date() == today))
-        put(contract_events(session, lead, now))
         put(reply_events(session, lead, now))
-    for lid in sale_ids:
+    for lid in (sale_ids if not firm_mode() else set()):
         lead = session.get(Lead, lid)
         if lead is not None:
             put([sale_event(session, lead, today)])

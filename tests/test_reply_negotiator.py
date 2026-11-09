@@ -243,9 +243,10 @@ def test_pof_request_with_and_without_a_partner(db, operator):
     db.flush()
     db.refresh(lead)
     a = rn.analyze(db, lead, "Can you send proof of funds?")
-    assert a.verdict == "INFO" and a.headline == "SEND PROOF OF FUNDS" and a.partner["partner"] is None
+    # 2026-11-09: no verified partner = no letter is promised (the old draft said one was coming); facts first instead
+    assert a.headline == "NO PROOF OF FUNDS YET: FACTS FIRST" and a.partner["partner"] is None
     assert any("Casey Match" in x and "#/partners" in x for x in a.actions)
-    assert "getting the proof of funds letter together" in a.reply_text and a.style == []
+    assert "don't have a proof-of-funds letter" in a.reply_text and "together" not in a.reply_text and a.style == []
     p = JVPartner(entity_name="RIVER HOMES LLC", contact_name="Sam Rivera", status="ACTIVE_PARTNER", pof_verified=True,
                   pof_share_ok=True, pof_document_path="/x/pof.pdf", target_counties=["Essex"], min_price=100000,
                   max_price=900000, max_rehab="HEAVY", velocity_score=10)
@@ -431,3 +432,18 @@ def test_available_typos_still_read_as_available():
     for text in ("It is still aviilable\n\nBeverly Lyons", "Yes it's availble", "still avaliable"):
         assert "AVAILABLE" in rn.parse_reply(text).intents, text
     assert "AVAILABLE" not in rn.parse_reply("That is avoidable").intents
+
+
+
+def test_a_call_request_is_answered_in_writing_by_itself(db, operator):
+    """2026-11-09 (the operator: "do not leave leads stalled waiting for me to make phone calls"): Bren's "Please call
+    me to discuss" and Stacy's voicemail note sat for four days with no draft. Now they get a written answer the desk
+    sends by itself; an agent who won't negotiate by e-mail is asked for a call window instead."""
+    from engine import gmail_autopilot as gm
+    lead = listed(db)
+    a = rn.analyze(db, lead, "Please call me to discuss 347-564-7131")
+    assert a.headline == "CALL REQUEST: ANSWERED IN WRITING" and a.headline.startswith(gm.SAFE_NO_PRICE)
+    assert "bottom line" in a.reply_text and "$" not in a.reply_text.split("---")[0]
+    b = rn.analyze(db, lead, "Please call me. You have not seen the property. I don't negotiate via email of people "
+                             "I have not had discussions with.")
+    assert b.headline == "CALL REQUEST: ANSWERED IN WRITING" and "good window" in b.reply_text

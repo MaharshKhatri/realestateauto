@@ -572,6 +572,30 @@ def _print_inbox(rows: list[dict]) -> None:
     console.print(t)
 
 
+def cmd_firm_status(args: argparse.Namespace) -> None:
+    """`/firm-status`: the 10-stream executive table (local database; the cloud's live numbers come from task=firm)."""
+    from engine import swarm_firm
+    init_db()
+    with session_scope() as s:
+        st = swarm_firm.status(s)
+    if getattr(args, "json", False):
+        import json as _json
+        print(_json.dumps(st, default=str, indent=1))
+        return
+    for line in swarm_firm.table_lines(st):
+        console.print(line)
+
+
+def cmd_firm_run(args: argparse.Namespace) -> None:
+    """Run streams now (`--only s3,s6`, `--dry-run` proposes nothing for sending) and print what each produced."""
+    from engine import swarm_firm
+    init_db()
+    only = [x.strip() for x in (args.only or "").split(",") if x.strip()] or None
+    r = swarm_firm.tick(send=not args.dry_run, only=only, force=True, budget_seconds=args.budget)
+    import json as _json
+    print(_json.dumps(r, default=str, indent=1))
+
+
 def cmd_cloud(args: argparse.Namespace) -> None:
     """The cloud desk (GitHub Actions: .github/workflows/desk.yml). --run prints counts only: the run log is public."""
     import json as _json
@@ -2041,7 +2065,7 @@ def main(argv: list[str] | None = None) -> None:
     gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
     cl = sub.add_parser("cloud", help="the cloud desk (GitHub Actions): --run (the workflow), --handoff (Mac), status")
     cl.add_argument("--run", action="store_true", help="one cloud run (what .github/workflows/desk.yml calls)")
-    cl.add_argument("--task", default="run", choices=["run", "refresh", "recalibrate", "sheet", "firmup", "stats", "value", "approve", "dismiss", "offer", "note", "digest", "agents"])
+    cl.add_argument("--task", default="run", choices=["run", "refresh", "recalibrate", "sheet", "firmup", "stats", "value", "approve", "dismiss", "offer", "note", "digest", "agents", "firm", "firm-run"])
     cl.add_argument("--note", help="with --task note: a sealed note (manage.py cloud --seal PUBKEY < note.json)")
     cl.add_argument("--seal", metavar="PUBKEY", help="seal the JSON note on stdin to the desk's public key")
     cl.add_argument("--approve", type=int, metavar="REPLY_ID",
@@ -2207,6 +2231,12 @@ def main(argv: list[str] | None = None) -> None:
     si.add_argument("--endpoint", help="form endpoint for the seller form (e.g. a Formspree URL)")
     si.add_argument("--buyer-endpoint", help="separate endpoint for the buyer form (default: --endpoint)")
     sub.add_parser("today", help="the 2-hour daily checklist (listed foreclosures, ready calls, skip-trace, buyers)")
+    fs = sub.add_parser("firm-status", help="the 10-stream research firm: per-stream counts, replies, warm, MRR")
+    fs.add_argument("--json", action="store_true")
+    fr = sub.add_parser("firm-run", help="run the firm's streams now (all, or --only s2,s6) and send what the caps allow")
+    fr.add_argument("--only", help="comma-separated stream keys")
+    fr.add_argument("--dry-run", action="store_true", help="produce PDFs and counts, queue / send nothing")
+    fr.add_argument("--budget", type=float, default=900)
     args = parser.parse_args(argv)
     from engine import gcal_sync
     gcal_sync.install_hooks()     # calls, offers and contracts logged from the CLI reach the calendar too
@@ -2222,7 +2252,7 @@ def main(argv: list[str] | None = None) -> None:
      "finance": cmd_finance, "partners": cmd_partners, "inbound": cmd_inbound, "site": cmd_site,
      "today": cmd_today, "calibrate": cmd_calibrate, "recalibrate": cmd_recalibrate, "vault": cmd_vault,
      "skiptrace-fast": cmd_fast_skiptrace, "reply": cmd_reply, "structure": cmd_structure,
-     "preflight": cmd_preflight}[args.cmd](args)
+     "preflight": cmd_preflight, "firm-status": cmd_firm_status, "firm-run": cmd_firm_run}[args.cmd](args)
 
 
 if __name__ == "__main__":
