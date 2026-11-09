@@ -162,6 +162,8 @@ def run_streams(*, now: datetime, out_dir: Path, only: list[str] | None = None, 
                                                   if isinstance(v, (int, float, str, bool))}))
                 _set_state(s, **{key: now.isoformat(timespec="seconds")})
             rec = {"processed": res.processed, "found": res.found, "products": res.products, "queued": queued}
+            if send and res.internal:
+                rec["internal_mailed"] = mail_internal(key, STREAMS[key][1], res.internal, now)
         except Exception as exc:                      # noqa: BLE001 - one stream's crash never stops the others
             log.exception("firm stream %s failed", key)
             with session_scope() as s:
@@ -175,6 +177,28 @@ def run_streams(*, now: datetime, out_dir: Path, only: list[str] | None = None, 
     return out
 
 
+def mail_internal(key: str, label: str, files: list[Path], now: datetime, smtp_factory: Any = None) -> int:
+    """A stream's operator-only reports (e.g. s10's pre-MLS queue) go to the operator's own inbox as
+    "[njw-<key>] <date> <name>"; nothing is mailed when Gmail isn't set up. Returns the files sent."""
+    import os
+    paths = [Path(f) for f in files if Path(f).exists()]
+    user, pw = os.environ.get("SMTP_USER", "").strip(), os.environ.get("SMTP_APP_PASSWORD", "")
+    if not paths or not user or not pw:
+        return 0
+    from engine.cloud_desk import _send_self_files
+    try:
+        _send_self_files(user, pw, f"[njw-{key}] {now:%Y-%m-%d} {label}",
+                         f"{label}: internal report from the research desk (for you only; not for forwarding).",
+                         paths, smtp_factory or _SMTP_FACTORY)
+    except Exception:                                   # noqa: BLE001 - a report never stops the run
+        log.exception("firm: internal report for %s not mailed", key)
+        return 0
+    return len(paths)
+
+
+_SMTP_FACTORY: Any = None
+
+
 def tick(*, now: datetime | None = None, smtp_factory: Any = None, send: bool = True, only: list[str] | None = None,
          force: bool = False, budget_seconds: float | None = None) -> dict[str, Any]:
     """One desk run's share of the firm: seed targets (daily), run due streams, send what the caps allow."""
@@ -186,6 +210,8 @@ def tick(*, now: datetime | None = None, smtp_factory: Any = None, send: bool = 
         if st.get("seeded") != t.date().isoformat():
             out["targets_seeded"] = seed_targets(s)
             _set_state(s, seeded=t.date().isoformat())
+    global _SMTP_FACTORY
+    _SMTP_FACTORY = smtp_factory
     with tempfile.TemporaryDirectory() as tmp:
         out["streams"] = run_streams(now=t, out_dir=Path(tmp), only=only, force=force, send=send,
                                      budget_seconds=budget_seconds)

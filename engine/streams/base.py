@@ -56,6 +56,7 @@ class StreamResult:
     outbound: list[Outbound] = field(default_factory=list)
     metrics: dict[str, Any] = field(default_factory=dict)   # counts only
     notes: list[str] = field(default_factory=list)          # no names, addresses or message text
+    internal: list[Path] = field(default_factory=list)      # reports for the operator only (mailed to their own inbox)
 
 
 @dataclass
@@ -104,6 +105,18 @@ def entity_like(name: str | None) -> bool:
     """A business (LLC, Inc, trust company ...), not a private person: only these may appear in a sold list."""
     from core.text import is_entity
     return bool(name) and is_entity(name)
+
+
+_KEEP_UPPER = {"LLC", "LP", "LLP", "PC", "PA", "NJ", "NY", "II", "III", "IV", "USA", "RE", "MGMT"}
+
+
+def nice_name(name: str | None) -> str:
+    """"42 RUTGERS AVE., LLC" -> "42 Rutgers Ave., LLC" (entity names read like a person typed them)."""
+    words = []
+    for w in (name or "").split():
+        core = w.strip(".,&()")
+        words.append(w if core.upper() in _KEEP_UPPER or any(c.isdigit() for c in core) else w.capitalize())
+    return " ".join(words)
 
 
 def slug(text: str, n: int = 48) -> str:

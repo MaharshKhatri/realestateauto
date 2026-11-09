@@ -71,7 +71,7 @@ def test_every_message_carries_the_signature_postal_address_opt_out_and_ad_line(
     msg = fo.compose(row, hc.operator(), "<x@y>", ME)
     text = msg.get_body(preferencelist=("plain",)).get_content()
     assert "PO Box 10, Edison, NJ 08817" in text and 'Reply "no more"' in text
-    assert "This is a commercial message from Jordan Operator" in text and "Jordan Operator" in text
+    assert "This is a commercial message from Garden State Home Buyers LLC." in text and "Jordan Operator" in text
     assert [p.get_filename() for p in msg.iter_attachments()] == ["packet.pdf"]
     reply = Outbound(stream="s6", key="r1", to=t.email, subject="Re: data", body="Thanks, here it is.",
                      priority=PRIORITY_REPLY, kind="reply", target_id=t.id, in_reply_to="<their@msg>")

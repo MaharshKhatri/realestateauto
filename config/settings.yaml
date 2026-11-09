@@ -383,13 +383,20 @@ research_firm:
   max_touches: 2                     # cold touches per target in all (a pitch + one follow-up); a reply ends them
   max_attempts: 3                    # a send that keeps failing is marked failed
   streams:
-    s1: {enabled: true}
+    s1: {enabled: true, warm_days: 21, buyers_per_deal: 3}
     s2: {enabled: true, price_trial: 500, price_monthly: 1000, pitches_per_run: 4, agents_top: 150}
-    s3: {enabled: true, price_monthly: 400, pitches_per_run: 2}
-    s4: {enabled: true, price_monthly: 500, pitches_per_run: 3}
-    s5: {enabled: true, price_monthly: 750, pitches_per_run: 2}
-    s6: {enabled: true, price_per_packet: 100, price_monthly: 500, pitches_per_run: 2, min_taxes: 12000}
-    s7: {enabled: true, pitches_per_run: 3}
-    s8: {enabled: true, review_days: 14}
-    s9: {enabled: true, price_monthly: 500, pitches_per_run: 2}
-    s10: {enabled: true}
+    s3: {enabled: true, price_monthly: 400, price_report: 150, pitches_per_run: 2, window_days: 60, min_equity: 75000,
+         lookback_days: 730, min_surplus: 5000, max_rows_per_pdf: 12, min_confidence: 45, partial_debt_share: 0.25,
+         statewide_attachments: 2, deed_window_days: 240}
+    s4: {enabled: true, price_monthly: 500, pitches_per_run: 3, fresh_days: 120, report_rows: 24, max_flip_rows: 6,
+         min_rows: 3, min_trade_rows: 1}
+    s5: {enabled: true, price_monthly: 750, pitches_per_run: 2, feed_rows: 40, min_rows: 5, min_purchases: 2,
+         in_progress_months: 9}
+    s6: {enabled: true, price_per_packet: 100, price_monthly: 500, pitches_per_run: 2, min_taxes: 12000, packets_per_run: 15,
+         min_comps: 3, max_comps: 10, comp_months: 30, min_gap_pct: 0.15}
+    s7: {enabled: true, pitches_per_run: 3, recent_days: 30, min_gain: 1000, scan_limit: 2000}
+    s8: {enabled: true, review_days: 14, review_max_days: 60, max_per_run: 5, followup_days: 3, recent_email_days: 7,
+         keep_days: 60, cold_ok: false, max_detect: 200}
+    s9: {enabled: true, price_monthly: 500, pitches_per_run: 2, min_price: 500000, max_price: 5000000, lookback_months: 18,
+         min_hold_years: 8, min_gain_multiple: 1.5, max_annual_growth: 0.12, min_rows_to_pitch: 3}
+    s10: {enabled: true, max_rows: 16, fresh_days: 7, urgent_days: 30}

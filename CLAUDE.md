@@ -1193,6 +1193,55 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     digest built for them (flippers: their deed towns; agents: the towns they list in, never their own listings) and one
     follow-up after the gap; never an agent we are in deal talks with (a reply or a lead e-mail in 30 days); greetings
     use a person's first name only (a brokerage in the name field gets "there").
+  - **s3 surplus research** (`s3_surplus_overages.py`, daily): sold-to-third-party sheriff sales (status / history "Purchased
+    - 3rd Party", or a recorded sheriff's deed NU code 12 to a non-plaintiff grantee) and a 60-day watchlist where value
+    minus known debt >= $75K (association / municipal plaintiffs and upsets under 25% of value left out). CivilView
+    carries no winning bid, so surplus = bid - payoff - prior liens only when a bid is on record; otherwise "winning bid:
+    from the recorded sheriff's deed or the sheriff (OPRA)". One-page county PDFs (docket, sheriff #, plaintiff lender,
+    upset, liens, formula; never a defendant / person name), "for attorneys only", law footer (N.J.S.A. 2A:50-37, R.
+    4:64-3, R. 4:57-2, 46:30B-106 finder limits, Zanolini). Pitched to `foreclosure_surplus_attorney` targets: $400/month
+    or $150 a county report, never a percentage or per retained client (Joint Opinion 741).
+  - **s4 contractor rehab triggers** (`s4_contractor_leads.py`, daily): a negation-aware classifier over live listing text
+    (OIL_TANK / ROOF / HVAC / STRUCTURAL / FULL_GUT; "new roof", "no oil tank", "tank removed", home-warranty "roof leak
+    protection" don't fire) + entity purchases in 120 days (FRESH_FLIP); per-county one-page reports quoting <= 12 words of
+    the public listing (no phones / e-mails / names), pitched to the five contractor kinds with their own trade's rows
+    first, $500/month per county.
+  - **s5 hard-money borrower feed** (`s5_hard_money_feed.py`, daily): entity buyer families only (no person names, no
+    "Owner @" clusters, no suppressed mailing addresses), >= 2 purchases in 36 months, in-rehab counts (bought <= 9 months)
+    and resales listed; one-page feed of the top 40, "not a consumer or credit report", pitched to lenders, $750/month.
+  - **s6 tax-appeal evidence** (`s6_tax_appeals.py`, daily): official Chapter 123 ratios for all 267 target-county towns in
+    `config/streams/nj_chapter123_ratios.yaml` (tax year 2027 certification of 2026 ratios, promulgated 2026-10-01; refresh
+    every October and check in January for Tax Court amendments). Internal Chapter 123 screen (assessment above 1.15 x R on
+    similar recorded sales, >= 15% reduction) picks the properties; the PDF prints only recorded facts, per-sale
+    "assessment / sale price", the range and "If the true value were V, the Chapter 123 assessment would be R x V" with V
+    blank, the deadline (April 1; Monmouth January 15; May 1 in revaluation towns) and, at the top in body type, "Public-record
+    data; not an appraisal, BPO or CMA; no opinion of value" (N.J.S.A. 45:14F). No value, savings or "over-assessed".
+    Pitched to tax-appeal attorneys: $100 a packet or $500/month.
+  - **s7 graduated-fee cliff net sheets** (`s7_mansion_tax_cliff.py`, daily): dead zones solved on a $500 grid from the YAML
+    tiers via quant_pricing (above $1M to $1,010,500; $2M to $2,021,000; $2.5M to $2,513,000; $3M to $3,016,000; $3.5M to
+    $3,518,500); a listing priced inside one gets a one-page net sheet and a free courtesy note to its agent (one per
+    listing ever, one per agent per 30 days, none to a lead e-mailed in 30 days). Supply is thin: harvested listings stop at
+    $900K and agents mostly price under the line.
+  - **s8 contract fallout** (`s8_contract_fallout.py`, hourly 8-8): pending / contingent -> for_sale transitions (snapshot in
+    swarm_state `s8_listing_status`) and under-contract / backup replies 14-60 days old with the listing still live; a
+    non-commercial note in the agent's thread ("my offer of $X still stands" only when our written offer <= today's final,
+    else "what would the seller need now"), at most 5 per run, only agents we already talked to (`cold_ok: false`);
+    detections kept in swarm_state `s8_fallout` {"items": [...]} for the digest.
+  - **s9 cost-seg / 1031 feed** (`s9_cpa_1031_feed.py`, daily): Table A entity purchases of 2+ unit / class 4 property
+    $500K-$5M in 18 months (deed exports, cash-buyer purchases, MOD-IV); Table B listed multi-family / class 4 with a last
+    recorded sale 8+ years ago and ask >= 1.5x it (implied growth > 12%/yr dropped as nominal deeds); no owner names; "may
+    qualify; the client's CPA decides" (100% bonus only for <= 20-year components acquired after 2025-01-19; NJ decouples).
+    Pitched to cost-seg firms, 1031 intermediaries, real-estate CPAs, $500/month.
+  - **s10 pre-MLS distress** (`s10_pre_mls_distress.py`, daily): lis pendens, tax certificates / delinquencies, estates and
+    sheriff sales with a fresh adjournment (snapshot `s10_adjournments`) on unlisted properties; adjournments left = 5 -
+    used (N.J.S.A. 2A:17-36); an INTERNAL one-page queue mailed to the operator's own inbox ("[njw-s10] <date>",
+    `StreamResult.internal` -> `swarm_firm.mail_internal`); never an e-mail to a homeowner (FRFPA: letters only, operator
+    approved).
+  - **B2B targets** (`config/b2b_targets.yaml`, 121 firms, 75 with a published e-mail, each with its source page): tax-appeal
+    and surplus attorneys, hard-money lenders, cost-seg firms, 1031 intermediaries, CPAs, oil-tank / roofing / HVAC / GC /
+    dumpster companies, investor-focused brokerages. Measured on the Nov 2 snapshot (forced run, 43 s): s1 101 convertible
+    of 1,449 listed; s2 4 digests; s3 257 rows / 8 PDFs; s4 97 triggers / 11 PDFs; s5 22 entities; s6 19 packets of 1,795
+    high-tax parcels; s7 0 in a dead zone; s9 119 triggers; s10 123 rows.
   - **Written answers, no stalls** (`reply_negotiator`): a "call me" with no number gets "I'm in classes; e-mail is
     fastest; the seller's as-is bottom line and big repair items?" (or a call-window ask when the agent won't negotiate
     by e-mail); a proof-of-funds ask with no verified partner gets "no letter today; the sqft and condition?" instead of

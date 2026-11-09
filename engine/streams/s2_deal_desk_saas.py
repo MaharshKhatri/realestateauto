@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from db.models import Contact, ContactType, FirmTarget, Lead, Prospect
 from engine import deal_desk as dd
 from engine import firm_outbox as fo
-from engine.streams.base import PRIORITY_PITCH, Outbound, Stream, StreamContext, StreamResult, slug
+from engine.streams.base import PRIORITY_PITCH, Outbound, Stream, StreamContext, StreamResult, nice_name, slug
 
 
 def week_key(now: Any) -> str:
@@ -157,11 +157,12 @@ def pitch_body(t: FirmTarget, d: dd.Digest, op: dict[str, str], follow: bool) ->
                  "",
                  sign]
     else:
-        subject = f"Deals this week in {top} for {t.org}" if t.org else f"Deals this week in {top}"
+        org = nice_name(t.org) if t.org else ""
+        subject = f"Deals this week in {top} for {org}" if org else f"Deals this week in {top}"
         lines = [f"Hi {name},",
                  "",
                  (f"Following up with this week's deals in {towns}, one page, attached. " if follow else
-                  f"I put together this week's deals in the towns {t.org or 'you'} has been buying: {len(d.rows)} on one "
+                  f"I put together this week's deals in the towns {org or 'you'} has been buying: {len(d.rows)} on one "
                   "page, attached, with ARV, repairs and the most a flipper can pay. ")
                  + "I run this as software: it finds and underwrites deals daily and drafts your offers from your own "
                  "inbox, and you approve every one. If it's useful, the first 30 days are $500 flat, then $1,000 a "

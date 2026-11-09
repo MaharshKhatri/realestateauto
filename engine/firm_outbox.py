@@ -126,7 +126,7 @@ def enqueue(session: Session, ob: Outbound, now: datetime | None = None) -> Firm
                      subject=ob.subject[:250], body=ob.body, in_reply_to=ob.in_reply_to,
                      attachments_json=_attachments(ob.attachments) if why is None else [],
                      status="skipped" if why else "queued", reason=why)
-    if not ob.commercial and row.kind == "pitch":
+    if not ob.commercial and row.kind in ("pitch", "followup"):
         row.kind = "notice"                       # a non-commercial note (no ad line), still logged and gated
     session.add(row)
     try:
@@ -178,8 +178,8 @@ def footer(op: dict[str, str], commercial: bool) -> str:
     sig = hc.signature_lines(op)
     lines = ["", *sig, ""]
     if commercial:
-        lines.append(f"This is a commercial message from {op.get('name') or 'the sender'}"
-                     + (f", {op['company']}" if op.get("company") and op.get("company") != op.get("name") else "") + ".")
+        who = max((op.get("name") or "", op.get("company") or ""), key=len) or "the sender"
+        lines.append(f"This is a commercial message from {who}.")
     if op.get("postal"):
         lines.append(f"Mail: {op['postal']}")
     lines.append('Reply "no more" and I won\'t e-mail you again.')

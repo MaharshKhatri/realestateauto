@@ -1,0 +1,287 @@
+# NJ Chapter 123 average ratios and common level ranges (N.J.S.A. 54:1-35a / 54:1-35b; applied in tax appeals by
+# N.J.S.A. 54:51A-6). Read by engine/streams/s6_tax_appeals.py. Keys are the 4-digit NJ municipal codes
+# (Property.mun_code). avg / lower / upper are percentages exactly as printed by the Division of Taxation; ratios over
+# 100% are treated as 100% (the certification's own footnote). Target counties only.
+# Refresh every October: the Director promulgates the next table as of October 1 (subject to Tax Court revision on a
+# taxing district's appeal within 45 days, N.J.S.A. 54:51A-4(c)); re-check for an amended certification in January.
+source:
+  tax_year: 2027
+  title: "Certification of the 2026 Average Ratios and Common Level Ranges for use in Tax Year 2027"
+  promulgated: "2026-10-01"
+  signed: "2026-09-22"
+  url: https://www.nj.gov/njbonds/treasury/taxation/pdf/lpt/chap123/2027CH123.pdf
+  status: "original certification, subject to revision by the Tax Court of New Jersey"
+  retrieved: "2026-11-09"
+previous:
+  tax_year: 2026
+  title: "Certification of Average Ratios and Common Level Ranges for use in the Tax Year 2026"
+  status: "original certification October 1, 2025, amended by the Tax Court of New Jersey (amended towns: amended_2026: true)"
+  url: https://www.nj.gov/njbonds/treasury/taxation/pdf/lpt/chap123/2026CH123.pdf
+ratios:
+  "0201": {name: "ALLENDALE BORO", county: Bergen, avg: 89.97, lower: 76.47, upper: 103.47, avg_2026: 85.11}
+  "0202": {name: "ALPINE BORO", county: Bergen, avg: 86.74, lower: 73.73, upper: 99.75, avg_2026: 96.24, amended_2026: true}
+  "0203": {name: "BERGENFIELD BORO", county: Bergen, avg: 50.26, lower: 42.72, upper: 57.80, avg_2026: 54.72}
+  "0204": {name: "BOGOTA BORO", county: Bergen, avg: 85.74, lower: 72.88, upper: 98.60, avg_2026: 87.03}
+  "0205": {name: "CARLSTADT BORO", county: Bergen, avg: 98.05, lower: 83.34, upper: 112.76, avg_2026: 89.09}
+  "0206": {name: "CLIFFSIDE PARK BORO", county: Bergen, avg: 60.06, lower: 51.05, upper: 69.07, avg_2026: 63.94}
+  "0207": {name: "CLOSTER BORO", county: Bergen, avg: 90.05, lower: 76.54, upper: 103.56, avg_2026: 86.08}
+  "0208": {name: "CRESSKILL BORO", county: Bergen, avg: 85.04, lower: 72.28, upper: 97.80, avg_2026: 78.85}
+  "0209": {name: "DEMAREST BORO", county: Bergen, avg: 96.89, lower: 82.36, upper: 111.42, avg_2026: 101.41}
+  "0210": {name: "DUMONT BORO", county: Bergen, avg: 95.24, lower: 80.95, upper: 109.53, avg_2026: 95.31}
+  "0211": {name: "ELMWOOD PARK BORO", county: Bergen, avg: 108.46, lower: 92.19, upper: 124.73, avg_2026: 61.16}
+  "0212": {name: "E RUTHERFORD BORO", county: Bergen, avg: 94.28, lower: 80.14, upper: 108.42, avg_2026: 102.14}
+  "0213": {name: "EDGEWATER BORO", county: Bergen, avg: 91.93, lower: 78.14, upper: 105.72, avg_2026: 89.49}
+  "0214": {name: "EMERSON BORO", county: Bergen, avg: 63.38, lower: 53.87, upper: 72.89, avg_2026: 66.48}
+  "0215": {name: "ENGLEWOOD CITY", county: Bergen, avg: 58.12, lower: 49.40, upper: 66.84, avg_2026: 65.73}
+  "0216": {name: "ENGLEWOOD CLIFFS BORO", county: Bergen, avg: 77.83, lower: 66.16, upper: 89.50, avg_2026: 80.70}
+  "0217": {name: "FAIRLAWN BORO", county: Bergen, avg: 53.46, lower: 45.44, upper: 61.48, avg_2026: 56.53}
+  "0218": {name: "FAIRVIEW BORO", county: Bergen, avg: 81.45, lower: 69.23, upper: 93.67, avg_2026: 79.37}
+  "0219": {name: "FORT LEE BORO", county: Bergen, avg: 60.88, lower: 51.75, upper: 70.01, avg_2026: 67.17}
+  "0220": {name: "FRANKLIN LAKES BORO", county: Bergen, avg: 66.17, lower: 56.24, upper: 76.10, avg_2026: 72.72}
+  "0221": {name: "GARFIELD CITY", county: Bergen, avg: 47.06, lower: 40.00, upper: 54.12, avg_2026: 50.76}
+  "0222": {name: "GLEN ROCK BORO", county: Bergen, avg: 57.45, lower: 48.83, upper: 66.07, avg_2026: 62.75}
+  "0223": {name: "HACKENSACK CITY", county: Bergen, avg: 69.95, lower: 59.46, upper: 80.44, avg_2026: 74.58}
+  "0224": {name: "HARRINGTON PARK BORO", county: Bergen, avg: 61.22, lower: 52.04, upper: 70.40, avg_2026: 66.17}
+  "0225": {name: "HASBROUCK HGHTS BORO", county: Bergen, avg: 93.16, lower: 79.19, upper: 107.13, avg_2026: 78.43}
+  "0226": {name: "HAWORTH BORO", county: Bergen, avg: 55.60, lower: 47.26, upper: 63.94, avg_2026: 62.09}
+  "0227": {name: "HILLSDALE BORO", county: Bergen, avg: 60.20, lower: 51.17, upper: 69.23, avg_2026: 63.86}
+  "0228": {name: "HOHOKUS BORO", county: Bergen, avg: 94.22, lower: 80.09, upper: 108.35, avg_2026: 62.09}
+  "0229": {name: "LEONIA BORO", county: Bergen, avg: 100.16, lower: 85.14, upper: 115.18, avg_2026: 56.47}
+  "0230": {name: "LITTLE FERRY BORO", county: Bergen, avg: 88.07, lower: 74.86, upper: 101.28, avg_2026: 82.17}
+  "0231": {name: "LODI BORO", county: Bergen, avg: 48.00, lower: 40.80, upper: 55.20, avg_2026: 51.93}
+  "0232": {name: "LYNDHURST TWP", county: Bergen, avg: 85.26, lower: 72.47, upper: 98.05, avg_2026: 87.01}
+  "0233": {name: "MAHWAH TWP", county: Bergen, avg: 63.77, lower: 54.20, upper: 73.34, avg_2026: 66.77}
+  "0234": {name: "MAYWOOD BORO", county: Bergen, avg: 82.46, lower: 70.09, upper: 94.83, avg_2026: 86.57}
+  "0235": {name: "MIDLAND PARK BORO", county: Bergen, avg: 55.82, lower: 47.45, upper: 64.19, avg_2026: 60.74}
+  "0236": {name: "MONTVALE BORO", county: Bergen, avg: 63.82, lower: 54.25, upper: 73.39, avg_2026: 72.47}
+  "0237": {name: "MOONACHIE BORO", county: Bergen, avg: 99.79, lower: 84.82, upper: 114.76, avg_2026: 96.87}
+  "0238": {name: "NEW MILFORD BORO", county: Bergen, avg: 91.16, lower: 77.49, upper: 104.83, avg_2026: 97.49}
+  "0239": {name: "NORTH ARLINGTON BORO", county: Bergen, avg: 86.42, lower: 73.46, upper: 99.38, avg_2026: 87.43}
+  "0240": {name: "NORTHVALE BORO", county: Bergen, avg: 103.95, lower: 88.36, upper: 119.54, avg_2026: 60.79}
+  "0241": {name: "NORWOOD BORO", county: Bergen, avg: 100.89, lower: 85.76, upper: 116.02, avg_2026: 64.79}
+  "0242": {name: "OAKLAND BORO", county: Bergen, avg: 92.89, lower: 78.96, upper: 106.82, avg_2026: 88.79}
+  "0243": {name: "OLD TAPPAN BORO", county: Bergen, avg: 102.14, lower: 86.82, upper: 117.46, avg_2026: 70.23}
+  "0244": {name: "ORADELL BORO", county: Bergen, avg: 84.28, lower: 71.64, upper: 96.92, avg_2026: 89.20}
+  "0245": {name: "PALISADES PARK BORO", county: Bergen, avg: 90.86, lower: 77.23, upper: 104.49, avg_2026: 87.69}
+  "0246": {name: "PARAMUS BORO", county: Bergen, avg: 98.22, lower: 83.49, upper: 112.95, avg_2026: 93.30}
+  "0247": {name: "PARK RIDGE BORO", county: Bergen, avg: 58.83, lower: 50.01, upper: 67.65, avg_2026: 64.17}
+  "0248": {name: "RAMSEY BORO", county: Bergen, avg: 91.90, lower: 78.12, upper: 105.69, avg_2026: 97.25}
+  "0249": {name: "RIDGEFIELD BORO", county: Bergen, avg: 93.47, lower: 79.45, upper: 107.49, avg_2026: 99.07}
+  "0250": {name: "RIDGEFIELD PARK VILLAGE", county: Bergen, avg: 74.47, lower: 63.30, upper: 85.64, avg_2026: 79.53}
+  "0251": {name: "RIDGEWOOD VILLAGE", county: Bergen, avg: 56.09, lower: 47.68, upper: 64.50, avg_2026: 60.52}
+  "0252": {name: "RIVEREDGE BORO", county: Bergen, avg: 92.94, lower: 79.00, upper: 106.88, avg_2026: 92.90}
+  "0253": {name: "RIVERVALE TWP", county: Bergen, avg: 67.04, lower: 56.98, upper: 77.10, avg_2026: 72.96}
+  "0254": {name: "ROCHELLE PARK TWP", county: Bergen, avg: 99.22, lower: 84.34, upper: 114.10, avg_2026: 63.89}
+  "0255": {name: "ROCKLEIGH BORO", county: Bergen, avg: 119.50, lower: 101.58, upper: 137.43, avg_2026: 111.94}
+  "0256": {name: "RUTHERFORD BORO", county: Bergen, avg: 64.31, lower: 54.66, upper: 73.96, avg_2026: 66.39}
+  "0257": {name: "SADDLE BROOK TWP", county: Bergen, avg: 78.49, lower: 66.72, upper: 90.26, avg_2026: 81.45}
+  "0258": {name: "SADDLE RIVER BORO", county: Bergen, avg: 80.00, lower: 68.00, upper: 92.00, avg_2026: 87.56}
+  "0259": {name: "SO HACKENSACK TWP", county: Bergen, avg: 82.52, lower: 70.14, upper: 94.90, avg_2026: 98.39}
+  "0260": {name: "TEANECK TWP", county: Bergen, avg: 87.43, lower: 74.32, upper: 100.54, avg_2026: 89.85}
+  "0261": {name: "TENAFLY BORO", county: Bergen, avg: 58.89, lower: 50.06, upper: 67.72, avg_2026: 64.25}
+  "0262": {name: "TETERBORO BORO", county: Bergen, avg: 48.54, lower: 41.26, upper: 55.82, avg_2026: 94.39}
+  "0263": {name: "UPPER SADDLE RIV BORO", county: Bergen, avg: 55.03, lower: 46.78, upper: 63.28, avg_2026: 59.81}
+  "0264": {name: "WALDWICK BORO", county: Bergen, avg: 81.09, lower: 68.93, upper: 93.25, avg_2026: 87.60}
+  "0265": {name: "WALLINGTON BORO", county: Bergen, avg: 88.87, lower: 75.54, upper: 102.20, avg_2026: 96.76}
+  "0266": {name: "WASHINGTON TWP", county: Bergen, avg: 96.81, lower: 82.29, upper: 111.33, avg_2026: 63.37}
+  "0267": {name: "WESTWOOD BORO", county: Bergen, avg: 90.90, lower: 77.27, upper: 104.54, avg_2026: 85.75}
+  "0268": {name: "WOODCLIFF LAKE BORO", county: Bergen, avg: 86.28, lower: 73.34, upper: 99.22, avg_2026: 86.39}
+  "0269": {name: "WOOD RIDGE BORO", county: Bergen, avg: 100.99, lower: 85.84, upper: 116.14, avg_2026: 63.02}
+  "0270": {name: "WYCKOFF TWP", county: Bergen, avg: 70.06, lower: 59.55, upper: 80.57, avg_2026: 75.21}
+  "0401": {name: "AUDUBON BORO", county: Camden, avg: 53.79, lower: 45.72, upper: 61.86, avg_2026: 61.01}
+  "0402": {name: "AUDUBON PARK BORO", county: Camden, avg: 99.89, lower: 84.91, upper: 114.87, avg_2026: 99.89}
+  "0403": {name: "BARRINGTON BORO", county: Camden, avg: 50.93, lower: 43.29, upper: 58.57, avg_2026: 56.47}
+  "0404": {name: "BELLMAWR BORO", county: Camden, avg: 58.29, lower: 49.55, upper: 67.03, avg_2026: 63.37}
+  "0405": {name: "BERLIN BORO", county: Camden, avg: 59.86, lower: 50.88, upper: 68.84, avg_2026: 66.55}
+  "0406": {name: "BERLIN TWP", county: Camden, avg: 52.99, lower: 45.04, upper: 60.94, avg_2026: 58.26}
+  "0407": {name: "BROOKLAWN BORO", county: Camden, avg: 48.82, lower: 41.50, upper: 56.14, avg_2026: 53.45}
+  "0408": {name: "CAMDEN CITY", county: Camden, avg: 50.95, lower: 43.31, upper: 58.59, avg_2026: 57.82}
+  "0409": {name: "CHERRY HILL TWP", county: Camden, avg: 51.60, lower: 43.86, upper: 59.34, avg_2026: 54.32}
+  "0410": {name: "CHESILHURST BORO", county: Camden, avg: 59.08, lower: 50.22, upper: 67.94, avg_2026: 64.07}
+  "0411": {name: "CLEMENTON BORO", county: Camden, avg: 59.59, lower: 50.65, upper: 68.53, avg_2026: 62.40}
+  "0412": {name: "COLLINGSWOOD BORO", county: Camden, avg: 102.08, lower: 86.77, upper: 117.39, avg_2026: 109.22}
+  "0413": {name: "GIBBSBORO BORO", county: Camden, avg: 63.89, lower: 54.31, upper: 73.47, avg_2026: 66.63}
+  "0414": {name: "GLOUCESTER CITY", county: Camden, avg: 48.18, lower: 40.95, upper: 55.41, avg_2026: 56.80}
+  "0415": {name: "GLOUCESTER TWP", county: Camden, avg: 52.22, lower: 44.39, upper: 60.05, avg_2026: 56.95}
+  "0416": {name: "HADDON TWP", county: Camden, avg: 95.38, lower: 81.07, upper: 109.69, avg_2026: 104.64}
+  "0417": {name: "HADDONFIELD BORO", county: Camden, avg: 64.85, lower: 55.12, upper: 74.58, avg_2026: 70.95}
+  "0418": {name: "HADDON HEIGHTS BORO", county: Camden, avg: 70.54, lower: 59.96, upper: 81.12, avg_2026: 80.81}
+  "0419": {name: "HI NELLA BORO", county: Camden, avg: 58.54, lower: 49.76, upper: 67.32, avg_2026: 56.74}
+  "0420": {name: "LAUREL SPRINGS BORO", county: Camden, avg: 56.65, lower: 48.15, upper: 65.15, avg_2026: 57.13}
+  "0421": {name: "LAWNSIDE BORO", county: Camden, avg: 54.21, lower: 46.08, upper: 62.34, avg_2026: 60.99}
+  "0422": {name: "LINDENWOLD BORO", county: Camden, avg: 111.88, lower: 95.10, upper: 128.66, avg_2026: 59.98}
+  "0423": {name: "MAGNOLIA BORO", county: Camden, avg: 55.75, lower: 47.39, upper: 64.11, avg_2026: 60.04}
+  "0424": {name: "MERCHANTVILLE BORO", county: Camden, avg: 51.21, lower: 43.53, upper: 58.89, avg_2026: 55.76}
+  "0425": {name: "MOUNT EPHRAIM BORO", county: Camden, avg: 52.05, lower: 44.24, upper: 59.86, avg_2026: 56.15}
+  "0426": {name: "OAKLYN BORO", county: Camden, avg: 49.08, lower: 41.72, upper: 56.44, avg_2026: 55.26}
+  "0427": {name: "PENNSAUKEN TWP", county: Camden, avg: 98.13, lower: 83.41, upper: 112.85, avg_2026: 109.70}
+  "0428": {name: "PINE HILL BORO", county: Camden, avg: 105.54, lower: 89.71, upper: 121.37, avg_2026: 51.74}
+  "0430": {name: "RUNNEMEDE BORO", county: Camden, avg: 50.86, lower: 43.23, upper: 58.49, avg_2026: 54.95}
+  "0431": {name: "SOMERDALE BORO", county: Camden, avg: 54.35, lower: 46.20, upper: 62.50, avg_2026: 56.50}
+  "0432": {name: "STRATFORD BORO", county: Camden, avg: 53.86, lower: 45.78, upper: 61.94, avg_2026: 57.70}
+  "0433": {name: "TAVISTOCK BORO", county: Camden, avg: 100.00, lower: 85.00, upper: 115.00, avg_2026: 100.00}
+  "0434": {name: "VOORHEES TWP", county: Camden, avg: 96.16, lower: 81.74, upper: 110.58, avg_2026: 105.49}
+  "0435": {name: "WATERFORD TWP", county: Camden, avg: 50.47, lower: 42.90, upper: 58.04, avg_2026: 53.68}
+  "0436": {name: "WINSLOW TWP", county: Camden, avg: 54.29, lower: 46.15, upper: 62.43, avg_2026: 58.00}
+  "0437": {name: "WOODLYNNE BORO", county: Camden, avg: 38.50, lower: 32.73, upper: 44.28, avg_2026: 46.31}
+  "0701": {name: "BELLEVILLE TWP", county: Essex, avg: 54.78, lower: 46.56, upper: 63.00, avg_2026: 59.13, amended_2026: true}
+  "0702": {name: "BLOOMFIELD TWP", county: Essex, avg: 58.66, lower: 49.86, upper: 67.46, avg_2026: 63.56}
+  "0703": {name: "CALDWELL BORO TWP", county: Essex, avg: 61.80, lower: 52.53, upper: 71.07, avg_2026: 65.10}
+  "0704": {name: "CEDAR GROVE TWP", county: Essex, avg: 96.97, lower: 82.42, upper: 111.52, avg_2026: 68.20}
+  "0705": {name: "EAST ORANGE CITY", county: Essex, avg: 82.14, lower: 69.82, upper: 94.46, avg_2026: 83.93, amended_2026: true}
+  "0706": {name: "ESSEX FELLS TWP", county: Essex, avg: 71.08, lower: 60.42, upper: 81.74, avg_2026: 72.77}
+  "0707": {name: "FAIRFIELD TWP", county: Essex, avg: 59.48, lower: 50.56, upper: 68.40, avg_2026: 70.55}
+  "0708": {name: "GLEN RIDGE TWP", county: Essex, avg: 88.40, lower: 75.14, upper: 101.66, avg_2026: 58.25}
+  "0709": {name: "IRVINGTON TWP", county: Essex, avg: 101.95, lower: 86.66, upper: 117.24, avg_2026: 97.75, amended_2026: true}
+  "0710": {name: "LIVINGSTON TWP", county: Essex, avg: 63.44, lower: 53.92, upper: 72.96, avg_2026: 69.18}
+  "0711": {name: "MAPLEWOOD TWP", county: Essex, avg: 88.17, lower: 74.94, upper: 101.40, avg_2026: 96.50, amended_2026: true}
+  "0712": {name: "MILLBURN TWP", county: Essex, avg: 66.18, lower: 56.25, upper: 76.11, avg_2026: 70.02}
+  "0713": {name: "MONTCLAIR TWP", county: Essex, avg: 52.38, lower: 44.52, upper: 60.24, avg_2026: 56.26}
+  "0714": {name: "NEWARK CITY", county: Essex, avg: 35.83, lower: 30.46, upper: 41.20, avg_2026: 40.69, amended_2026: true}
+  "0715": {name: "NORTH CALDWELL TWP", county: Essex, avg: 66.39, lower: 56.43, upper: 76.35, avg_2026: 71.25}
+  "0716": {name: "NUTLEY TWP", county: Essex, avg: 77.54, lower: 65.91, upper: 89.17, avg_2026: 81.55}
+  "0717": {name: "ORANGE CITY TWP", county: Essex, avg: 77.47, lower: 65.85, upper: 89.09, avg_2026: 80.04, amended_2026: true}
+  "0718": {name: "ROSELAND BORO", county: Essex, avg: 84.08, lower: 71.47, upper: 96.69, avg_2026: 93.62}
+  "0719": {name: "SOUTH ORANGE VILLAGE TWP", county: Essex, avg: 86.95, lower: 73.91, upper: 99.99, avg_2026: 89.35, amended_2026: true}
+  "0720": {name: "VERONA TWP", county: Essex, avg: 91.97, lower: 78.17, upper: 105.77, avg_2026: 64.73}
+  "0721": {name: "WEST CALDWELL TWP", county: Essex, avg: 60.71, lower: 51.60, upper: 69.82, avg_2026: 65.84, amended_2026: true}
+  "0722": {name: "WEST ORANGE TWP", county: Essex, avg: 93.01, lower: 79.06, upper: 106.96, avg_2026: 99.99}
+  "0901": {name: "BAYONNE CITY", county: Hudson, avg: 62.97, lower: 53.52, upper: 72.42, avg_2026: 66.58}
+  "0902": {name: "EAST NEWARK BORO", county: Hudson, avg: 42.07, lower: 35.76, upper: 48.38, avg_2026: 53.27}
+  "0903": {name: "GUTTENBERG TOWN", county: Hudson, avg: 53.15, lower: 45.18, upper: 61.12, avg_2026: 51.82}
+  "0904": {name: "HARRISON TOWN", county: Hudson, avg: 61.78, lower: 52.51, upper: 71.05, avg_2026: 69.39}
+  "0905": {name: "HOBOKEN CITY", county: Hudson, avg: 55.86, lower: 47.48, upper: 64.24, avg_2026: 58.28}
+  "0906": {name: "JERSEY CITY CITY", county: Hudson, avg: 66.69, lower: 56.69, upper: 76.69, avg_2026: 72.82}
+  "0907": {name: "KEARNY TOWN", county: Hudson, avg: 14.37, lower: 12.21, upper: 16.53, avg_2026: 16.08}
+  "0908": {name: "NORTH BERGEN TWP", county: Hudson, avg: 80.23, lower: 68.20, upper: 92.26, avg_2026: 86.99, amended_2026: true}
+  "0909": {name: "SECAUCUS TOWN", county: Hudson, avg: 34.93, lower: 29.69, upper: 40.17, avg_2026: 37.10, amended_2026: true}
+  "0910": {name: "UNION CITY CITY", county: Hudson, avg: 94.11, lower: 79.99, upper: 108.23, avg_2026: 95.51}
+  "0911": {name: "WEEHAWKEN TWP", county: Hudson, avg: 79.92, lower: 67.93, upper: 91.91, avg_2026: 84.71}
+  "0912": {name: "WEST NEW YORK TOWN", county: Hudson, avg: 18.55, lower: 15.77, upper: 21.33, avg_2026: 19.06}
+  "1101": {name: "EAST WINDSOR TWP", county: Mercer, avg: 53.56, lower: 45.53, upper: 61.59, avg_2026: 56.62}
+  "1102": {name: "EWING TWP", county: Mercer, avg: 60.52, lower: 51.44, upper: 69.60, avg_2026: 63.20}
+  "1103": {name: "HAMILTON TWP", county: Mercer, avg: 58.68, lower: 49.88, upper: 67.48, avg_2026: 61.32}
+  "1104": {name: "HIGHTSTOWN BORO", county: Mercer, avg: 50.07, lower: 42.56, upper: 57.58, avg_2026: 55.40}
+  "1105": {name: "HOPEWELL BORO", county: Mercer, avg: 66.31, lower: 56.36, upper: 76.26, avg_2026: 71.76}
+  "1106": {name: "HOPEWELL TWP", county: Mercer, avg: 68.00, lower: 57.80, upper: 78.20, avg_2026: 71.31}
+  "1107": {name: "LAWRENCE TWP", county: Mercer, avg: 72.01, lower: 61.21, upper: 82.81, avg_2026: 73.80}
+  "1108": {name: "PENNINGTON BORO", county: Mercer, avg: 68.45, lower: 58.18, upper: 78.72, avg_2026: 70.11}
+  "1111": {name: "TRENTON CITY", county: Mercer, avg: 50.66, lower: 43.06, upper: 58.26, avg_2026: 53.53}
+  "1112": {name: "ROBBINSVILLE TWP", county: Mercer, avg: 57.45, lower: 48.83, upper: 66.07, avg_2026: 62.01}
+  "1113": {name: "WEST WINDSOR TWP", county: Mercer, avg: 59.42, lower: 50.51, upper: 68.33, avg_2026: 63.45}
+  "1114": {name: "PRINCETON", county: Mercer, avg: 59.36, lower: 50.46, upper: 68.26, avg_2026: 62.64}
+  "1201": {name: "CARTERET BORO", county: Middlesex, avg: 106.50, lower: 90.53, upper: 122.48, avg_2026: 112.87, amended_2026: true}
+  "1202": {name: "CRANBURY TWP", county: Middlesex, avg: 64.04, lower: 54.43, upper: 73.65, avg_2026: 68.53}
+  "1203": {name: "DUNELLEN BORO", county: Middlesex, avg: 99.90, lower: 84.92, upper: 114.89, avg_2026: 97.02}
+  "1204": {name: "EAST BRUNSWICK TWP", county: Middlesex, avg: 15.72, lower: 13.36, upper: 18.08, avg_2026: 17.44}
+  "1205": {name: "EDISON TWP", county: Middlesex, avg: 28.74, lower: 24.43, upper: 33.05, avg_2026: 29.69}
+  "1206": {name: "HELMETTA BORO", county: Middlesex, avg: 51.35, lower: 43.65, upper: 59.05, avg_2026: 55.50}
+  "1207": {name: "HIGHLAND PARK BORO", county: Middlesex, avg: 88.00, lower: 74.80, upper: 101.20, avg_2026: 94.73}
+  "1208": {name: "JAMESBURG BORO", county: Middlesex, avg: 27.59, lower: 23.45, upper: 31.73, avg_2026: 32.72}
+  "1209": {name: "METUCHEN BORO", county: Middlesex, avg: 28.54, lower: 24.26, upper: 32.82, avg_2026: 29.54}
+  "1210": {name: "MIDDLESEX BORO", county: Middlesex, avg: 93.40, lower: 79.39, upper: 107.41, avg_2026: 97.52}
+  "1211": {name: "MILLTOWN BORO", county: Middlesex, avg: 32.37, lower: 27.51, upper: 37.23, avg_2026: 32.99}
+  "1212": {name: "MONROE TWP", county: Middlesex, avg: 50.08, lower: 42.57, upper: 57.59, avg_2026: 53.87}
+  "1213": {name: "NEW BRUNSWICK CITY", county: Middlesex, avg: 70.05, lower: 59.54, upper: 80.56, avg_2026: 69.61}
+  "1214": {name: "NORTH BRUNSWICK TWP", county: Middlesex, avg: 31.33, lower: 26.63, upper: 36.03, avg_2026: 33.26}
+  "1215": {name: "OLD BRIDGE TWP", county: Middlesex, avg: 27.53, lower: 23.40, upper: 31.66, avg_2026: 28.33}
+  "1216": {name: "PERTH AMBOY CITY", county: Middlesex, avg: 58.76, lower: 49.95, upper: 67.57, avg_2026: 61.56}
+  "1217": {name: "PISCATAWAY TWP", county: Middlesex, avg: 91.77, lower: 78.00, upper: 105.54, avg_2026: 89.85}
+  "1218": {name: "PLAINSBORO TWP", county: Middlesex, avg: 71.54, lower: 60.81, upper: 82.27, avg_2026: 75.88}
+  "1219": {name: "SAYREVILLE BORO", county: Middlesex, avg: 29.70, lower: 25.25, upper: 34.16, avg_2026: 30.87}
+  "1220": {name: "SOUTH AMBOY CITY", county: Middlesex, avg: 56.73, lower: 48.22, upper: 65.24, avg_2026: 58.97}
+  "1221": {name: "SOUTH BRUNSWICK TWP", county: Middlesex, avg: 26.39, lower: 22.43, upper: 30.35, avg_2026: 29.62}
+  "1222": {name: "SOUTH PLAINFIELD BORO", county: Middlesex, avg: 21.89, lower: 18.61, upper: 25.17, avg_2026: 26.58}
+  "1223": {name: "SOUTH RIVER BORO", county: Middlesex, avg: 57.51, lower: 48.88, upper: 66.14, avg_2026: 60.61}
+  "1224": {name: "SPOTSWOOD BORO", county: Middlesex, avg: 52.02, lower: 44.22, upper: 59.82, avg_2026: 54.51}
+  "1225": {name: "WOODBRIDGE TWP", county: Middlesex, avg: 16.29, lower: 13.85, upper: 18.73, avg_2026: 17.28}
+  "1301": {name: "ABERDEEN TWP", county: Monmouth, avg: 102.63, lower: 87.24, upper: 118.02, avg_2026: 100.37}
+  "1302": {name: "ALLENHURST BORO", county: Monmouth, avg: 106.36, lower: 90.41, upper: 122.31, avg_2026: 90.93}
+  "1303": {name: "ALLENTOWN BORO", county: Monmouth, avg: 57.50, lower: 48.88, upper: 66.13, avg_2026: 61.46}
+  "1304": {name: "ASBURY PARK CITY", county: Monmouth, avg: 99.85, lower: 84.87, upper: 114.83, avg_2026: 97.99}
+  "1305": {name: "ATLANTIC HIGHLANDS BORO", county: Monmouth, avg: 94.27, lower: 80.13, upper: 108.41, avg_2026: 86.90}
+  "1306": {name: "AVON BY THE SEA BORO", county: Monmouth, avg: 64.96, lower: 55.22, upper: 74.70, avg_2026: 67.49}
+  "1307": {name: "BELMAR BORO", county: Monmouth, avg: 51.98, lower: 44.18, upper: 59.78, avg_2026: 55.41}
+  "1308": {name: "BRADLEY BEACH BORO", county: Monmouth, avg: 98.73, lower: 83.92, upper: 113.54, avg_2026: 95.16}
+  "1309": {name: "BRIELLE BORO", county: Monmouth, avg: 97.36, lower: 82.76, upper: 111.96, avg_2026: 96.78}
+  "1310": {name: "COLTS NECK TWP", county: Monmouth, avg: 96.41, lower: 81.95, upper: 110.87, avg_2026: 98.23}
+  "1311": {name: "DEAL BORO", county: Monmouth, avg: 97.55, lower: 82.92, upper: 112.18, avg_2026: 103.58}
+  "1312": {name: "EATONTOWN BORO", county: Monmouth, avg: 95.87, lower: 81.49, upper: 110.25, avg_2026: 92.61}
+  "1313": {name: "ENGLISHTOWN BORO", county: Monmouth, avg: 99.95, lower: 84.96, upper: 114.94, avg_2026: 98.23}
+  "1314": {name: "FAIR HAVEN BORO", county: Monmouth, avg: 90.76, lower: 77.15, upper: 104.37, avg_2026: 93.90}
+  "1315": {name: "FARMINGDALE BORO", county: Monmouth, avg: 94.62, lower: 80.43, upper: 108.81, avg_2026: 98.00}
+  "1316": {name: "FREEHOLD BORO", county: Monmouth, avg: 94.51, lower: 80.33, upper: 108.69, avg_2026: 94.54}
+  "1317": {name: "FREEHOLD TWP", county: Monmouth, avg: 100.79, lower: 85.67, upper: 115.91, avg_2026: 101.37}
+  "1318": {name: "HAZLET TWP", county: Monmouth, avg: 91.83, lower: 78.06, upper: 105.60, avg_2026: 89.47}
+  "1319": {name: "HIGHLANDS BORO", county: Monmouth, avg: 95.73, lower: 81.37, upper: 110.09, avg_2026: 98.82}
+  "1320": {name: "HOLMDEL TWP", county: Monmouth, avg: 101.32, lower: 86.12, upper: 116.52, avg_2026: 99.74}
+  "1321": {name: "HOWELL TWP", county: Monmouth, avg: 96.29, lower: 81.85, upper: 110.73, avg_2026: 97.01}
+  "1322": {name: "INTERLAKEN BORO", county: Monmouth, avg: 86.43, lower: 73.47, upper: 99.39, avg_2026: 97.56}
+  "1323": {name: "KEANSBURG BORO", county: Monmouth, avg: 106.05, lower: 90.14, upper: 121.96, avg_2026: 104.94}
+  "1324": {name: "KEYPORT BORO", county: Monmouth, avg: 91.93, lower: 78.14, upper: 105.72, avg_2026: 97.55}
+  "1325": {name: "LITTLE SILVER BORO", county: Monmouth, avg: 95.20, lower: 80.92, upper: 109.48, avg_2026: 101.42}
+  "1326": {name: "LOCH ARBOUR VILLAGE", county: Monmouth, avg: 124.07, lower: 105.46, upper: 142.68, avg_2026: 138.65}
+  "1327": {name: "LONG BRANCH CITY", county: Monmouth, avg: 85.22, lower: 72.44, upper: 98.00, avg_2026: 86.07}
+  "1328": {name: "MANALAPAN TWP", county: Monmouth, avg: 93.15, lower: 79.18, upper: 107.12, avg_2026: 96.82}
+  "1329": {name: "MANASQUAN BORO", county: Monmouth, avg: 44.38, lower: 37.72, upper: 51.04, avg_2026: 50.30}
+  "1330": {name: "MARLBORO TWP", county: Monmouth, avg: 57.69, lower: 49.04, upper: 66.34, avg_2026: 61.58}
+  "1331": {name: "MATAWAN BORO", county: Monmouth, avg: 95.69, lower: 81.34, upper: 110.04, avg_2026: 97.95}
+  "1332": {name: "MIDDLETOWN TWP", county: Monmouth, avg: 98.05, lower: 83.34, upper: 112.76, avg_2026: 98.35}
+  "1333": {name: "MILLSTONE TWP", county: Monmouth, avg: 65.50, lower: 55.68, upper: 75.33, avg_2026: 68.05}
+  "1334": {name: "MONMOUTH BEACH BORO", county: Monmouth, avg: 95.87, lower: 81.49, upper: 110.25, avg_2026: 96.16}
+  "1335": {name: "NEPTUNE TWP", county: Monmouth, avg: 99.46, lower: 84.54, upper: 114.38, avg_2026: 97.27}
+  "1336": {name: "NEPTUNE CITY BORO", county: Monmouth, avg: 96.40, lower: 81.94, upper: 110.86, avg_2026: 98.63}
+  "1337": {name: "OCEAN TWP", county: Monmouth, avg: 93.29, lower: 79.30, upper: 107.28, avg_2026: 94.25}
+  "1338": {name: "OCEANPORT BORO", county: Monmouth, avg: 90.31, lower: 76.76, upper: 103.86, avg_2026: 95.83}
+  "1339": {name: "RED BANK BORO", county: Monmouth, avg: 98.03, lower: 83.33, upper: 112.73, avg_2026: 94.06}
+  "1340": {name: "ROOSEVELT BORO", county: Monmouth, avg: 102.29, lower: 86.95, upper: 117.63, avg_2026: 91.84}
+  "1341": {name: "RUMSON BORO", county: Monmouth, avg: 96.61, lower: 82.12, upper: 111.10, avg_2026: 96.70}
+  "1342": {name: "SEA BRIGHT BORO", county: Monmouth, avg: 100.63, lower: 85.54, upper: 115.72, avg_2026: 101.86}
+  "1343": {name: "SEA GIRT BORO", county: Monmouth, avg: 93.88, lower: 79.80, upper: 107.96, avg_2026: 83.58}
+  "1344": {name: "SHREWSBURY BORO", county: Monmouth, avg: 92.69, lower: 78.79, upper: 106.59, avg_2026: 92.46}
+  "1345": {name: "SHREWSBURY TWP", county: Monmouth, avg: 121.07, lower: 102.91, upper: 139.23, avg_2026: 111.21}
+  "1346": {name: "LAKE COMO BORO", county: Monmouth, avg: 98.53, lower: 83.75, upper: 113.31, avg_2026: 104.64}
+  "1347": {name: "SPRING LAKE BORO", county: Monmouth, avg: 91.72, lower: 77.96, upper: 105.48, avg_2026: 91.37}
+  "1348": {name: "SPRING LAKE HEIGHTS BOR", county: Monmouth, avg: 93.36, lower: 79.36, upper: 107.36, avg_2026: 95.53}
+  "1349": {name: "TINTON FALLS BORO", county: Monmouth, avg: 96.41, lower: 81.95, upper: 110.87, avg_2026: 99.46}
+  "1350": {name: "UNION BEACH BORO", county: Monmouth, avg: 97.59, lower: 82.95, upper: 112.23, avg_2026: 97.54}
+  "1351": {name: "UPPER FREEHOLD TWP", county: Monmouth, avg: 99.63, lower: 84.69, upper: 114.57, avg_2026: 103.63}
+  "1352": {name: "WALL TWP", county: Monmouth, avg: 54.13, lower: 46.01, upper: 62.25, avg_2026: 59.76}
+  "1353": {name: "WEST LONG BRANCH BORO", county: Monmouth, avg: 96.19, lower: 81.76, upper: 110.62, avg_2026: 98.24}
+  "1601": {name: "BLOOMINGDALE BORO", county: Passaic, avg: 49.08, lower: 41.72, upper: 56.44, avg_2026: 53.59}
+  "1602": {name: "CLIFTON CITY", county: Passaic, avg: 30.25, lower: 25.71, upper: 34.79, avg_2026: 31.87}
+  "1603": {name: "HALEDON BORO", county: Passaic, avg: 42.34, lower: 35.99, upper: 48.69, avg_2026: 45.99}
+  "1604": {name: "HAWTHORNE BORO", county: Passaic, avg: 65.48, lower: 55.66, upper: 75.30, avg_2026: 69.15}
+  "1605": {name: "LITTLE FALLS TWP", county: Passaic, avg: 52.93, lower: 44.99, upper: 60.87, avg_2026: 56.86}
+  "1606": {name: "NORTH HALEDON BORO", county: Passaic, avg: 57.22, lower: 48.64, upper: 65.80, avg_2026: 60.50}
+  "1607": {name: "PASSAIC CITY", county: Passaic, avg: 43.81, lower: 37.24, upper: 50.38, avg_2026: 45.62}
+  "1608": {name: "PATERSON CITY", county: Passaic, avg: 91.34, lower: 77.64, upper: 105.04, avg_2026: 41.41}
+  "1609": {name: "POMPTON LAKES BORO", county: Passaic, avg: 57.05, lower: 48.49, upper: 65.61, avg_2026: 59.15}
+  "1610": {name: "PROSPECT PARK BORO", county: Passaic, avg: 37.69, lower: 32.04, upper: 43.34, avg_2026: 40.50}
+  "1611": {name: "RINGWOOD BORO", county: Passaic, avg: 53.34, lower: 45.34, upper: 61.34, avg_2026: 57.24}
+  "1612": {name: "TOTOWA BORO", county: Passaic, avg: 52.92, lower: 44.98, upper: 60.86, avg_2026: 51.88}
+  "1613": {name: "WANAQUE BORO", county: Passaic, avg: 51.38, lower: 43.67, upper: 59.09, avg_2026: 54.41}
+  "1614": {name: "WAYNE TWP", county: Passaic, avg: 33.82, lower: 28.75, upper: 38.89, avg_2026: 35.82}
+  "1615": {name: "WEST MILFORD TWP", county: Passaic, avg: 51.48, lower: 43.76, upper: 59.20, avg_2026: 54.79}
+  "1616": {name: "WOODLAND PARK BORO", county: Passaic, avg: 61.38, lower: 52.17, upper: 70.59, avg_2026: 64.98, amended_2026: true}
+  "2001": {name: "BERKELEY HEIGHTS TWP", county: Union, avg: 33.97, lower: 28.87, upper: 39.07, avg_2026: 35.73}
+  "2002": {name: "CLARK TWP", county: Union, avg: 74.25, lower: 63.11, upper: 85.39, avg_2026: 80.01}
+  "2003": {name: "CRANFORD TWP", county: Union, avg: 24.26, lower: 20.62, upper: 27.90, avg_2026: 26.04}
+  "2004": {name: "ELIZABETH CITY", county: Union, avg: 86.98, lower: 73.93, upper: 100.03, avg_2026: 92.76}
+  "2005": {name: "FANWOOD BORO", county: Union, avg: 62.65, lower: 53.25, upper: 72.05, avg_2026: 65.63}
+  "2006": {name: "GARWOOD BORO", county: Union, avg: 69.81, lower: 59.34, upper: 80.28, avg_2026: 72.59}
+  "2007": {name: "HILLSIDE TWP", county: Union, avg: 23.33, lower: 19.83, upper: 26.83, avg_2026: 24.33}
+  "2008": {name: "KENILWORTH BORO", county: Union, avg: 27.88, lower: 23.70, upper: 32.06, avg_2026: 28.83}
+  "2009": {name: "LINDEN CITY", county: Union, avg: 22.90, lower: 19.47, upper: 26.34, avg_2026: 24.64}
+  "2010": {name: "MOUNTAINSIDE BORO", county: Union, avg: 68.56, lower: 58.28, upper: 78.84, avg_2026: 71.29, amended_2026: true}
+  "2011": {name: "NEW PROVIDENCE BORO", county: Union, avg: 32.42, lower: 27.56, upper: 37.28, avg_2026: 34.32}
+  "2012": {name: "PLAINFIELD CITY", county: Union, avg: 23.71, lower: 20.15, upper: 27.27, avg_2026: 24.85}
+  "2013": {name: "RAHWAY CITY", county: Union, avg: 26.32, lower: 22.37, upper: 30.27, avg_2026: 27.88, amended_2026: true}
+  "2014": {name: "ROSELLE BORO", county: Union, avg: 26.47, lower: 22.50, upper: 30.44, avg_2026: 28.06}
+  "2015": {name: "ROSELLE PARK BORO", county: Union, avg: 48.46, lower: 41.19, upper: 55.73, avg_2026: 51.87}
+  "2016": {name: "SCOTCH PLAINS TWP", county: Union, avg: 14.69, lower: 12.49, upper: 16.89, avg_2026: 15.65}
+  "2017": {name: "SPRINGFIELD TWP", county: Union, avg: 82.10, lower: 69.79, upper: 94.42, avg_2026: 82.53, amended_2026: true}
+  "2018": {name: "SUMMIT CITY", county: Union, avg: 30.44, lower: 25.87, upper: 35.01, avg_2026: 30.81}
+  "2019": {name: "UNION TWP", county: Union, avg: 8.03, lower: 6.83, upper: 9.23, avg_2026: 8.89}
+  "2020": {name: "WESTFIELD TOWN", county: Union, avg: 67.10, lower: 57.04, upper: 77.17, avg_2026: 72.48}
+  "2021": {name: "WINFIELD TWP", county: Union, avg: 100.10, lower: 85.09, upper: 115.12, avg_2026: 100.10}

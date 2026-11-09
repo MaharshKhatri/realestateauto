@@ -30,6 +30,7 @@ dependencies = [
   "google-auth-oauthlib>=1.2",         # one-time browser consent (manage.py setup-calendar)
   "google-auth-httplib2>=0.2",
   "homeharvest>=0.8",                  # MLS listings + recent sold comps (the cloud desk's harvest and firm-up need it)
+  "pypdf>=4.0",                        # research packets: one-page checks (engine/streams) and their tests
 ]
 
 [project.optional-dependencies]
