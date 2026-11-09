@@ -35,8 +35,12 @@ def test_no_one_can_reply_above_the_walkaway_but_the_operator(live):
     walk = lead.property.current_valuation.mao_aggressive
     with pytest.raises(gm.ApprovalError, match="above your walk-away"):
         gm.send_custom_reply(db, lead.id, "We can do more.", price=walk + 5000, smtp_factory=FakeSMTP)
+    FakeSMTP.sent = []
     r = gm.send_custom_reply(db, lead.id, "My best is below.", price=walk - 1000, smtp_factory=FakeSMTP)
     assert r["price"] == walk - 1000
+    # a priced reply carries the investor / may-assign line like the first offer's Offer Summary (2026-11-09)
+    body = FakeSMTP.sent[-1].get_body(preferencelist=("plain",)).get_content()
+    assert "Who's buying: an investor buying as a principal" in body and "may assign the contract" in body
     r = gm.send_custom_reply(db, lead.id, "Fine, I'll stretch.", price=walk + 5000, smtp_factory=FakeSMTP,
                              allow_over_walkaway=True)
     assert r["price"] == walk + 5000

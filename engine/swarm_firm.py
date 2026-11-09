@@ -280,6 +280,8 @@ def flat(st: dict[str, Any]) -> dict[str, Any]:
         k = r["key"]
         out.update({f"{k}_found": r["found"], f"{k}_products": r["products"], f"{k}_sent": r["sent_24h"],
                     f"{k}_queued": r["queued"]})
+        if r["waiting"]:
+            out[f"{k}_waiting"] = r["waiting"]           # s1: agent replies waiting; others: B2B replies
         if r["error"]:
             out[f"{k}_error"] = r["error"]
         if not r["installed"]:

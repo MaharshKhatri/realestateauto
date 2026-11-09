@@ -1845,7 +1845,15 @@ def send_custom_reply(session: Session, lead_id: int, text: str, *, subject: str
         last = body.splitlines()[-1].strip() if body else ""
         if sig and op["first"] and last.lower() == op["first"].strip().lower():
             sig, gap = sig[1:], "\n"
-        body += gap + "\n".join(sig) + "\n\n" + "\n".join(hc.footer_lines(op))
+        foot = list(hc.footer_lines(op))
+        if price and not re.search(r"assign", body, re.I):
+            # a priced reply written in the chat carries the same investor / may-assign line as the first offer's
+            # Offer Summary (CFA: nothing hidden; the attached LOI says it too)
+            from engine.contracts import buyer_entity
+            foot.insert(0, f"Who's buying: an investor buying as a principal, not a licensed agent. The buyer is "
+                           f"\"{buyer_entity()}\"; I may assign the contract to another investor, and the seller's "
+                           f"price and terms stay the same.")
+        body += gap + "\n".join(sig) + "\n\n" + "\n".join(foot)
     waiting = waiting_reply(session, lead_id)
     to = (to or "").strip().lower() or \
         (waiting.from_email if waiting is not None and waiting.from_email else None) or agent.email
