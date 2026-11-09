@@ -180,6 +180,18 @@ def _pool(session: Session) -> list[Lead]:
                                                    Lead.status_stage.notin_(tuple(CLOSED)))))
 
 
+def _talked(session: Session, lead_ids: list[int]) -> set[int]:
+    """Leads with a real exchange: the agent replied (not a bounce or an auto-reply) or a call reached them."""
+    if not lead_ids:
+        return set()
+    from db.models import Interaction
+    replied = session.scalars(select(InboundReply.lead_id).where(
+        InboundReply.lead_id.in_(lead_ids), InboundReply.status.notin_(("bounce", "auto_reply"))))
+    spoke = session.scalars(select(Interaction.lead_id).where(
+        Interaction.lead_id.in_(lead_ids), Interaction.channel == "call", Interaction.outcome.like("SPOKE%")))
+    return {i for i in (*replied, *spoke) if i is not None}
+
+
 def build(session: Session, now: datetime | None = None, limit: int | None = None) -> list[Row]:
     """Rank today's calls. Pure read: nothing is logged or sent."""
     from engine import crm
@@ -209,8 +221,11 @@ def build(session: Session, now: datetime | None = None, limit: int | None = Non
         except Exception:                          # noqa: BLE001 - one broken valuation never stops the sheet
             log.exception("call sheet: firm offer failed for lead %s", lead.id)
             return
-        if tier in ("T1", "T3", "T4") and firm.tier == "skip":
-            return      # a lender short sale / refer-out / too-far listing: no offer we could make, so no call
+        if tier in ("T1", "T2", "T3", "T4") and firm.tier == "skip":
+            # A lender short sale / refer-out / too-far or retail listing: no offer we could make, so no call. A due
+            # follow-up on one would only print "SKIP TODAY" (refreshed) and take a slot from a call that can sign
+            # (2026-11-09: 19 of 100 rows were skips while 19 due follow-ups and call-backs got separate events).
+            return
         place = _place(session, lead)
         row = by_phone.get(phone)
         if row is not None:
@@ -239,9 +254,12 @@ def build(session: Session, now: datetime | None = None, limit: int | None = Non
     # Due any time today, not just by the 5:17 build: a no-answer from last night is due at 10:00, and leaving it off
     # the sheet gave it a separate calendar event instead (2026-11-05: 40 "Try again" events stacked at 10:00).
     end_of_day = now.replace(hour=23, minute=59, second=0, microsecond=0)
-    for lead in crm.due_followups(session, end_of_day):
-        if lead.contact_attempts <= max_attempts:
-            add(lead, "T2")
+    due = [lead for lead in crm.due_followups(session, end_of_day) if lead.contact_attempts <= max_attempts]
+    # Conversations first (the agent wrote back, or the operator talked to them: "call me back Monday"), then the
+    # oldest due: with a backlog over the day's capacity, a promised call-back never loses its slot to a cold retry.
+    talked = _talked(session, [lead.id for lead in due])
+    for lead in sorted(due, key=lambda ld: (ld.id not in talked, ld.next_followup_at or now)):
+        add(lead, "T2")
     from engine.offer_math import condition, convertible
     firm_rows: list[tuple[float, Lead]] = []
     ask_rows: list[tuple[float, Lead]] = []

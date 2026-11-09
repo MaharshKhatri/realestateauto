@@ -371,7 +371,7 @@ def test_with_no_free_time_left_missed_calls_join_the_next_block(db, operator):
 def test_a_retry_due_later_today_is_on_the_sheet_not_a_separate_event(db, operator):
     """2026-11-05: last night's no-answers were due at 10:00, the 5:17 sheet left them off (not due yet, and cold rows
     wait 2 days), and each got its own "Try again" calendar event: 40 events stacked at 10:00."""
-    lead = listed(db, list_price=400_000)
+    lead = listed(db)                  # a house we could still offer on (a skip-tier follow-up takes no slot)
     lead.last_contact_at = datetime(2026, 11, 4, 19, 30)
     lead.next_followup_at = datetime(2026, 11, 5, 10, 0)
     lead.contact_attempts = 1
@@ -389,3 +389,22 @@ def test_a_number_far_above_our_final_checks_back_in_a_month(db, operator, monke
     monkeypatch.setattr(gm, "send_custom_reply", lambda *a, **kw: pytest.fail("too far apart: nothing in writing"))
     cs.apply_codes(db, [{"code": row.code, "result": "600 seller wants full price"}], now=NOW)
     assert lead.next_followup_at and lead.next_followup_at.date() >= (NOW + timedelta(days=20)).date()
+
+
+@pytest.mark.production_gates
+def test_due_follow_ups_skip_dead_houses_and_put_conversations_first(db, operator):
+    """2026-11-09: the 100 rows were overdue follow-ups oldest first; 19 were "SKIP TODAY" houses (retail, too far)
+    and 19 fresh follow-ups and three promised call-backs got separate 10:00 calendar events instead."""
+    retail = listed(db, list_price=400_000, phone="9735550111", email="a@b.test",
+                    listing_text="Move-in ready, fully renovated with a new kitchen.")
+    plain = listed(db, list_price=400_000, phone="9735550112", email="c@b.test")
+    spoke = listed(db, list_price=400_000, phone="9735550113", email="d@b.test")
+    for i, lead in enumerate((retail, plain, spoke)):
+        lead.next_followup_at = datetime(2026, 11, 2 + i, 10, 0)       # the call-back is the newest of the three
+        lead.contact_attempts = 1
+    db.add(Interaction(lead_id=spoke.id, channel="call", outcome="SPOKE_WARM_FOLLOWUP",
+                       occurred_at=datetime(2026, 11, 3, 19, 40)))
+    db.flush()
+    rows = cs.build(db, NOW, limit=2)
+    assert [r.lead_id for r in rows] == [spoke.id, plain.id]
+    assert all(r.tier == "T2" for r in rows)
