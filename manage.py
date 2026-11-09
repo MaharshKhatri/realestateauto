@@ -2041,7 +2041,7 @@ def main(argv: list[str] | None = None) -> None:
     gm.add_argument("--status", action="store_true", help="today's counts, Action Needed and queued offers")
     cl = sub.add_parser("cloud", help="the cloud desk (GitHub Actions): --run (the workflow), --handoff (Mac), status")
     cl.add_argument("--run", action="store_true", help="one cloud run (what .github/workflows/desk.yml calls)")
-    cl.add_argument("--task", default="run", choices=["run", "refresh", "recalibrate", "sheet", "firmup", "stats", "value", "approve", "dismiss", "offer", "note"])
+    cl.add_argument("--task", default="run", choices=["run", "refresh", "recalibrate", "sheet", "firmup", "stats", "value", "approve", "dismiss", "offer", "note", "digest"])
     cl.add_argument("--note", help="with --task note: a sealed note (manage.py cloud --seal PUBKEY < note.json)")
     cl.add_argument("--seal", metavar="PUBKEY", help="seal the JSON note on stdin to the desk's public key")
     cl.add_argument("--approve", type=int, metavar="REPLY_ID",

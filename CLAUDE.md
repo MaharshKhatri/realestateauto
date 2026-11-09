@@ -1115,6 +1115,18 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     (20, ~90 valuations at the ~13 s measured live: the cloud desk's run-all has a 45-minute limit); the daemon's nightly
     2:10 run gets 120 minutes (`agents.schedule_options`, passed only to scheduled runs). A try with no comps waits
     `new_listing_retry_days` (3). Unmatched listing parcels carry the listing's own coordinates, so they can be valued.
+- **The flat-fee AI Deal Desk** (2026-11-09 pivot, `engine/deal_desk.py`; the operator chose software over a license):
+  buyer boxes from recorded deeds per buyer family (towns by mun_code, 36-month purchases, q25-q75 price band without
+  package deeds, 1- vs 2-4 family); `select_buyers` = every named-principal family (≤ 34) then the top multi-buy LLCs
+  (≤ 20, ≥ 3 purchases). A one-page landscape **Weekly Deal Digest** per buyer: up to 10 deals in their towns (then
+  counties) whose quant buyer max fits their band, a mix of MLS fixers / listings (buyer max ≥ 75% of the ask, never
+  retail, HOLD, outlier or off-market; the listing agent's business e-mail and a phone on no stop list), sheriff sales
+  with room over the upset (an upset under 25% of buyer max is a partial figure: skipped) and pre-foreclosures (FRFPA
+  note). No owner / defendant names; suppressed addresses never appear. Footer: $500 30-day trial, then $1,000/month
+  flat, zero commission or per-deal pay, the client is the buyer from their own inbox and approves every offer, "not a
+  licensed broker ... paid the flat fee only, never on a deal" (N.J.S.A. 45:15-3: one act for a fee is brokerage), the
+  operator's contact, postal address and "no more". Desk task `digest` mails them to the operator's own inbox
+  ("[njw-digest] <date> i/n", 10 PDFs each); the run log shows `digests` / `digest_rows` / `digest_mails` only.
 - **The desk's own number in a note** (2026-11-09, warm threads answered from the chat): a sealed note item with
   `"price": "firm" | "final" | "sent"` and `{price}` in its "reply" gets the desk's locked number written in and the LOI
   attached at it (`offer_math.note_price`): "firm" = the one offer (on a house whose only gap is the reach, the same

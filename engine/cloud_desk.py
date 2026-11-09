@@ -204,6 +204,43 @@ def _send_self(user: str, password: str, subject: str, body: str, attachment: by
         smtp.send_message(msg)
 
 
+def _send_self_files(user: str, password: str, subject: str, body: str, files: list[Path],
+                     smtp_factory: Any = None) -> None:
+    """A note to the operator's own inbox with PDFs attached (the weekly deal digests)."""
+    from core.mail import clean_app_password
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"] = user, user, subject
+    msg.set_content(body)
+    for f in files:
+        msg.add_attachment(Path(f).read_bytes(), maintype="application", subtype="pdf", filename=Path(f).name)
+    with _smtp(smtp_factory) as smtp:
+        smtp.login(user, clean_app_password(password))
+        smtp.send_message(msg)
+
+
+SUBJECT_DIGEST = "[njw-digest]"
+
+
+def send_digests(user: str, password: str, *, now: datetime | None = None, smtp_factory: Any = None,
+                 out_dir: Path | None = None, per_mail: int = 10) -> dict[str, int]:
+    """Task `digest` (2026-11-09 pivot): one-page Weekly Deal Digests for the named flippers and the top multi-buy
+    LLCs (engine/deal_desk.py), mailed to the operator's own inbox in batches as "[njw-digest] <date> i/n". The
+    operator forwards each PDF to the buyer it names. Counts only come back (the run log is public)."""
+    import tempfile
+    from db.database import session_scope
+    from engine import deal_desk
+    from engine import gmail_autopilot as gm
+    day = gm.now_eastern(now).date()
+    with tempfile.TemporaryDirectory() as tmp:
+        with session_scope() as s:
+            pairs = deal_desk.write_all(s, Path(out_dir or tmp), today=day)
+        batches = [pairs[i:i + per_mail] for i in range(0, len(pairs), per_mail)]
+        for i, batch in enumerate(batches, 1):
+            _send_self_files(user, password, f"{SUBJECT_DIGEST} {day:%Y-%m-%d} {i}/{len(batches)}",
+                             deal_desk.summary_text(batch), [p for _, p in batch], smtp_factory)
+    return {"digests": len(pairs), "digest_rows": sum(len(d.rows) for d, _ in pairs), "digest_mails": len(batches)}
+
+
 def send_bundle(user: str, password: str, sealed: bytes, kind: str, *, now: datetime | None = None,
                 smtp_factory: Any = None) -> int:
     stamp = (now or datetime.now()).strftime("%Y%m%dT%H%M%S")
@@ -744,6 +781,11 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             out["dismiss_error"] = type(exc).__name__
     if task == "note" and note:
         out.update(apply_note(note, desk_key, now=now, smtp_factory=smtp_factory))
+    if task == "digest":
+        try:
+            out.update(send_digests(user, pw, now=now, smtp_factory=smtp_factory))
+        except Exception as exc:                   # noqa: BLE001 - reported by name only (public log)
+            out["digest_error"] = type(exc).__name__
     if task == "offer" and lead_id:
         # After a call ("send it in writing"): the lead's next e-mail, the same one `gmail --send-offer` sends (Touch 2
         # at the desk's own opening price, with the Offer Summary and the LOI, in the agent's thread). Only ids travel
