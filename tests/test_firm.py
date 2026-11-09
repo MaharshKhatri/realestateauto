@@ -318,3 +318,21 @@ def test_s2_never_pitches_an_agent_we_are_negotiating_a_house_with(live):
                         created_at=TUE - timedelta(days=3)))
     db.commit()
     assert [t.email for t in s2.due_targets(db, TUE, 5, 6, 2)] == ["free@broker.example"]
+
+
+def test_s2_never_names_a_person_as_the_company():
+    # 2026-11-09: a buyer family filed under a person went out as "Deals this week in Rutherford for Soine, Travis"
+    from types import SimpleNamespace
+    from engine.streams import s2_deal_desk_saas as s2
+    prof = SimpleNamespace(towns=[(1, "Rutherford", "Bergen", 3)])
+    d = SimpleNamespace(profile=prof, rows=[1, 2, 3])
+    person = SimpleNamespace(kind="flipper", org="QUINN, SAMPLE", name=None, data_json={})
+    subject, body = s2.pitch_body(person, d, {"first": "Sam"}, follow=False)
+    assert subject == "Deals this week in Rutherford" and "Quinn" not in body and "the towns you have been buying" in body
+    shop = SimpleNamespace(kind="flipper", org="Sample Home Buyers", name=None, data_json={})
+    subject, body = s2.pitch_body(shop, d, {"first": "Sam"}, follow=False)
+    assert subject.endswith("for Sample Home Buyers") and "the towns Sample Home Buyers has been buying" in body
+    agent = SimpleNamespace(kind="investor_agent", org="Sample Realty", name="JC Agent", data_json={"resales": 1,
+                                                                                                    "fixers": 3})
+    subject, body = s2.pitch_body(agent, d, {"first": "Sam"}, follow=False)
+    assert body.startswith("Hi JC,") and "3 fixer listings and 1 investor resale around Rutherford" in body

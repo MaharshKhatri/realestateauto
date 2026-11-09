@@ -447,3 +447,29 @@ def test_a_call_request_is_answered_in_writing_by_itself(db, operator):
     b = rn.analyze(db, lead, "Please call me. You have not seen the property. I don't negotiate via email of people "
                              "I have not had discussions with.")
     assert b.headline == "CALL REQUEST: ANSWERED IN WRITING" and "good window" in b.reply_text
+
+
+def test_value_opinion_is_not_a_counter_and_hypothetical_contract_is_not_a_contract():
+    # 2026-11-09, 1708 Heck Ave: the agent disputed our fixed-up value ("more like $645,000 vs $670,000") and said the
+    # seller can't "take her house off the market by going into contract if" it won't close smoothly
+    text = ("I don't agree with the amount you believe the property will be worth once you've fixed it up.  I believe "
+            "it would be more like $645,000 give or take vs $670,000.  Also, the comparable listings you noted aren't "
+            "really applicable.\nThe Seller doesn't have the ability to take her house off the market by going into "
+            "contract if the transaction isn't going to close smoothly and within a short timeframe.")
+    p = rn.parse_reply(text)
+    assert p.counter_amount is None and p.amounts == []
+    assert "COUNTER" not in p.intents and "UNDER_CONTRACT" not in p.intents
+    # a value in one sentence never hides the seller's number in the next
+    q = rn.parse_reply("It's worth 600 fixed up. Seller wants 450.")
+    assert q.counter_amount == 450000 and q.counter_explicit
+    assert rn.parse_reply("The comps support 500. We'd take 480.").counter_amount == 480000
+    # a real contract still reads as one, a condition after it doesn't change that
+    assert "UNDER_CONTRACT" in rn.parse_reply("It is under contract, if that falls through I'll let you know").intents
+
+
+def test_tenants_out_before_closing_is_not_a_tenant_risk():
+    # 2026-11-09, 1102 4th Ave: "Tenants will be out before closing" = delivered vacant (no $9K tenant buffer)
+    p = rn.parse_reply("I don't know his bottom line. It has a newer furnace and water heater. Tenants will be out "
+                       "before closing")
+    assert "TENANTS" not in p.intents
+    assert "TENANTS" in rn.parse_reply("The house is tenant occupied, lease ends in June").intents

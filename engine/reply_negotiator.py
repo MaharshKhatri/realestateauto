@@ -56,6 +56,15 @@ _UNIT_AFTER = re.compile(r"^\s*(sq\.?\s?ft|square|sqft|/\s?mo\b|a month|per mont
 _LABEL_BEFORE = re.compile(r"(tax(es)?|rent|hoa|deposit|emd|earnest|commission|fee|mortgage|balance|owed|payoff|"
                            r"lien|arrears|repairs?|rehab|estimate)\W{0,6}(?:(?:is|are|of|was|were|runs?|about|around|"
                            r"approx\.?|roughly)\W{0,6})?$", re.I)
+# "I don't agree with the amount you believe the property will be worth once you've fixed it up. I believe it would be
+# more like $645,000 give or take vs $670,000" (2026-11-09, 1708 Heck Ave): a value opinion (theirs vs our ARV), not the
+# seller's number. An amount whose sentence, or the one before it, talks about value / fixed-up worth / comps, with no
+# ask word right before it, is skipped.
+_VALUE_CUE = re.compile(r"\b(?:worth|valued?|values?|arv|after[- ]repair|fixed[- ]up|fix(?:ed)? it up|once (?:it'?s|you'?ve)\s+"
+                        r"(?:fixed|renovated|rehabbed|done)|renovated value|resale|resell|re-sell|comps?|comparables?|"
+                        r"appraise[ds]?|appraisal)\b", re.I)
+_SELLER_WORDS = re.compile(r"\b(?:sellers?|owners?|they|he|she|negotiat\w*|willing|accept\w*|take|lower|less|below|"
+                           r"under|go|net|needs?|wants?)\b", re.I)
 _ASK_WORDS = re.compile(r"(wants?|needs?|is at|would take|will take|would accept|'d take|take less than|counter(ed|offer)?|"
                         r"came back|come back|looking for|looking at|won't go|will not go|not go below|lowest|bottom line|"
                         r"minimum|firm at|has to be|needs to be|no less than|at least|asking|is firm|their number|"
@@ -186,6 +195,13 @@ PHRASES: dict[str, list[str]] = {
                  r"what('s| is) your (company|name)", r"tell me more"],
 }
 _COMPILED = {k: [re.compile(p, re.I) for p in v] for k, v in PHRASES.items()}
+_HYPOTHETICAL = re.compile(r"\b(?:ability to|able to|willing to|afford to|want(?:s)? to|to take|to pull|to keep|to go|"
+                           r"before (?:going|we go|she goes|he goes|they go)|unless|if|until)\b[^.!?\n]*$", re.I)
+_TENANTS_OUT = re.compile(r"\b(?:tenants?|renters?|occupants?)\b[^.!?\n]{0,25}\b(?:will be|are|is|to be|be)\s+"
+                          r"(?:out|gone|moving out|moved out|vacat\w*|leaving)\b[^.!?\n]{0,30}"
+                          r"\b(?:before|by|at|prior to|ahead of)\s+(?:the\s+)?(?:closing|close|settlement)"
+                          r"|\b(?:delivered|deliver(?:ed)?)\s+vacant\b|\bvacant (?:at|by|before) (?:the\s+)?clos(?:ing|e)\b",
+                          re.I)
 _DEADLINE = re.compile(r"\bby\s+((?:this\s+|next\s+)?(?:mon|tues?|wed(?:nes)?|thu(?:rs)?|fri|sat(?:ur)?|sun)(?:day)?"
                        r"(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm|noon)?)?|tomorrow(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?|"
                        r"end of (?:the )?day|eod|noon|\d{1,2}(?::\d{2})?\s*(?:am|pm))\b", re.I)
@@ -250,6 +266,14 @@ def parse_reply(text: str) -> ParsedReply:
             continue                                   # a year
         if _UNIT_AFTER.search(window_after) or _LABEL_BEFORE.search(window_before):
             continue                                   # 1,400 sqft / 30 days / taxes are $9,800 / rent $2,100 a month
+        context = "".join(re.split(r"([.;!?\n])", scrubbed[max(0, m.start() - 220):m.start()])[-4:])  # this + prior sentence
+        cues = list(_VALUE_CUE.finditer(context))
+        # ...unless the words between the value cue and the amount are about the seller ("Given the comps, they are
+        # willing to negotiate no lower than 510,000" is their floor)
+        between = re.sub(r"give or take", " ", context[cues[-1].end():], flags=re.I) if cues else ""
+        if not ask_before and cues and not _SELLER_WORDS.search(between):
+            out.notes.append(f"'{m.group(0).strip()}' is a value opinion (worth / fixed-up / comps), not their number")
+            continue
         if _LIST_BEFORE.search(window_before) and not _FIRM_AFTER.search(window_after):
             out.notes.append(f"'{m.group(0).strip()}' is the list price quoted back, not their number")
             continue
@@ -285,6 +309,16 @@ def parse_reply(text: str) -> ParsedReply:
             m = p.search(scrubbed)
             if not m:
                 continue
+            if intent == "UNDER_CONTRACT" and _HYPOTHETICAL.search(
+                    re.split(r"[.;!?\n]", scrubbed[max(0, m.start() - 80):m.start()])[-1]):
+                # "The Seller doesn't have the ability to take her house off the market by going into contract if ..."
+                # (2026-11-09, 1708 Heck Ave): a condition, not a contract
+                out.notes.append(f"'{m.group(0).strip()}' is hypothetical, not a contract")
+                continue
+            if intent == "TENANTS" and _TENANTS_OUT.search(scrubbed):
+                # "Tenants will be out before closing" (2026-11-09, 1102 4th Ave): delivered vacant, no tenant risk
+                out.notes.append("tenants out before closing: delivered vacant")
+                break
             if intent in ("AVAILABLE", "UNDER_CONTRACT", "ACCEPT") and _negated(scrubbed, m.start()):
                 if intent == "UNDER_CONTRACT":
                     out.intents.add("AVAILABLE")           # "not under contract" / "no accepted offer"

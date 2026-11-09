@@ -24,7 +24,8 @@ from sqlalchemy.orm import Session
 from db.models import Contact, ContactType, FirmTarget, Lead, Prospect
 from engine import deal_desk as dd
 from engine import firm_outbox as fo
-from engine.streams.base import PRIORITY_PITCH, Outbound, Stream, StreamContext, StreamResult, nice_name, slug
+from engine.streams.base import (PRIORITY_PITCH, Outbound, Stream, StreamContext, StreamResult, entity_like, nice_name,
+                                 slug)
 
 
 def week_key(now: Any) -> str:
@@ -34,6 +35,11 @@ def week_key(now: Any) -> str:
 
 _BROKERAGE = re.compile(r"(?i)\b(realty|realtors?|real estate|banker|group|team|llc|inc|properties|homes|keller|"
                         r"weichert|re/?max|century|sotheby|compass|exp|brokers?|associates|agency|office)\b")
+
+
+_TRADE_NAME = re.compile(r"(?i)\b(?:home\s?buyers|homes|buyers|properties|property|realty|group|invest\w*|capital|"
+                         r"holdings|sales|builders?|development|construction|management|partners|ventures|enterprises?|"
+                         r"solutions|company)\b")
 
 
 def first_name(name: str | None) -> str:
@@ -174,12 +180,15 @@ def pitch_body(t: FirmTarget, d: dd.Digest, op: dict[str, str], follow: bool) ->
                  "",
                  sign]
     else:
-        org = nice_name(t.org) if t.org else ""
+        # a company name only: a buyer family filed under a person ("SOINE, TRAVIS", 2026-11-09) is "you", never named
+        # back to them in the subject
+        org = nice_name(t.org) if t.org and (entity_like(t.org) or _TRADE_NAME.search(t.org)) else ""
         subject = f"Deals this week in {top} for {org}" if org else f"Deals this week in {top}"
         lines = [f"Hi {name},",
                  "",
                  (f"Following up with this week's deals in {towns}, one page, attached. " if follow else
-                  f"I put together this week's deals in the towns {org or 'you'} has been buying: {len(d.rows)} on one "
+                  f"I put together this week's deals in the towns {org + ' has' if org else 'you have'} been buying: "
+                  f"{len(d.rows)} on one "
                   "page, attached, with ARV, repairs and the most a flipper can pay. ")
                  + "I run this as software: it finds and underwrites deals daily and drafts your offers from your own "
                  "inbox, and you approve every one. If it's useful, the first 30 days are $500 flat, then $1,000 a "
