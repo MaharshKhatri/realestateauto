@@ -121,7 +121,12 @@ def nice_name(name: str | None) -> str:
     words = []
     for w in (name or "").split():
         core = w.strip(".,&()")
-        words.append(w if core.upper() in _KEEP_UPPER or any(c.isdigit() for c in core) else w.capitalize())
+        initials = bool(re.fullmatch(r"(?:[A-Za-z]\.){1,4}[A-Za-z]?", core)) or (
+            2 <= len(core) <= 3 and core.isalpha() and not re.search(r"(?i)[aeiouy]", core))   # "N.B.", "NB", "JC"
+        if core.upper() in _KEEP_UPPER or any(c.isdigit() for c in core) or initials:
+            words.append(w.upper() if initials else w)
+        else:
+            words.append(w.capitalize())
     return " ".join(words)
 
 

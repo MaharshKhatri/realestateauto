@@ -353,3 +353,11 @@ def test_targets_are_seeded_when_the_file_appears_or_changes_not_only_once_a_day
     assert swarm_firm.tick(now=TUE + timedelta(minutes=18), send=False)["targets_seeded"] == 2
     db.expire_all()
     assert db.query(FirmTarget).count() == 2
+
+
+def test_company_names_keep_their_initials():
+    from engine.streams.base import nice_name
+    assert nice_name("N.B. HOME IMPROVEMENT LLC") == "N.B. Home Improvement LLC"     # was "N.b." in a subject
+    assert nice_name("JC HEIGHTS HOUSE LLC") == "JC Heights House LLC"
+    assert nice_name("42 RUTGERS AVE., LLC") == "42 Rutgers Ave., LLC"
+    assert nice_name("AL MAR LLC") == "Al Mar LLC"
