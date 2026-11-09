@@ -1128,7 +1128,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   operator's contact, postal address and "no more". Desk task `digest` mails them to the operator's own inbox
   ("[njw-digest] <date> i/n", 10 PDFs each); the run log shows `digests` / `digest_rows` / `digest_mails` only.
   "Named" = a person on record behind the family (a deed contact that isn't the entity again, or the vault's likely
-  principal); fewer named families leave room for more LLCs (54 digests in all).
+  principal); fewer named families leave room for more LLCs (54 in all). "Owner @ <address>" cluster buyers (no name)
+  and buyers with fewer than 3 deals in their box this week get no page.
 - **Prospects** (`prospects` table, `deal_desk.seed_prospects` / `update_prospect`): one row per digest buyer, stages
   NEW → CONTACTED → SAMPLE_SENT → CALL_BOOKED → TRIAL → PAYING (or LOST), with public business contacts (website,
   business e-mail / phone, LinkedIn URL) and their source. A sealed note item `{"prospect": {"entity", "stage",

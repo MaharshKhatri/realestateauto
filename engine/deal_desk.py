@@ -31,6 +31,7 @@ from db.models import CashBuyer, Lead, Property, SignalType
 TRIAL_FEE, MONTHLY_FEE = 500, 1000
 MIN_PRICE = 40_000                       # deed prices under this are package deeds / nominal transfers
 MAX_ROWS = 10
+MIN_ROWS = 3                             # fewer deals than this in a buyer's box: no digest this week
 QUOTAS = (("MLS", 5), ("Sheriff sale", 4), ("Pre-foreclosure", 2))   # a mix first, then the best of the rest
 
 
@@ -162,7 +163,8 @@ def select_buyers(session: Session, named: int = 34, llcs: int = 20, min_llc_buy
                   today: date | None = None) -> list[BuyerProfile]:
     """The digest list: every named principal family (best first, up to `named`), then the top multi-buy LLCs; when
     fewer people are on record than `named`, more LLCs fill the list (named + llcs digests in all)."""
-    ps = buyer_profiles(session, today)
+    # "Owner @ <mailing address>" is an unnamed mailing-cluster buyer: no name to address a digest to (skip-trace first)
+    ps = [p for p in buyer_profiles(session, today) if not p.entity.upper().startswith("OWNER @")]
     first = [p for p in ps if p.kind == "named"][:named]
     rest = [p for p in ps if p.kind == "llc" and p.purchases_36m >= min_llc_buys][:llcs + named - len(first)]
     return first + rest
@@ -390,7 +392,8 @@ def slug(text: str) -> str:
 def write_all(session: Session, out_dir: Path, *, named: int = 34, llcs: int = 20,
               today: date | None = None) -> list[tuple[Digest, Path]]:
     today = today or date.today()
-    digests = build_digests(session, select_buyers(session, named, llcs, today=today), today)
+    digests = [d for d in build_digests(session, select_buyers(session, named, llcs, today=today), today)
+               if len(d.rows) >= MIN_ROWS]                 # a near-empty page sells nothing
     out = []
     for i, d in enumerate(digests, 1):
         out.append((d, render_pdf(d, out_dir / f"{i:02d}_{slug(d.profile.entity)}.pdf")))

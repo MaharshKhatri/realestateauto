@@ -93,7 +93,9 @@ def test_a_suppressed_address_never_reaches_a_digest(db):
 def test_the_desk_mails_the_digests_to_the_operator_only_and_logs_counts(db, monkeypatch, tmp_path):
     from engine import cloud_desk as cd
     _buyer(db, "QUIET RIVER LLC", None, 6, price=380000)
-    make_lead(db, sheriff_days=None, stale_listing=True, list_price=450000, assumptions={"quant": {"buyer_max": 420000}})
+    for _ in range(3):
+        make_lead(db, sheriff_days=None, stale_listing=True, list_price=450000,
+                  assumptions={"quant": {"buyer_max": 420000}})
     db.commit()
     sent = []
 
@@ -111,7 +113,7 @@ def test_the_desk_mails_the_digests_to_the_operator_only_and_logs_counts(db, mon
             sent.append(msg)
 
     r = cd.send_digests("me@example.com", "pw", smtp_factory=FakeSMTP, out_dir=tmp_path)
-    assert r == {"digests": 1, "digest_rows": 1, "digest_mails": 1, "flipper_agents": 0, "prospects_new": 1}
+    assert r == {"digests": 1, "digest_rows": 3, "digest_mails": 1, "flipper_agents": 0, "prospects_new": 1}
     msg, agents = sent
     assert msg["To"] == "me@example.com" and msg["Subject"].startswith("[njw-digest] ")
     m = message_from_bytes(msg.as_bytes())
@@ -204,3 +206,11 @@ def test_todays_ten_puts_replies_first_then_flipper_pitches_and_drops_the_paused
     assert "1. Answer the agent" in ev.body["description"]
     monkeypatch.setenv("DAILY_OPENERS", "0")
     assert gcal_sync.daily_goal_event(db, now.date()) is None
+
+
+def test_unnamed_cluster_buyers_and_near_empty_digests_are_left_out(db, tmp_path):
+    _buyer(db, "Owner @ 4 SAMPLE AVE, BROOKLYN NY", None, 9)
+    _buyer(db, "QUIET RIVER LLC", None, 6, price=380000)
+    db.commit()
+    assert [p.entity for p in dd.select_buyers(db, today=TODAY)] == ["QUIET RIVER LLC"]
+    assert dd.write_all(db, tmp_path, today=TODAY) == []                  # no deals in its box: no page
