@@ -473,3 +473,14 @@ def test_tenants_out_before_closing_is_not_a_tenant_risk():
                        "before closing")
     assert "TENANTS" not in p.intents
     assert "TENANTS" in rn.parse_reply("The house is tenant occupied, lease ends in June").intents
+
+
+def test_available_about_credits_is_not_the_house_being_available():
+    # 2026-11-09, 1708 Heck Ave: "the sale is completely as is with no repairs or credits available for the buyer"
+    p = rn.parse_reply("I spoke with the Seller's attorney and he advised that you or a partner will need to see the "
+                       "house in person. Also the sale is completely as is with no repairs or credits available for "
+                       "the buyer. Let me know your thoughts.")
+    assert "AVAILABLE" not in p.intents
+    assert "AVAILABLE" in rn.parse_reply("No credits available. It is available.").intents
+    assert "AVAILABLE" in rn.parse_reply("Yes, still available, no credits available though").intents
+    assert "AVAILABLE" in rn.parse_reply("Hello, it is available at this time.").intents

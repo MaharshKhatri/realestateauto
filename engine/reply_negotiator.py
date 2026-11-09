@@ -137,7 +137,7 @@ PHRASES: dict[str, list[str]] = {
                r"(?:wouldn'?t|won'?t|would\s+not|will\s+not)\s+(?:even\s+)?(?:consider|entertain)"],
     "AVAILABLE": [r"\A\W*(?:hello|hi|hey)?\b[^.!?\n]{0,30}?\b(yes|yep|yup|yeah|absolutely)\b(?![^.!?\n]*\b(but|however|under contract|"
                   r"attorney|pending|sold)\b)",          # "Yes it is." answers our "is it still available?"
-                  r"still available", r"(it'?s|it is|yes,? it'?s|yes it is|yes,? still) available", r"\bavailable\b",
+                  r"still available", r"\b(it'?s|it is|yes,? it'?s|yes it is|yes,? still) available", r"\bavailable\b",
                   # typos: "It is still aviilable" (2026-11-06, 492 Booth Ct), "availble", "avaliable"
                   r"\b(?:still|is|it'?s) av(?!oid)[a-z]{2,6}ble\b",
                   r"still (on the market|active|listed|for sale)", r"no offers (yet|so far)", r"haven'?t (had|gotten|received) any offers",
@@ -195,6 +195,9 @@ PHRASES: dict[str, list[str]] = {
                  r"what('s| is) your (company|name)", r"tell me more"],
 }
 _COMPILED = {k: [re.compile(p, re.I) for p in v] for k, v in PHRASES.items()}
+_AVAIL_NOT_HOUSE = re.compile(r"\b(?:credits?|repairs?|concessions?|funds?|financing|parking|incentives?|rebates?|"
+                              r"discounts?|warrant(?:y|ies)|inspections?|appointments?|times?|slots?)\b[^.!?\n]{0,25}$",
+                              re.I)
 _HYPOTHETICAL = re.compile(r"\b(?:ability to|able to|willing to|afford to|want(?:s)? to|to take|to pull|to keep|to go|"
                            r"before (?:going|we go|she goes|he goes|they go)|unless|if|until)\b[^.!?\n]*$", re.I)
 _TENANTS_OUT = re.compile(r"\b(?:tenants?|renters?|occupants?)\b[^.!?\n]{0,25}\b(?:will be|are|is|to be|be)\s+"
@@ -307,6 +310,11 @@ def parse_reply(text: str) -> ParsedReply:
     for intent, pats in _COMPILED.items():
         for p in pats:
             m = p.search(scrubbed)
+            if m and intent == "AVAILABLE" and "availab" in m.group(0).lower():
+                # "no repairs or credits available for the buyer" (2026-11-09, 1708 Heck Ave) is about credits, not
+                # the house: skip "available" when its own words are about money, repairs or terms
+                m = next((x for x in p.finditer(scrubbed)
+                          if not _AVAIL_NOT_HOUSE.search(scrubbed[max(0, x.start() - 40):x.start()])), None)
             if not m:
                 continue
             if intent == "UNDER_CONTRACT" and _HYPOTHETICAL.search(

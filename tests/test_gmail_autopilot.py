@@ -713,3 +713,18 @@ def test_the_ask_first_question_goes_out_once(live):
     other = listed(db)
     db.commit()
     assert not gm.asked_net_before(db, other.id)
+
+
+def test_no_automatic_touch2_once_an_offer_is_out(live):
+    """2026-11-09, 1708 Heck Ave: three written offers were out; the agent's note about a viewing ("no repairs or
+    credits available") read as "still available" and the desk re-sent its opening offer e-mail word for word."""
+    db = live
+    lead = listed(db)
+    ours = opener(db, lead)["Message-ID"]
+    lead.offer_amount = 285000
+    db.commit()
+    gm.set_imap_factory(lambda: FakeIMAP({9: mail(9, "Yes, it's still available", in_reply_to=ours)}))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
+    db.expire_all()
+    row = db.query(InboundReply).filter_by(message_id="<agent-9@broker.test>").one()
+    assert row.status == "needs_approval" and "an offer is already out" in row.note

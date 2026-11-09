@@ -602,6 +602,11 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
     if before:
         # Asking "what would the seller need to net?" (or opening at our price) after they told us reads as a bot.
         return f"they already gave a number on this house ({hc.money(before)}): your call"
+    sent_offer = float(lead.offer_amount or 0)
+    if sent_offer:
+        # Touch 2 is the FIRST written offer. 2026-11-09, 1708 Heck Ave: three offers had gone out and the agent's
+        # concern about a viewing was answered by the desk re-sending its opening e-mail word for word.
+        return f"an offer is already out on this house ({hc.money(sent_offer)}): their answer needs a look"
     fact = getattr(analysis, "kind", "") == "fact_check"
     if not ({"AVAILABLE", "BACKUP"} & intents) or (analysis.verdict != "GREEN" and not fact):
         return "not a plain 'still available'"

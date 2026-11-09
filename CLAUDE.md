@@ -1255,7 +1255,12 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
       no tenant buffer;
     - a priced reply sent from a sealed note carries "Who's buying: an investor buying as a principal ... may assign
       the contract" when its text doesn't say it (the attached LOI says it too);
-    - run log: `sN_waiting` per stream (s1 = agent replies needing approval).
+    - run log: `sN_waiting` per stream (s1 = agent replies needing approval);
+    - Touch 2 never goes out by itself once an offer is on record (`lead.offer_amount`): 1708 Heck Ave got its opening
+      offer e-mail again after three offers, because "no repairs or credits available for the buyer" read as
+      "it's available" (the bare pattern had no word boundary: "cred-its available"); "available" after credits /
+      repairs / financing / concessions / times is never the house (`reply_negotiator._AVAIL_NOT_HOUSE`);
+    - the inbox step is repeated once after a Gmail timeout (60 s per socket operation): 6 of 29 runs had lost it.
   - **Written answers, no stalls** (`reply_negotiator`): a "call me" with no number gets "I'm in classes; e-mail is
     fastest; the seller's as-is bottom line and big repair items?" (or a call-window ask when the agent won't negotiate
     by e-mail); a proof-of-funds ask with no verified partner gets "no letter today; the sqft and condition?" instead of
