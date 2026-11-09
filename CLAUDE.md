@@ -1242,6 +1242,20 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     dumpster companies, investor-focused brokerages. Measured on the Nov 2 snapshot (forced run, 43 s): s1 101 convertible
     of 1,449 listed; s2 4 digests; s3 257 rows / 8 PDFs; s4 97 triggers / 11 PDFs; s5 22 entities; s6 19 packets of 1,795
     high-tax parcels; s7 0 in a dead zone; s9 119 triggers; s10 123 rows.
+  - **First live day (2026-11-09), fixed the same afternoon**:
+    - targets are seeded whenever `config/b2b_targets.yaml` appears or changes (`swarm_firm.targets_digest`), never
+      marked done while it is missing (the first run predated the file and every specialty stream had nobody to pitch);
+    - s10's PDF goes in `StreamResult.internal`, so `mail_internal` sends "[njw-s10] <date>" to the operator's inbox;
+    - pitch copy states only counts the data shows ("3 fixer listings and 1 investor resale around Elizabeth", never
+      "a lot of"); a buyer family filed under a person is "you", never named in a subject; subjects say "week of
+      <Monday>" (`streams.base.week_of`);
+    - reply reader: an amount beside a value / fixed-up / comps cue with nothing about the seller in between is a value
+      opinion, not a counter ("more like $645,000 give or take vs $670,000"); "the ability to take her house off the
+      market by going into contract if ..." is hypothetical, not a contract; "tenants will be out before closing" adds
+      no tenant buffer;
+    - a priced reply sent from a sealed note carries "Who's buying: an investor buying as a principal ... may assign
+      the contract" when its text doesn't say it (the attached LOI says it too);
+    - run log: `sN_waiting` per stream (s1 = agent replies needing approval).
   - **Written answers, no stalls** (`reply_negotiator`): a "call me" with no number gets "I'm in classes; e-mail is
     fastest; the seller's as-is bottom line and big repair items?" (or a call-window ask when the agent won't negotiate
     by e-mail); a proof-of-funds ask with no verified partner gets "no letter today; the sqft and condition?" instead of
