@@ -75,9 +75,13 @@ _FIRM_AFTER = re.compile(r"^\W{0,3}(?:and\s+)?(?:firm|net|bottom|no less|not a p
 # "Full price" / "they want asking": their number is the list price (2026-11-05: Edison on 114 Sheridan Ave answered
 # "what would the seller need to net?" with "Full price", read as a question). Not after "below" / "under" / "less than"
 # / "not" (those offer room under the ask) and never a question ("what's the asking price?").
+# "They would want at least asking $375,000" (2026-11-07, 8 Japril Dr): "at least" / "nothing less than" before the ask is
+# their number too, and a bare "asking" is the asking price.
+_ASK_WORD = r"(?:the\s+)?(?:full\s+)?(?:asking(?:\s+price)?|list(?:ing)?\s+price)\b"
 _FULL_PRICE = re.compile(r"(?<!below )(?<!under )(?<!than )(?<!not )\bfull (?:price|ask(?:ing)?(?: price)?)\b"
                          r"|\b(?:wants?|needs?|looking for|expects?|holding (?:at|for)|firm (?:at|on)|accepts?|take)\s+"
-                         r"(?:the\s+)?(?:asking|list(?:ing)?) price\b", re.I)
+                         r"(?:at\s+least\s+|nothing\s+(?:less|below|under)(?:\s+than)?\s+|no\s+less\s+than\s+)?" + _ASK_WORD +
+                         r"|\b(?:at\s+least|nothing\s+(?:less|below|under)(?:\s+than)?|no\s+less\s+than)\s+" + _ASK_WORD, re.I)
 
 
 def full_price_asked(text: str) -> bool:

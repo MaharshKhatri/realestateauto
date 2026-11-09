@@ -143,6 +143,20 @@ def test_full_price_is_their_number(db, operator):
     assert rn.full_price_asked("Seller wants full asking") and rn.full_price_asked("They're firm on list price")
 
 
+def test_at_least_asking_is_their_number(db, operator):
+    """2026-11-09: Suzanne answered "what would the seller need to net?" on 8 Japril Dr with "They would want at least asking
+    $375,000", and the desk found no number (the list price quoted back was dropped). "At least asking" is the ask."""
+    from engine import agent_outreach as ao
+    lead = listed(db)
+    ask = float(ao.listing_gap(lead)["list_price"])
+    a = rn.analyze(db, lead, "They would want at least asking $375,000", now=datetime(2026, 10, 20, 9, 0))
+    assert a.parsed.counter_amount == ask and a.parsed.counter_explicit and "COUNTER" in a.parsed.intents
+    for yes in ("Seller wants asking.", "Nothing less than asking", "no less than the asking price", "at least list price"):
+        assert rn.full_price_asked(yes), yes
+    for no in ("What's the asking price?", "Below asking is fine", "needs listing photos", "at least 30 days to close"):
+        assert not rn.full_price_asked(no), no
+
+
 def test_near_asking_is_their_number_approximately(db, operator):
     """2026-11-07: Nicole answered "what would the seller need to net?" on 5 Fitch Rd with "It is near asking price", and
     the desk drafted "answer them, then ask for a number" again. Their number is about the ask, never stated plainly."""

@@ -1047,6 +1047,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     "It is near asking price" / "close to asking" / "around list price" / "just under asking" (2026-11-07, 5 Fitch Rd, the
     answer to "what would the seller need to net?") is their number = about the ask, never stated plainly
     (`reply_negotiator.near_ask_asked`; not "nowhere near" / "not close to", never a question).
+    "They would want at least asking $375,000" / "nothing less than asking" / "seller wants asking" (2026-11-09, 8 Japril Dr)
+    is their number = the ask, stated plainly (`_FULL_PRICE`: "at least" / "no less than" before "asking"; bare "asking").
   - A sealed note item's "sqft" / "beds" / "baths" (an agent's e-mail or a call) is saved on the property
     (`sqft_source` "agent") and the house is re-valued live (`cloud_desk.save_facts` → `offer_math.firm_up`): most
     "agree to nothing (the living area isn't on record)" rows wait only on the size. The run log adds
