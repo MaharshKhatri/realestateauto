@@ -43,7 +43,7 @@ from sqlalchemy.orm import Session, selectinload
 from core.text import clean, is_lender, muni_base, postal_title
 from db.models import DeedTransfer, DistressSignal, FirmOutbox, FirmTarget, Property, SignalType, Valuation
 from engine.streams.base import (PRIORITY_SPECIALTY, Outbound, Stream, StreamContext, StreamResult, address_ok,
-                                 entity_like, kmoney, operator_footer, render_table_pdf, slug)
+                                 entity_like, kmoney, operator_footer, render_table_pdf, slug, week_of)
 
 TARGET_KIND = "foreclosure_surplus_attorney"
 STATUTORY_ADJOURNMENTS = 5          # N.J.S.A. 2A:17-36 as amended by P.L.2019, c.71: 2 debtor, 2 lender, 1 agreed
@@ -532,15 +532,15 @@ def pitch_body(where: str, n_watch: int, n_sold: int, lim: dict[str, Any], first
     sold = f", plus {n_sold} sale{'s' if n_sold != 1 else ''} already made to a third party" if n_sold else ""
     lines = [
         f"Attached is this week's sheriff-sale surplus research for {where}: {n_watch} upcoming "
-        f"sale{'s' if n_watch != 1 else ''} where the upset and liens sit at least "
-        f"{kmoney(float(lim['min_equity']))} under value data{sold}.",
+        f"sale{'s' if n_watch != 1 else ''} where public value data sits at least "
+        f"{kmoney(float(lim['min_equity']))} above the upset and known liens{sold}.",
         "Each row shows the docket, sheriff number, plaintiff, upset, liens and the formula behind the estimate, all "
         "from public records.",
         "Your office verifies every case on eCourts and decides whom, if anyone, to contact.",
         f"It is a flat ${float(lim['price_monthly']):,.0f} a month for weekly reports, or "
         f"${float(lim['price_report']):,.0f} for one county report, and the price never depends on any case or contact.",
     ]
-    return " ".join(lines) + (f"\n{first}" if first else "")
+    return "Hello,\n\n" + " ".join(lines) + (f"\n\n{first}" if first else "")
 
 
 def _where(counties: list[str]) -> str:
@@ -582,7 +582,7 @@ def pitches(session: Session, ctx: StreamContext, lim: dict[str, Any], pdfs: dic
         where = _where(chosen)
         out.append(Outbound(
             stream="s3", key=key, to=t.email, priority=PRIORITY_SPECIALTY, kind="pitch", target_id=t.id,
-            subject=f"NJ sheriff-sale surplus research, {where}, week of {ctx.now:%b %-d}",
+            subject=f"NJ sheriff-sale surplus research, {where}, week of {week_of(ctx.now)}",
             body=pitch_body(where, sum(pdfs[c][1] for c in chosen), sum(pdfs[c][2] for c in chosen), lim,
                             (ctx.operator or {}).get("first", "")),
             attachments=[pdfs[c][0] for c in chosen]))

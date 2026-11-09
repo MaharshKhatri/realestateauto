@@ -46,7 +46,24 @@ def first_name(name: str | None) -> str:
     w = parts[0].replace(".", "")
     if len(w) < 2:
         return "there"
-    return w.upper() if len(w) <= 3 and w.isupper() else w.title()
+    if (len(w) <= 3 and w.isupper()) or (len(w) == 2 and not re.search(r"(?i)[aeiouy]", w)):
+        return w.upper()                                         # "JC", "Jc" -> "JC"; "Al", "Ed" stay names
+    return w.title()
+
+
+def agent_hook(t: FirmTarget, towns: str) -> str:
+    """Why this agent: only what the listing data shows (their counts), never "a lot of"."""
+    data = t.data_json if isinstance(t.data_json, dict) else {}
+    resales, fixers = int(data.get("resales") or 0), int(data.get("fixers") or 0)
+    plural = lambda n, w: f"{n} {w}{'s' if n != 1 else ''}"     # noqa: E731
+    if resales and fixers:
+        return (f"You have {plural(fixers, 'fixer listing')} and {plural(resales, 'investor resale')} around {towns}, "
+                "so")
+    if resales:
+        return f"You're listing {plural(resales, 'investor resale')} around {towns}, so"
+    if fixers:
+        return f"You have {plural(fixers, 'fixer listing')} around {towns}, so"
+    return f"You list around {towns}, so"
 
 
 # -- targets ------------------------------------------------------------------------------------------------------
@@ -149,8 +166,8 @@ def pitch_body(t: FirmTarget, d: dd.Digest, op: dict[str, str], follow: bool) ->
                  "",
                  (f"Following up with this week's version: {len(d.rows)} investor deals in {towns}, one page, attached. "
                   if follow else
-                  f"You list a lot of fixer and flip resales around {towns}, so I put together this week's investor "
-                  f"deals there: {len(d.rows)} on one page, attached, with ARV, repairs and the most a flipper can pay. ")
+                  f"{agent_hook(t, towns)} I put together this week's investor deals there: {len(d.rows)} on one "
+                  "page, attached, with ARV, repairs and the most a flipper can pay. ")
                  + "I run this as software for investor-focused agents: deals found and underwritten daily, offers "
                  "drafted from your own inbox for your buyer clients to approve. The first 30 days are $500 flat, then "
                  "$1,000 a month, with no commission split and nothing tied to a deal.",

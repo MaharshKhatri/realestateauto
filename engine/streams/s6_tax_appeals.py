@@ -576,8 +576,9 @@ def fit_one_page(case: Case, path: Path, op: dict[str, str], params: dict[str, A
 # -- the pitch ----------------------------------------------------------------------------------------------------
 def pitch_body(county: str, deadline: date, price_packet: float, price_monthly: float, first: str) -> str:
     """No value, no savings, no verdict: what the packet is, that it is data, the flat price, the deadline."""
-    return (f"I put together comparable-sales data packets for high-tax properties in {county} County where recorded "
-            f"sales are well below the assessment ratio range. A sample is attached: the recorded sales, the "
+    return (f"Hello,\n\nI put together comparable-sales data packets for high-tax properties in {county} County "
+            f"where the assessment divided by recent sale prices of similar houses runs above the Chapter 123 common "
+            f"level range. A sample is attached: the recorded sales, the "
             f"Director's Chapter 123 ratio and the arithmetic, with no opinion of value, for your own review. The "
             f"flat research fee is ${price_packet:,.0f} a packet or ${price_monthly:,.0f} a month for a weekly set, "
             f"ahead of the {deadline:%B} {deadline.day}, {deadline.year} filing deadline. Would a set for your towns "

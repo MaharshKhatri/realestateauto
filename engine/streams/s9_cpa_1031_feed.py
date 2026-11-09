@@ -433,7 +433,7 @@ def pitch_body(kind: str, n_cs: int, n_ex: int, price: float, first: str) -> str
         what = (f"I compile a weekly New Jersey feed of public-record triggers for cost segregation and 1031 work. "
                 f"This week's feed is attached, with {n_cs} recent entity purchases and {n_ex} long-held "
                 "multi-family listings.")
-    return (f"{what} Every row comes from recorded deeds, MOD-IV and public listings, and eligibility is for the "
+    return (f"Hello,\n\n{what} Every row comes from recorded deeds, MOD-IV and public listings, and eligibility is for the "
             f"owner's CPA to decide. It is a flat ${price:,.0f} a month with no other charge. Want me to add you to "
             f"the weekly list?\n\n{first}").strip()
 

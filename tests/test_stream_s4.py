@@ -293,7 +293,7 @@ def test_pitch_matches_trade_county_and_caps(db, tmp_path):
     general = _text(next(p for p in (tmp_path / "out").glob("s4_rehab_triggers_essex_*.pdf")
                          if "contractor" not in p.name and "roofer" not in p.name))
     assert general.index(gut.property.street_address.title()) < general.index(tank.property.street_address.title())
-    assert "1 pointing to an oil tank" in ob.body
+    assert "1 of them to an oil tank" in ob.body
     assert res.outbound[1].subject.startswith("Essex County") and "roofer" in res.outbound[1].attachments[0].name
 
 

@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from core.text import clean
 from db.models import CashBuyer, DistressSignal, FirmOutbox, FirmTarget, Property, SignalType
 from engine.streams.base import (
+    week_of,
     PRIORITY_SPECIALTY,
     Outbound,
     Stream,
@@ -333,7 +334,7 @@ class BorrowerFeedStream(Stream):
             for t in eligible_targets(session, kinds, self.key, key_for, ctx.now)[:cap]:
                 res.outbound.append(Outbound(
                     stream=self.key, key=key_for(t), to=t.email or "", priority=PRIORITY_SPECIALTY, kind="pitch",
-                    subject=f"NJ fix-and-flip borrower feed, week of {ctx.now:%b %-d}",
+                    subject=f"NJ fix-and-flip borrower feed, week of {week_of(ctx.now)}",
                     body=pitch_body(len(shown), price, _first(ctx.operator)), attachments=[path], target_id=t.id))
                 pitches += 1
         res.metrics.update({k: int(v) for k, v in counts.items()})

@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 from core.text import clean, muni_base, postal_title
 from db.models import CashBuyer, DeedTransfer, DistressSignal, FirmOutbox, FirmTarget, Listing, Property, SignalType
 from engine.streams.base import (
+    week_of,
     PRIORITY_SPECIALTY,
     Outbound,
     Stream,
@@ -447,9 +448,9 @@ def pitch_body(county: str, total: int, matching: int, kind: str, price: float, 
         "Hello,",
         "",
         f"I compile a weekly NJ Rehab Trigger Report for {county} County, and this week's copy is attached. "
-        f"It lists {total} houses with a rehab need on the public record, {matching} pointing to {what}, with the "
-        "street, the listing's own words or the deed, and the brokerage. "
-        "It is built from public listings and recorded deeds, and you contact the brokerage or owner yourself. "
+        f"It lists {total} houses where the listing or a recent deed points to rehab work, {matching} of them to "
+        f"{what}, each with the street, the source words and the brokerage. "
+        "It comes from public listings and recorded deeds; you contact the brokerage or owner yourself. "
         f"A weekly copy is a flat ${price:,.0f}/month subscription for {county} County, with no commission and no "
         "per-job fee. Reply \"yes\" and I'll send next week's report.",
         "",
@@ -709,7 +710,7 @@ class ContractorTriggerStream(Stream):
             matching = sum(1 for r in rows if set(r.triggers) & set(lead))
             res.outbound.append(Outbound(
                 stream=self.key, key=key_for(t), to=t.email or "", priority=PRIORITY_SPECIALTY, kind="pitch",
-                subject=f"{county} County rehab trigger report, week of {ctx.now:%b %-d}",
+                subject=f"{county} County rehab trigger report, week of {week_of(ctx.now)}",
                 body=pitch_body(county, len(rows), matching, t.kind, price, _first(ctx.operator)),
                 attachments=[path], target_id=t.id))
             made += 1

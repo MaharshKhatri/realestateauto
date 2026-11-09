@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +81,12 @@ class Stream:
 
 
 # -- helpers shared by the streams ---------------------------------------------------------------------------------
+def week_of(now: datetime) -> str:
+    """The Monday of `now`'s week, for subjects ("week of Nov 9"): the same label all week, never a mid-week date."""
+    monday = now - timedelta(days=now.weekday())
+    return f"{monday:%b} {monday.day}"
+
+
 def money(v: float | None) -> str:
     return f"${v:,.0f}" if v else "-"
 
