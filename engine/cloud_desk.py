@@ -737,6 +737,22 @@ def _reload(root: Path) -> None:
     operator_setup.sync_from_disk()
 
 
+INBOX_RETRY_WAIT = 10
+
+
+def _inbox_once_more(step: Any) -> Any:
+    """The inbox step, tried once more after a short pause when Gmail times out or drops the line (2026-11-09: 6 of
+    29 daytime runs lost their inbox check to a TimeoutError, two in a row). Safe to repeat: replies are stored once
+    per Message-ID, the next read starts after the last UID seen, and a queued answer is claimed before it is sent."""
+    import socket
+    import time as _time
+    try:
+        return step()
+    except (TimeoutError, socket.timeout, imaplib.IMAP4.abort, ConnectionResetError):
+        _time.sleep(INBOX_RETRY_WAIT)
+        return step()
+
+
 def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_factory: Any, user: str, pw: str,
           desk_key: str, root: Path, lead_id: int | None = None, note: str | None = None) -> dict[str, Any]:
     from db.database import session_scope
@@ -859,7 +875,7 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             out["offer_error"] = type(exc).__name__
     if 8 <= t.hour < 21:
         try:
-            r = gm.run_inbox(send=gm.in_send_hours(now), now=now, smtp_factory=smtp_factory)
+            r = _inbox_once_more(lambda: gm.run_inbox(send=gm.in_send_hours(now), now=now, smtp_factory=smtp_factory))
             p = r.get("poll") or {}
             out.update(new=int(p.get("checked") or 0), replies=int(p.get("matched") or 0),
                        sent=int(r.get("sent_now", 0)) + int(p.get("sent") or 0),

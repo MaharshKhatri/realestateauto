@@ -423,6 +423,19 @@ def test_gmail_dropping_the_line_costs_one_inbox_check_not_the_run(db, monkeypat
     kw = dict(smtp_factory=None, user=ME, pw="p", desk_key=KEY, root=tmp_path, approve_id=None)
     from zoneinfo import ZoneInfo
     et = ZoneInfo("America/New_York")
+    monkeypatch.setattr(cd, "INBOX_RETRY_WAIT", 0)
+    # one timeout is retried at once (2026-11-09: 1 run in 5 lost its inbox check)
+    calls = []
+    def flaky(*a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError("timed out")
+        return {"ok": True, "poll": {"checked": 2, "matched": 1}, "rows": []}
+    monkeypatch.setattr(gm, "run_inbox", flaky)
+    monkeypatch.setattr(gm, "in_send_hours", lambda now=None: False)
+    out = cd._work("dismiss", now=datetime(2026, 11, 5, 16, 20, tzinfo=et), **kw)
+    assert "gmail_error" not in out and out["new"] == 2 and out["replies"] == 1 and len(calls) == 2
+    synced.clear()
     for exc in (TimeoutError("timed out"), imaplib.IMAP4.abort("socket error: EOF")):
         def boom(*a, _exc=exc, **k):
             raise _exc

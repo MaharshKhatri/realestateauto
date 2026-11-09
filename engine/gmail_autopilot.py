@@ -270,7 +270,8 @@ def _default_imap() -> Any:
     # WHOLESALING_IMAP_HOST / _PORT: tests point these at a closed local port so no test can reach a real inbox.
     host = os.environ.get("WHOLESALING_IMAP_HOST") or _cfg().get("imap_host", "imap.gmail.com")
     port = int(os.environ.get("WHOLESALING_IMAP_PORT") or _cfg().get("imap_port", 993))
-    return imaplib.IMAP4_SSL(host, port, ssl_context=ssl_context(), timeout=30)
+    # 60 s per socket operation: a busy Gmail answer took longer than 30 s on about 1 run in 5 (2026-11-09)
+    return imaplib.IMAP4_SSL(host, port, ssl_context=ssl_context(), timeout=60)
 
 
 def _quote_box(name: str) -> str:
