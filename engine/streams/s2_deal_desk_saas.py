@@ -205,6 +205,38 @@ def flipper_profile(session: Session, t: FirmTarget, profiles: dict[str, dd.Buye
     return next((p for p in profiles.values() if dd.prospect_key(p.entity) == key), None)
 
 
+def stated_profile(session: Session, t: FirmTarget) -> dd.BuyerProfile | None:
+    """A researched flipper or investor brokerage we hold no deed / listing records for (config/b2b_targets.yaml):
+    the county (or town -> county) printed on their own site, its most active towns in our data, any price. Its copy
+    and digest say "the area on your website", never "your deed records" or "your listings"."""
+    from sqlalchemy import func
+
+    from core.text import muni_base, postal_title
+    from db.models import Property
+    county = re.sub(r"(?i)\s+county$", "", (t.county or "").strip())
+    town = (t.town or "").strip()
+    if not county and town:
+        county = session.scalar(select(Property.county).where(func.lower(Property.city) == town.lower())
+                                .group_by(Property.county).order_by(func.count(Property.id).desc()).limit(1)) or ""
+    if not county:
+        return None
+    rows = session.execute(
+        select(Property.mun_code, Property.municipality, Property.county, func.count(Lead.id))
+        .join(Lead, Lead.property_id == Property.id).where(func.lower(Property.county) == county.lower())
+        .group_by(Property.mun_code, Property.municipality, Property.county)
+        .order_by(func.count(Lead.id).desc()).limit(12)).all()
+    towns = [(str(m or ""), postal_title(muni_base(mu)) or "", (co or county).title(), int(n)) for m, mu, co, n in rows
+             if m]
+    if not towns:
+        return None
+    if town:
+        towns.sort(key=lambda x: x[1].lower() != town.lower())     # their own town first when we have it
+    return dd.BuyerProfile(key=f"stated:{t.id}", buyer_ids=[], entity=nice_name(t.org) if t.org else (t.name or "you"),
+                           principal=None, kind="stated", purchases_36m=0, flips=0, towns=towns,
+                           counties=[county.title()], price_lo=None, price_med=None, price_hi=None, multi_share=0.3,
+                           last_purchase=None)
+
+
 def owned_leads(session: Session, prof: dd.BuyerProfile) -> set[int]:
     """Leads on parcels the buyer family bought (their own resales): never in their own digest or Touch 1."""
     from db.models import CashBuyer, Property
@@ -343,12 +375,27 @@ def touch_facts(session: Session, t: FirmTarget, d: dd.Digest, avoid: set[int]) 
                       subject_where=subject_where, rows=len(d.rows))
 
 
-def pitch_body(t: FirmTarget, f: TouchFacts, op: dict[str, str], follow: bool) -> tuple[str, str]:
-    """Touch 1 (two sentences; the only dollar figure is the named street's public ask) or the one-sentence nudge."""
-    hello = greeting(t.name) if t.kind == "investor_agent" else "Hello,"
+AGENT_KINDS = ("investor_agent", "investor_friendly_broker")
+
+
+def pitch_body(t: FirmTarget, f: TouchFacts, op: dict[str, str], follow: bool,
+               stated: bool = False) -> tuple[str, str]:
+    """Touch 1 (two sentences; the only dollar figure is the named street's public ask) or the one-sentence nudge.
+    `stated`: a target researched from its own site (no deed or listing records of ours): the hook says only that."""
+    hello = greeting(t.name) if t.kind in AGENT_KINDS else "Hello,"
     subject = f"{f.street} + {f.others} more {f.subject_where}"
     if follow:
         text = f"Should I send over this week's 1-page numbers sheet for {f.sheet_for}?"
+    elif stated:
+        org = nice_name(t.org) if t.org else "your company"
+        if t.kind in AGENT_KINDS:
+            text = (f"I came across {org} while putting together this week's investor sheet for {f.sheet_for}. I just "
+                    f"pulled {f.street} ({f.price}) and {f.others} other {f.mix} {f.where} into it; want the 1-page "
+                    "sheet?")
+        else:
+            text = (f"I came across {org} while putting together this week's investor sheet for {f.sheet_for}. We "
+                    f"just underwrote {f.street} ({f.price}) plus {f.others} other {f.mix} {f.where}; want the 1-page "
+                    "numbers sheet?")
     elif t.kind == "investor_agent":
         # an agent gets listing / sale facts only, never our numbers on a house (a value for an agent is a CMA:
         # brokerage under REC Bulletin 13-05), so their sheet is the investor sheet without ARV or max buy
@@ -370,7 +417,7 @@ def sample_body(t: FirmTarget, rows: int, lim: dict[str, Any], op: dict[str, str
     county = int(lim.get("price_county") or dd.COUNTY_FEE)
     every = int(lim.get("price_all") or dd.ALL_FEE)
     desk = int(lim.get("price_desk") or dd.DESK_FEE)
-    agent = t.kind == "investor_agent"
+    agent = t.kind in AGENT_KINDS
     approve = "for your buyer clients to approve" if agent else "for you to approve"
     sheet = "1-page investor sheet" if agent else "1-page numbers sheet"
     text = (f"Here's the {sheet} (attached): the first {SAMPLE_FULL_ROWS} deals in full, the other "
@@ -410,6 +457,8 @@ class DealDeskSaaSStream(Stream):
                 own = owned_leads(session, prof) if prof is not None else set()
             else:
                 prof, own = agent_profile(session, t)
+            if prof is None and t.kind in ("flipper", "investor_friendly_broker"):
+                prof, own = stated_profile(session, t), set()   # researched from their own site: no records of ours
             if prof is not None:
                 plans.append((t, prof, own))
         if not plans:
@@ -431,12 +480,12 @@ class DealDeskSaaSStream(Stream):
                 continue
             res.found += 1
             path = dd.render_pdf(d, ctx.out_dir / f"Deal_Digest_{slug(t.org or t.name or 'investor')}.pdf",
-                                 ctx.operator, audience="agent" if t.kind == "investor_agent" else "buyer")
+                                 ctx.operator, audience="agent" if t.kind in AGENT_KINDS else "buyer")
             res.products += 1
             sample = sample_path(path)
             prev = last_pitch(session, t)
             follow = prev is not None
-            subject, body = pitch_body(t, facts, ctx.operator, follow)
+            subject, body = pitch_body(t, facts, ctx.operator, follow, stated=prof.kind == "stated")
             reply_to = None
             if follow and prev is not None and prev.message_id:
                 reply_to = prev.message_id                # the nudge goes in the thread of the first note

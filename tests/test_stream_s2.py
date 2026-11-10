@@ -276,3 +276,34 @@ def test_deal_mix_and_counties_say_only_what_the_rows_are():
     assert s2.county_phrase(["Essex", "Union"]) == "Essex and Union counties"
     assert s2.greeting("Pat Agent") == "Hi Pat," and s2.greeting("Keller Williams Team") == "Hello,"
     assert s2.greeting(None) == "Hello,"
+
+
+def test_a_researched_flipper_or_brokerage_gets_a_stated_area_sheet_and_an_honest_hook(live, tmp_path):
+    """A target from config/b2b_targets.yaml with no deed or listing records of ours: the county printed on their own
+    site sets the area; the copy says only how we found them, never "your deed records" or "your listings"."""
+    db = live
+    for _ in range(4):
+        ld = make_lead(db, sheriff_days=None, stale_listing=True, list_price=450000,
+                       assumptions={"quant": {"buyer_max": 420000}}, listing_text="needs work, as-is")
+        add_contact(db, ld, contact_type=ContactType.LISTING_AGENT, name="Lee Broker", phone=None,
+                    email=f"lee{ld.id}@broker.example")
+    flip = fo.upsert_target(db, kind="flipper", stream="s2", email="deals@samplebuyers.example",
+                            org="Sample Home Buyers LLC", county="Essex", score=30)
+    brok = fo.upsert_target(db, kind="investor_friendly_broker", stream="s2", email="info@sampleinvest.example",
+                            org="Sample Investment Realty", county="Essex County", score=20)
+    db.commit()
+    res = s2.STREAM.run(db, _ctx(tmp_path))
+    by = {o.target_id: o for o in res.outbound}
+    assert flip.id in by and brok.id in by
+    f, b = by[flip.id], by[brok.id]
+    assert "I came across Sample Home Buyers LLC while putting together this week's investor sheet" in f.body
+    assert "deed records" not in f.body and "numbers sheet" in f.body
+    assert "I came across Sample Investment Realty" in b.body and "into it; want the 1-page sheet?" in b.body
+    assert "underwrote" not in b.body                                     # an agent never hears our numbers
+    for o in (f, b):
+        assert o.attachments == [] and len(_sentences(o.body)) == 2 and hc.lint(o.body) == []
+    from pypdf import PdfReader
+    btext = PdfReader(str(b.sample_attachments[0])).pages[0].extract_text().replace("\n", " ")
+    assert "Max buy" not in btext and "ARV" not in btext                  # the broker's sheet is the agent sheet
+    ftext = PdfReader(str(f.sample_attachments[0])).pages[0].extract_text().replace("\n", " ")
+    assert "Towns:" in ftext and "recorded deeds" not in ftext.split("Max buy")[0]

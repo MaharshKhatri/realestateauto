@@ -64,6 +64,7 @@ class BuyerProfile:
                 else "any price")
         kind = "2-4 family" if self.multi_share >= 0.5 else "1-family" if self.multi_share <= 0.2 else "1-4 family"
         count = (f"{self.purchases_36m} active listings" if self.kind == "agent"
+                 else "the area on your website" if self.kind == "stated"
                  else f"{self.purchases_36m} purchases in 36 months")
         return f"{towns} · {kind} · {band} · {count}"
 
@@ -406,7 +407,8 @@ def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None, audience
     story = [P(f"Weekly Deal Digest for {d.profile.entity}" + (" (sample)" if mask_after is not None else ""), h1),
              P((f"Sample: {mask_after} of {len(d.rows)} deals in full; the weekly digest has every street and agent. "
                 if mask_after is not None else "") + f"Week of {d.week_of:%B %-d, %Y} · "
-               + ("Towns you list in: " if audience == "agent" else "Your buy box from recorded deeds: ")
+               + ("Towns: " if d.profile.kind == "stated" else "Towns you list in: " if audience == "agent"
+                  else "Your buy box from recorded deeds: ")
                + d.profile.box_line(), body),
              Spacer(1, 5), t, Spacer(1, 4),
              P("Public listing and public-record facts only; not a CMA, BPO or appraisal and no opinion of value."
