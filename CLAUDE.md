@@ -1188,11 +1188,26 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     revenue counts only targets in TRIAL / PAYING (no projected pipeline money).
   - **s1 acquisitions** (`s1_acquisitions.py`, 6 h): the desk's funnel counts + every lead with a live agent conversation
     matched to its top 3 recorded cash buyers (buyer_matches, internal: nothing is marketed before a contract's attorney
-    review). **s2 AI Deal Desk SaaS** (`s2_deal_desk_saas.py`, hourly 9-4 weekdays): flippers with a business e-mail
-    (prospects) and the top 150 flipper-connected agents become targets; each run pitches up to 4 due targets with a
-    digest built for them (flippers: their deed towns; agents: the towns they list in, never their own listings) and one
-    follow-up after the gap; never an agent we are in deal talks with (a reply or a lead e-mail in 30 days); greetings
-    use a person's first name only (a brokerage in the name field gets "there").
+    review). **"Buyers ready"** (operator 2026-11-10: a funded buyer ready the day a seller signs): live offers = leads
+    with `offer_amount` and an agent reply / OFFER_SENT_TO_AGENT in 21 days, not dead / under contract / off the market;
+    with 2+ of them, flipper / investor_agent / investor_friendly_broker targets whose stated county, town (-> county via
+    our parcels), own listings or deed family overlap their counties get a 2-sentence buy-box intake ("I'm working on a
+    few as-is houses in <counties> in the <$275K-$650K> range ... what's your buy box (towns, price, rehab level) so I
+    can send you the first one once it's under contract?"). We don't hold those contracts, so no address, no house's
+    price, no spread (N.J.S.A. 45:15-3; no daisy-chaining): the band is rounded outward to $25K, >= $50K wide. Key
+    `s1:buyers:<target>:<iso-week>`, `buyers_per_run` 8, one per target per 14 days, 2 ever (the 2nd a one-sentence nudge
+    in the thread), kind pitch, nothing attached and nothing released on a yes (a firm reply for the operator); never a
+    target with mail queued or another stream's held sample, never an agent in deal talks. Metrics: live_offers /
+    buyer_targets / buyers_queued. **s2 AI Deal Desk SaaS** (`s2_deal_desk_saas.py`, hourly 9-4 weekdays): flippers with
+    a business e-mail (prospects) and the top flipper-connected agents become targets; each run builds a digest for up
+    to 4 due targets (flippers: their deed towns, never a house they own; agents: the towns they list in, never their own
+    listings). Touch 1 (2 sentences, no attachment): what the deed records / their listing counts show, then "We just
+    underwrote <street> (<ask> ask) and N other <fixer / stale listings, sheriff sales> in <county> this week; want the
+    1-page numbers sheet?" (the street: an MLS row first, a sheriff sale with its date only, never a pre-foreclosure, a
+    house we have an offer on, or a suppressed address). The digest's masked sample + "$500 for the first 30 days, then
+    $1,000 a month flat, no commission or per-deal fee" waits for their yes; the follow-up after the gap is one sentence
+    in the same thread, only after this stream's own Touch 1. Never an agent in deal talks (a reply or a lead e-mail in
+    30 days), never a target in s1's buy-box conversation (30 days); greetings use a person's first name only ("Hello,").
   - **s3 surplus research** (`s3_surplus_overages.py`, daily): sold-to-third-party sheriff sales (status / history "Purchased
     - 3rd Party", or a recorded sheriff's deed NU code 12 to a non-plaintiff grantee) and a 60-day watchlist where value
     minus known debt >= $75K (association / municipal plaintiffs and upsets under 25% of value left out). CivilView
