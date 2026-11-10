@@ -10,35 +10,53 @@ listing now), ranks by activity and prints the top `feed_rows` on one page.
 
 Why it stays legal: it is public deed and listing records compiled for a flat monthly data fee, never pay per loan or
 per borrower (N.J.S.A. 45:15-3), and the lender contacts the businesses itself. Business entities only: a family whose
-name reads as a person (`entity_like` false) or an unnamed "Owner @ <mailing>" cluster is left out, no mailing address
-is ever printed, and a family whose mailing address is on a Daniel's Law / stop list is dropped. It is marketing
-research about businesses, not a consumer or credit report.
+name reads as a person, a family trust or an estate, or an unnamed "Owner @ <mailing>" cluster is left out
+(`s4.company_like`), no mailing address is ever printed, and a family whose mailing address is on a Daniel's Law / stop
+list is dropped. It is marketing research about businesses, not a consumer or credit report.
+
+The 2-step funnel (2026-11-10): Touch 1 is two plain sentences with no attachment, link or price: from public deed
+records we track the N most active investor companies buying NJ houses, one of them by its company name with one house
+it bought (a street that passes the suppression list, in the lender's county when one is there, and the deed month),
+and "want me to send the 1-page list?". Their yes releases the held sample (the feed with the top 2 companies in full
+and the rest with the company name hidden) and the flat price. The second cold touch is one sentence in that thread.
 """
 from __future__ import annotations
 
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.text import clean
-from db.models import CashBuyer, DistressSignal, FirmOutbox, FirmTarget, Property, SignalType
+from core.text import clean, muni_base, postal_title
+from db.models import CashBuyer, DeedTransfer, DistressSignal, FirmOutbox, FirmTarget, Property, SignalType
 from engine.streams.base import (
-    week_of,
     PRIORITY_SPECIALTY,
+    SAMPLE_FULL_ROWS,
     Outbound,
     Stream,
     StreamContext,
     StreamResult,
-    entity_like,
+    address_ok,
     kmoney,
+    masked_rows,
+    nice_name,
     operator_footer,
     render_table_pdf,
+    sample_path,
+)
+from engine.streams.s4_contractor_leads import (
+    company_like,
+    county_key,
+    deed_street,
+    last_thread,
+    month_phrase,
+    re_subject,
 )
 
 LISTING_SIGNALS = (SignalType.STALE_LISTING, SignalType.ACTIVE_LISTING)
@@ -58,6 +76,7 @@ class Borrower:
     in_progress: int                   # purchases in the last `in_progress_months` (likely mid-rehab)
     resales: int                       # parcels they bought that are listed for sale now
     score: float = 0.0
+    buys: list[dict[str, Any]] = field(default_factory=list)   # the family's deeds, newest first (Touch 1 names one)
 
     @property
     def resale_listed(self) -> bool:
@@ -131,10 +150,9 @@ def band(lo: float | None, hi: float | None) -> str:
 
 
 def is_business_name(name: str | None) -> bool:
-    """A business that may be named in a sold list: an entity, never an unnamed "Owner @ <mailing>" cluster (whose
-    "name" is somebody's mailing address)."""
-    n = clean(name or "")
-    return entity_like(n) and not n.upper().startswith("OWNER @")
+    """A business that may be named in a sold list or an e-mail: an entity, never an unnamed "Owner @ <mailing>"
+    cluster (whose "name" is somebody's mailing address), never a family trust or an estate (a person's name)."""
+    return company_like(name)
 
 
 # -- the feed -----------------------------------------------------------------------------------------------------
@@ -183,7 +201,8 @@ def build_feed(session: Session, today: date, *, min_purchases: int = 2, in_prog
         b = Borrower(entity=prof.entity, purchases_36m=prof.purchases_36m, last_purchase=prof.last_purchase,
                      towns=[t for _, t, _, _ in prof.towns if t], counties=list(prof.counties),
                      price_lo=prof.price_lo, price_hi=prof.price_hi, multi_share=prof.multi_share,
-                     in_progress=in_progress_count(buys, today, in_progress_months), resales=resales)
+                     in_progress=in_progress_count(buys, today, in_progress_months), resales=resales,
+                     buys=sorted(buys, key=lambda x: str(x.get("deed_date") or ""), reverse=True))
         b.score = activity_score(b.purchases_36m, b.in_progress, b.resales, months_since(b.last_purchase, today))
         out.append(b)
     counts["qualified"] += len(out)
@@ -213,16 +232,23 @@ def fit_text(text: str, width_in: float, *, bold: bool = False, size: float = 7.
 def _cells(i: int, b: Borrower) -> list[str]:
     from xml.sax.saxutils import escape
     where = ", ".join(b.towns[:4]) or ", ".join(f"{c} County" for c in b.counties[:2]) or "-"
-    return [str(i), f"<b>{escape(fit_text(b.entity, WIDTHS[1], bold=True))}</b>", str(b.purchases_36m),
+    # no commas in the name: the sample's mask (base.mask_text) hides a cell up to its first ", " and would leave the
+    # rest of "SMITH, JONES & CO LLC" readable
+    name = " ".join(b.entity.replace(",", " ").split())
+    return [str(i), f"<b>{escape(fit_text(name, WIDTHS[1], bold=True))}</b>", str(b.purchases_36m),
             month_label(b.last_purchase), escape(fit_text(where, WIDTHS[4])), band(b.price_lo, b.price_hi),
             f"{round(100 * b.multi_share):d}%", str(b.in_progress), "yes" if b.resale_listed else "no"]
 
 
-def feed_kwargs(rows: list[Borrower], ctx: StreamContext, price: float, months: int) -> dict[str, Any]:
+def feed_kwargs(rows: list[Borrower], ctx: StreamContext, price: float, months: int,
+                sample: bool = False) -> dict[str, Any]:
+    """The feed's page. `sample`: the title and one-line subtitle of the masked sample Touch 2 sends after a yes (what
+    it hides is the company name, so it never borrows the generic "street hidden" line)."""
+    who = (f"Sample: the top {SAMPLE_FULL_ROWS} of {len(rows)} companies in full, the rest with the name hidden" if sample
+           else f"the {len(rows)} most active investor companies in recorded NJ deeds · business entities only")
     return dict(
-        title="NJ Active Fix-and-Flip Borrower Feed",
-        subtitle=(f"Week of {ctx.now:%B %-d, %Y} · the {len(rows)} most active investor companies in recorded NJ deeds · "
-                  "business entities only · data, not an appraisal"),
+        title="NJ Active Fix-and-Flip Borrower Feed" + (" (sample)" if sample else ""),
+        subtitle=f"Week of {ctx.now:%B %-d, %Y} · {who} · data, not an appraisal",
         head=HEAD, rows=[_cells(i, b) for i, b in enumerate(rows, 1)], col_widths=WIDTHS, landscape_page=False,
         notes=[
             "Buys: deeds in 36 months by the company's buyer family (records sharing a mailing address), package deeds "
@@ -241,31 +267,148 @@ def page_count(path: Path) -> int:
     return len(re.findall(rb"/Type\s*/Page(?![s\w])", path.read_bytes())) or 1
 
 
-def render_fit(path: Path, rows: list[Any], build: Callable[[list[Any]], dict[str, Any]], min_rows: int = 5) -> int:
-    """Render, and drop the lowest-ranked rows until the feed fits one page. Returns the rows kept."""
+def render_feed(path: Path, rows: list[Any], build: Callable[[list[Any], bool], dict[str, Any]]) -> None:
+    """The feed (every company in full) and, with 3+ companies, its sample (`sample_path`): the top 2 in full, the rest
+    with the company name masked (`masked_rows` on the "Entity" column)."""
+    sample = sample_path(path)
+    sample.unlink(missing_ok=True)                         # never a stale sample from an earlier render
+    render_table_pdf(path, **build(rows, False), write_sample=False)
+    kw = build(rows, True)
+    hidden = masked_rows(kw["head"], kw["rows"])
+    if hidden is not None:
+        render_table_pdf(sample, **{**kw, "rows": hidden}, write_sample=False)
+
+
+def render_fit(path: Path, rows: list[Any], build: Callable[[list[Any], bool], dict[str, Any]],
+               min_rows: int = 5) -> int:
+    """Render, and drop the lowest-ranked rows until the feed and its sample each fit one page. Returns the rows kept."""
     n = len(rows)
     while True:
-        render_table_pdf(path, **build(rows[:n]))
-        if n <= min_rows or page_count(path) <= 1:
+        render_feed(path, rows[:n], build)
+        sample = sample_path(path)
+        if n <= min_rows or (page_count(path) <= 1 and (not sample.exists() or page_count(sample) <= 1)):
             return n
         n = max(min_rows, n - 1)
 
 
-# -- pitch --------------------------------------------------------------------------------------------------------
-def pitch_body(n: int, price: float, first: str) -> str:
-    """3-5 plain sentences under 110 words: what it is, what is in it, where it comes from, the flat price."""
-    return "\n".join([
-        "Hello,",
-        "",
-        "I compile a weekly NJ Active Fix-and-Flip Borrower Feed from public deed and listing records, and this week's "
-        f"copy is attached. It ranks the {n} most active investor companies by purchases in the last 36 months, with "
-        "their last purchase month, towns, price band, houses likely still in rehab and whether one is listed for "
-        "resale. It names business entities only, with no mailing addresses, and your team contacts the companies "
-        f"directly. The feed is a flat ${price:,.0f}/month data retainer, with no per-loan fee and no commission. "
-        "Reply \"yes\" and I'll send next week's feed.",
-        "",
-        first,
-    ]).rstrip()
+# -- the 2-step funnel (2026-11-10) -------------------------------------------------------------------------------
+SUBJECT_MAX = 70                                   # characters: a subject that shows whole in an inbox list
+
+
+@dataclass
+class Named:
+    """The one company and house Touch 1 names: a public deed record, never a person."""
+    borrower: Borrower
+    street: str
+    town: str
+    bought: date
+
+
+def _iso(d: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(d)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def purchase_place(session: Session, x: dict[str, Any], today: date,
+                   towns: dict[str, str]) -> tuple[str, str, date] | None:
+    """(street, town, deed date) of one recorded purchase when it may be named in an e-mail: a real street address
+    (house number first), a known town, a deed date on or before today, and neither the street nor the parcel on a
+    Daniel's Law / stop suppression."""
+    addr = clean(x.get("address") or "")
+    d = _iso(x.get("deed_date"))
+    if not re.match(r"^\d", addr) or d is None or d > today:
+        return None
+    mun, block, lot = str(x.get("mun_code") or ""), str(x.get("block") or ""), str(x.get("lot") or "")
+    prop, deed_town = None, None
+    if not mun:
+        # county deed exports carry no town: the recorded deed (its parcel id COUNTY-MUN-BLOCK-LOT) supplies it
+        key = re.sub(r"\W", "", addr.upper())
+        deed = next((dt for dt in session.scalars(select(DeedTransfer).where(DeedTransfer.deed_date == d))
+                     if dt.parcel_id and re.sub(r"\W", "", str(dt.property_location or "").upper()) == key), None)
+        if deed is not None:
+            deed_town = deed.municipality
+            prop = session.scalar(select(Property).where(Property.parcel_id == deed.parcel_id).limit(1))
+            bits = deed.parcel_id.split("-")
+            if len(bits) >= 4:
+                mun, block, lot = bits[1], bits[2], bits[3]
+    if prop is None and mun and block and lot:
+        prop = session.scalar(select(Property).where(Property.mun_code == mun, Property.block == block,
+                                                     Property.lot == lot).limit(1))
+    town_raw = (x.get("municipality") or (prop.municipality if prop is not None else None) or deed_town
+                or towns.get(mun))
+    town = postal_title(muni_base(town_raw)) if town_raw else ""
+    if not town:
+        return None
+    street = deed_street(addr)
+    if prop is not None and not address_ok(session, prop):
+        return None
+    if not all(address_ok(session, SimpleNamespace(street_address=a, city=town, zip_code="")) for a in {street, addr}):
+        return None
+    return street, town, d
+
+
+RECENT_DAYS = 365                                  # Touch 1 prefers a house bought in the last year
+
+
+def pick_named(session: Session, shown: list[Borrower], today: date, county: str | None = None) -> Named | None:
+    """The highest-ranked company in the feed with a nameable purchase, newest purchase first: a purchase of the last
+    year in the lender's own county, else one of the last year anywhere in NJ, else an older one (same order)."""
+    towns: dict[str, str] = {}
+    for code, name in session.execute(select(Property.mun_code, Property.municipality).where(
+            Property.mun_code.is_not(None), Property.municipality.is_not(None)).distinct()):
+        towns.setdefault(str(code), name)
+    recent = (today - timedelta(days=RECENT_DAYS)).isoformat()
+    passes = [(local, fresh) for fresh in (True, False) for local in ((True, False) if county else (False,))]
+    for local, fresh in passes:
+        for b in shown:
+            if not company_like(b.entity):
+                continue
+            for x in b.buys:
+                if local and county_key(x.get("county")) != county:
+                    continue
+                if fresh and str(x.get("deed_date") or "")[:10] < recent:
+                    break                                  # newest first: the rest of this family is older still
+                got = purchase_place(session, x, today, towns)
+                if got is not None:
+                    return Named(b, *got)
+    return None
+
+
+def touch1(n: int, named: Named, today: date, first: str = "") -> tuple[str, str]:
+    """Touch 1 (subject, body): two plain sentences, no price, no link, no attachment. What we track and from where,
+    one company by name with one house it bought, and a yes/no question."""
+    name = nice_name(named.borrower.entity)
+    said = (f"From public deed records, we track the {n} most active investor companies buying NJ houses, including "
+            f"{name}, which bought {named.street} in {named.town} {month_phrase(named.bought, today)}. "
+            "Want me to send the 1-page list?")
+    options = ([f"{name} + {n - 1} more NJ investor compan{'y' if n == 2 else 'ies'}", f"{name} + {n - 1} more",
+                f"The {n} most active NJ investor companies"] if n > 1 else
+               [f"{name}, an active NJ investor company", name, "An active NJ investor company"])
+    subject = next((x for x in options if len(x) <= SUBJECT_MAX), options[-1])   # a long company name: a shorter line
+    return subject, f"Hello,\n\n{said}\n\n{first}".rstrip()
+
+
+def followup_body(first: str = "") -> str:
+    """The second cold touch, in Touch 1's thread: one sentence, no attachment."""
+    return f"Hello,\n\nShould I send this week's 1-page list over?\n\n{first}".rstrip()
+
+
+def sample_body(price: float, masked: bool) -> str:
+    """Touch 2, sent with the sample only after their yes: what is attached, the flat price, how to start."""
+    what = (f"Here's this week's feed, attached: the top {SAMPLE_FULL_ROWS} companies in full, the rest with the name "
+            "hidden." if masked else "Here's this week's feed, attached.")
+    return (f"{what} The weekly feed is ${price:,.0f} a month flat, a data retainer with no per-loan fee or commission; "
+            "it is not a consumer or credit report. Reply \"start\" and I'll set it up.")
+
+
+def _target_counties(t: FirmTarget) -> list[str]:
+    cs = [county_key(t.county)] if t.county else []
+    extra = (t.data_json or {}).get("counties") if isinstance(t.data_json, dict) else None
+    if isinstance(extra, list):
+        cs += [county_key(str(c)) for c in extra if c]
+    return [c for i, c in enumerate(cs) if c and c not in cs[:i]]
 
 
 def _first(op: dict[str, str]) -> str:
@@ -319,26 +462,51 @@ class BorrowerFeedStream(Stream):
         kept = 0
         if len(top) >= int(lim.get("min_rows", 5)):
             path = ctx.out_dir / f"s5_borrower_feed_{y}W{w:02d}.pdf"
-            kept = render_fit(path, top, lambda rs: feed_kwargs(rs, ctx, price, months))
+            kept = render_fit(path, top, lambda rs, sample: feed_kwargs(rs, ctx, price, months, sample))
             res.products = 1
         shown = top[:kept]
-        pitches = 0
+        pitches = followups = 0
         if ctx.send and path is not None:
             cap = int(lim.get("pitches_per_run", 3))
             kinds = [str(k) for k in (lim.get("target_kinds") or TARGET_KINDS)]
+            first = _first(ctx.operator)
+            masked = sample_path(path).exists()
+            # Touch 2, held until they say yes: the masked sample (the feed itself when no sample was written)
+            touch2, attach = sample_body(price, masked), [sample_path(path) if masked else path]
+            picks: dict[str | None, Named | None] = {}
 
             def key_for(t: FirmTarget) -> str:
                 return f"{self.key}:pitch:{t.id}:{y}-W{w}"
 
-            for t in eligible_targets(session, kinds, self.key, key_for, ctx.now)[:cap]:
+            for t in eligible_targets(session, kinds, self.key, key_for, ctx.now):
+                if pitches >= cap:
+                    break
+                # a lender we already wrote to gets the one-sentence follow-up in that thread; the key stays one per
+                # target per week, so max_touches holds
+                prior = last_thread(session, self.key, t.id) if int(t.touches or 0) > 0 else None
+                if prior is not None:
+                    res.outbound.append(Outbound(
+                        stream=self.key, key=key_for(t), to=t.email or "", priority=PRIORITY_SPECIALTY,
+                        kind="followup", subject=re_subject(prior[1]), body=followup_body(first),
+                        in_reply_to=prior[0], target_id=t.id, sample_body=touch2, sample_attachments=attach))
+                    pitches += 1
+                    followups += 1
+                    continue
+                county = next(iter(_target_counties(t)), None)
+                if county not in picks:
+                    picks[county] = pick_named(session, shown, today, county)
+                named = picks[county]
+                if named is None:
+                    continue                           # no company and house we may name: no Touch 1
+                subject, body = touch1(len(shown), named, today, first)
                 res.outbound.append(Outbound(
                     stream=self.key, key=key_for(t), to=t.email or "", priority=PRIORITY_SPECIALTY, kind="pitch",
-                    subject=f"NJ fix-and-flip borrower feed, week of {week_of(ctx.now)}",
-                    body=pitch_body(len(shown), price, _first(ctx.operator)), attachments=[path], target_id=t.id))
+                    subject=subject, body=body, target_id=t.id, sample_body=touch2, sample_attachments=attach))
                 pitches += 1
         res.metrics.update({k: int(v) for k, v in counts.items()})
         res.metrics.update(feed_rows=len(shown), in_progress_total=sum(b.in_progress for b in shown),
-                           resale_listed=sum(1 for b in shown if b.resale_listed), pitches=pitches)
+                           resale_listed=sum(1 for b in shown if b.resale_listed), pitches=pitches,
+                           followups=followups)
         res.notes.append(f"{len(shown)} companies in the feed, {pitches} pitches proposed")
         return res
 

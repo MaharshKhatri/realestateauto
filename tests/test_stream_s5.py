@@ -5,7 +5,7 @@ import re
 from datetime import date, datetime, timedelta
 
 from engine.streams import s5_hard_money_feed as s5
-from engine.streams.base import StreamContext
+from engine.streams.base import StreamContext, sample_path
 from tests.factories import make_lead
 
 OP = {"name": "Sam Operator", "first": "Sam", "phone": "(973) 555-0199", "email": "sam@example.com",
@@ -18,8 +18,10 @@ def _ctx(tmp_path, send: bool = True, **limits) -> StreamContext:
 
 
 def _text(path) -> str:
+    """The PDF's text. ReportLab writes the mask's bullet as WinAnsi code 0x7F (drawn as a bullet), which pypdf
+    extracts as "\\x7f": read it back as the bullet it is."""
     from pypdf import PdfReader
-    return "\n".join(p.extract_text() for p in PdfReader(str(path)).pages)
+    return "\n".join(p.extract_text() for p in PdfReader(str(path)).pages).replace("\x7f", "•")
 
 
 def _pages(path) -> int:
@@ -27,9 +29,19 @@ def _pages(path) -> int:
     return len(PdfReader(str(path)).pages)
 
 
+def _sentences(body: str) -> list[str]:
+    """The sentences above the sign-off: the "Hello," line and the operator's first name don't count."""
+    lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+    if lines and re.fullmatch(r"(?i)(hi|hello)\b[^.?!]*,", lines[0]):
+        lines = lines[1:]
+    if lines and lines[-1] == OP["first"]:
+        lines = lines[:-1]
+    return [x for x in re.split(r"(?<=[.?!])\s+", " ".join(lines)) if x]
+
+
 def _buy(street: str, days: int, price: int, *, block: str = "100", lot: str = "1", units: int = 1,
-         mun: str = "0714", muni: str = "NEWARK CITY") -> dict:
-    return {"address": street, "municipality": muni, "county": "Essex", "price": price, "class": "2", "units": units,
+         mun: str = "0714", muni: str = "NEWARK CITY", county: str = "Essex") -> dict:
+    return {"address": street, "municipality": muni, "county": county, "price": price, "class": "2", "units": units,
             "deed_date": (date.today() - timedelta(days=days)).isoformat(), "block": block, "lot": lot, "mun_code": mun}
 
 
@@ -65,15 +77,57 @@ def test_small_helpers():
     assert s5.month_label("2026-08-11") == "Aug 2026"
     assert s5.is_business_name("ACME FLIP HOMES LLC")
     assert not s5.is_business_name("QUINN Q SAMPLE") and not s5.is_business_name("Owner @ 9 ASSOC PL, NEWARK, NJ")
+    assert not s5.is_business_name("QUINN Q SAMPLE LIVING TRUST") and not s5.is_business_name("SAMPLE FAMILY TRUST")
+    assert s5.is_business_name("SAMPLE TRUST HOMES LLC")
 
 
-def test_pitch_body_is_plain_short_and_truthful():
+# -- the 2-step funnel copy ---------------------------------------------------------------------------------------
+def _named(entity="ACME FLIP HOMES LLC", street="12 Main St", town="Newark", bought=date(2026, 10, 2)) -> s5.Named:
+    b = s5.Borrower(entity=entity, purchases_36m=4, last_purchase=bought.isoformat(), towns=[town], counties=["Essex"],
+                    price_lo=None, price_hi=None, multi_share=0.0, in_progress=1, resales=0)
+    return s5.Named(b, street, town, bought)
+
+
+def _plain_touch(subject: str, body: str) -> None:
+    """What every Touch 1 obeys: 2 plain sentences, <= 60 words, a yes/no question, no price / link / hype."""
     from engine import human_copy as hc
-    body = s5.pitch_body(40, 750, "Sam")
-    assert hc.lint(body) == [] and hc.word_count(body) < 110
-    assert body.splitlines()[-1] == "Sam" and "$750/month" in body and "no per-loan fee" in body
-    low = body.lower()
-    assert "referral" not in low and "client" not in low and "—" not in body and "guarantee" not in low
+    sents = _sentences(body)
+    assert len(sents) == 2 and sents[1].endswith("?"), sents
+    assert body.splitlines()[0] == "Hello," and body.splitlines()[-1] == "Sam"
+    assert hc.lint(body, max_words=60) == [] and hc.word_count(body) <= 60, (hc.lint(body, max_words=60), body)
+    low = (subject + " " + body).lower()
+    for bad in ("$", "http", "www.", "free", "!", "attached", "subscription", "ad:", "referral", "guarantee",
+                "a month", "distressed", "borrower"):             # we know they buy houses; not that they borrow
+        assert bad not in low, bad
+    assert len(subject) <= 70 and not subject.lower().startswith("re:")
+
+
+def test_touch1_two_plain_sentences_name_one_company_and_one_house():
+    subject, body = s5.touch1(40, _named(), date(2026, 11, 10), "Sam")
+    _plain_touch(subject, body)
+    assert _sentences(body) == [
+        ("From public deed records, we track the 40 most active investor companies buying NJ houses, including Acme "
+         "Flip Homes LLC, which bought 12 Main St in Newark in October."), "Want me to send the 1-page list?"]
+    assert subject == "Acme Flip Homes LLC + 39 more NJ investor companies"
+    _, older = s5.touch1(40, _named(bought=date(2025, 12, 5)), date(2026, 1, 8), "Sam")
+    assert "in Newark in December 2025." in older                         # never a month that reads as this year
+    long_name = _named(entity="NORTH JERSEY RENOVATION AND HOLDINGS GROUP 12 LLC", street="1025-27 Galloping Hill Rd",
+                       town="Kenilworth")
+    subject, body = s5.touch1(40, long_name, date(2026, 11, 10), "Sam")
+    _plain_touch(subject, body)                                           # still 2 sentences, <= 60 words
+    assert subject == "North Jersey Renovation And Holdings Group 12 LLC + 39 more"   # the long line falls back
+
+
+def test_followup_and_sample_copy():
+    from engine import human_copy as hc
+    assert _sentences(s5.followup_body("Sam")) == ["Should I send this week's 1-page list over?"]
+    sb = s5.sample_body(750, True)
+    assert sb == ("Here's this week's feed, attached: the top 2 companies in full, the rest with the name hidden. The "
+                  "weekly feed is $750 a month flat, a data retainer with no per-loan fee or commission; it is not a "
+                  "consumer or credit report. Reply \"start\" and I'll set it up.")
+    assert hc.lint(sb) == [] and 2 <= len(re.split(r"(?<=[.?!])\s+", sb)) <= 4
+    plain = s5.sample_body(750, False)
+    assert "hidden" not in plain and "$750 a month flat" in plain and "not a consumer or credit report" in plain
 
 
 # -- the feed on a database ---------------------------------------------------------------------------------------
@@ -137,8 +191,129 @@ def test_stream_pdf_privacy_and_pitches(db, tmp_path):
     assert [(o.target_id, o.key) for o in res.outbound] == [(lender.id, f"s5:pitch:{lender.id}:{y}-W{w}"),
                                                            (broker.id, f"s5:pitch:{broker.id}:{y}-W{w}")]
     ob = res.outbound[0]
-    assert ob.attachments == [pdf] and ob.priority == 3 and ob.kind == "pitch" and ob.to == "loans@fastcap.example"
-    assert "the 2 most active investor companies" in ob.body
+    assert ob.priority == 3 and ob.kind == "pitch" and ob.to == "loans@fastcap.example" and ob.in_reply_to is None
+    # Touch 1: no attachment; the top company by name and its newest house (a public deed), never a person
+    assert ob.attachments == []
+    _plain_touch(ob.subject, ob.body)
+    month = s5.month_phrase(date.today() - timedelta(days=30), date.today())
+    assert _sentences(ob.body)[0] == ("From public deed records, we track the 2 most active investor companies buying "
+                                      f"NJ houses, including Acme Flip Homes LLC, which bought 1 A St in Newark {month}.")
+    assert ob.subject == "Acme Flip Homes LLC + 1 more NJ investor company"
+    # two companies: no masked sample is written, so the held sample is the feed itself and says nothing is hidden
+    assert not sample_path(pdf).exists() and ob.sample_attachments == [pdf]
+    assert ob.sample_body.startswith("Here's this week's feed, attached. The weekly feed is $750 a month flat")
+    for o in res.outbound:
+        for secret in ("Quinn", "QUINN", "Owner @", "Hidden", "HIDDEN", "Office Park", "OFFICE PARK", "One Deal"):
+            assert secret not in o.subject + o.body, secret
+
+
+def test_sample_hides_names_after_row_two_and_touch1_never_names_a_person(db, tmp_path):
+    from db.models import FirmTarget
+    from engine.compliance import suppress_address
+    _families(db)
+    _buyer(db, "GAMMA HOMES LLC", "6 GAMMA WAY, NEWARK, NJ 07102",
+           [_buy("12 G ST", 20, 300_000, lot="12"), _buy("13 G ST", 25, 310_000, lot="13")])
+    _buyer(db, "DELTA RENTALS LLC", "8 DELTA DR, PATERSON, NJ 07501",
+           [_buy(f"{20 + i} D ST", 15 + 10 * i, 280_000 + i, lot=f"2{i}", mun="1608", muni="PATERSON CITY",
+                 county="Passaic") for i in range(3)])
+    _buyer(db, "QUINN Q SAMPLE REVOCABLE TRUST", "7 HOME CT, NEWARK, NJ 07102",       # a person's trust: never named
+           [_buy(f"{30 + i} T ST", 10 + i, 350_000 + i, lot=f"3{i}") for i in range(6)])
+    suppress_address(db, "1 A ST, Newark NJ", "daniels_law")             # ACME's newest house: the next one is named
+    anywhere = FirmTarget(kind="hard_money_lender", stream="s5", email="loans@anywhere.example", stage="NEW", score=5)
+    passaic = FirmTarget(kind="mortgage_broker", stream="s5", email="desk@passaic.example", county="Passaic",
+                         stage="NEW", score=4)
+    db.add_all([anywhere, passaic])
+    db.flush()
+    res = s5.STREAM.run(db, _ctx(tmp_path, min_rows=1))
+    assert res.metrics["feed_rows"] == 4 and res.metrics["pitches"] == 2  # ACME, DELTA, GAMMA, BETA; never the trust
+    pdf = next((tmp_path / "out").glob("s5_borrower_feed_*.pdf"))
+    report, sample = _text(pdf), _text(sample_path(pdf))
+    for name in ("ACME FLIP HOMES LLC", "DELTA RENTALS LLC", "GAMMA HOMES LLC", "BETA PROPERTIES LLC"):
+        assert name in report, name
+    assert "QUINN" not in report and _pages(sample_path(pdf)) == 1
+    # the sample: the top 2 companies in full, the rest with the name hidden (the identifying column is "Entity")
+    assert "ACME FLIP HOMES LLC" in sample and "DELTA RENTALS LLC" in sample
+    assert "GAMMA" not in sample and "BETA" not in sample
+    assert "G•••• H•••• LLC" in sample and "B••• P" in sample
+    flat = " ".join(sample.split())
+    assert "Feed (sample)" in flat and "Sample: the top 2 of 4 companies in full, the rest with the name hidden" in flat
+    assert "street hidden" not in flat and "Newark" in sample and "Paterson" in sample   # the towns stay readable
+    by = {o.to: o for o in res.outbound}
+    one, two = by["loans@anywhere.example"], by["desk@passaic.example"]
+    assert one.sample_attachments == [sample_path(pdf)] and one.attachments == []
+    assert "the top 2 companies in full, the rest with the name hidden" in one.sample_body
+    m2 = s5.month_phrase(date.today() - timedelta(days=100), date.today())
+    assert f"including Acme Flip Homes LLC, which bought 2 A St in Newark {m2}." in one.body and "1 A St" not in one.body
+    md = s5.month_phrase(date.today() - timedelta(days=15), date.today())
+    assert f"including Delta Rentals LLC, which bought 20 D St in Paterson {md}." in two.body   # the lender's county
+    for o in res.outbound:
+        _plain_touch(o.subject, o.body)
+        assert "quinn" not in (o.subject + o.body).lower() and "trust" not in (o.subject + o.body).lower()
+
+
+def test_touch1_prefers_a_house_bought_this_year_over_an_old_one_in_the_lenders_county(db):
+    omega = [_buy("40 O ST", 30, 300_000, lot="40"), _buy("41 O ST", 60, 310_000, lot="41"),
+             _buy("42 O ST", 500, 320_000, lot="42", mun="1608", muni="PATERSON CITY", county="Passaic")]
+    _buyer(db, "OMEGA HOMES LLC", "9 OMEGA RD, NEWARK, NJ 07102", omega)
+    feed = s5.build_feed(db, date.today())
+    named = s5.pick_named(db, feed, date.today(), "Passaic")
+    assert (named.borrower.entity, named.street, named.town) == ("OMEGA HOMES LLC", "40 O St", "Newark")
+    old_only = [s5.Borrower(entity="OMEGA HOMES LLC", purchases_36m=2, last_purchase=None, towns=[], counties=[],
+                            price_lo=None, price_hi=None, multi_share=0.0, in_progress=0, resales=0,
+                            buys=[_buy("43 O ST", 400, 1, lot="43"), omega[2]])]
+    assert s5.pick_named(db, old_only, date.today(), "Passaic").street == "42 O St"   # nothing recent: the county's own
+    # a county deed export row carries no town: the recorded deed's parcel id (COUNTY-MUN-BLOCK-LOT) supplies it
+    from db.models import DeedTransfer
+    make_lead(db, sheriff_days=None, verdict=None, mun_code="0705", municipality="EAST ORANGE CITY", block="7",
+              lot="45", parcel_id="ESSEX-0705-7-45", street_address="45 O ST", city="East Orange")
+    day = date.today() - timedelta(days=9)
+    bare = {"address": "45 O ST", "county": "Essex", "price": 300_000, "deed_date": day.isoformat()}
+    db.add(DeedTransfer(parcel_id="ESSEX-0705-7-45", property_location="45 O ST", deed_date=day,
+                        grantee="OMEGA HOMES LLC", source="test"))
+    db.flush()
+    fam = [s5.Borrower(entity="OMEGA HOMES LLC", purchases_36m=2, last_purchase=None, towns=[], counties=[],
+                       price_lo=None, price_hi=None, multi_share=0.0, in_progress=0, resales=0, buys=[bare])]
+    got = s5.pick_named(db, fam, date.today())
+    assert (got.street, got.town) == ("45 O St", "East Orange")
+    assert s5.purchase_place(db, {**bare, "address": "46 O ST"}, date.today(), {}) is None   # no town: never named
+    person = [s5.Borrower(entity="QUINN Q SAMPLE LIVING TRUST", purchases_36m=2, last_purchase=None, towns=[],
+                          counties=[], price_lo=None, price_hi=None, multi_share=0.0, in_progress=0, resales=0,
+                          buys=[_buy("44 O ST", 10, 1, lot="44")])]
+    assert s5.pick_named(db, person, date.today()) is None                # a person's trust is never named
+
+
+def test_second_touch_is_one_sentence_in_the_first_touchs_thread(db, tmp_path):
+    from db.models import FirmOutbox, FirmTarget, utcnow
+    from engine import firm_outbox as fo
+    _families(db)
+    t = FirmTarget(kind="hard_money_lender", stream="s5", email="loans@fastcap.example", stage="NEW", score=5)
+    db.add(t)
+    db.flush()
+    now = datetime.now().replace(microsecond=0)
+    [ob] = s5.STREAM.run(db, _ctx(tmp_path, min_rows=1)).outbound
+    row = fo.enqueue(db, ob)
+    held = db.query(FirmOutbox).filter_by(key=f"{ob.key}:sample").one()
+    assert row.status == "queued" and row.attachments_json == [] and held.status == "held"
+    assert "$750 a month flat" in held.body and held.attachments_json[0]["name"].startswith("s5_borrower_feed_")
+    row.status, row.message_id, row.sent_at = "sent", "<t1@desk.example>", utcnow()
+    t.touches, t.stage, t.last_contact_at = 1, "CONTACTED", now
+    db.flush()
+    week2 = StreamContext(now=now + timedelta(days=7), out_dir=tmp_path / "w2", operator=OP, send=True,
+                          limits={"min_rows": 1})
+    res = s5.STREAM.run(db, week2)
+    [f] = res.outbound
+    y, w, _ = week2.now.isocalendar()
+    assert f.kind == "followup" and f.key == f"s5:pitch:{t.id}:{y}-W{w}" and res.metrics["followups"] == 1
+    assert f.in_reply_to == "<t1@desk.example>" and f.subject == "Re: " + ob.subject and f.attachments == []
+    assert _sentences(f.body) == ["Should I send this week's 1-page list over?"]
+    assert f.sample_attachments[0].exists() and "$750 a month flat" in f.sample_body
+    r2 = fo.enqueue(db, f)
+    r2.status, r2.message_id, r2.sent_at = "sent", "<t2@desk.example>", utcnow()
+    t.touches, t.last_contact_at = 2, week2.now
+    db.flush()
+    week3 = StreamContext(now=now + timedelta(days=14), out_dir=tmp_path / "w3", operator=OP, send=True,
+                          limits={"min_rows": 1})
+    assert s5.STREAM.run(db, week3).outbound == []                      # two cold touches used: nothing more
 
 
 def test_keys_stable_no_resend_cap_and_dry_run(db, tmp_path):
@@ -168,10 +343,12 @@ def test_feed_fits_one_page_with_forty_companies(db, tmp_path):
                 for j in range(3)])
     res = s5.STREAM.run(db, _ctx(tmp_path))
     pdf = next((tmp_path / "out").glob("s5_borrower_feed_*.pdf"))
-    assert _pages(pdf) == 1
+    assert _pages(pdf) == 1 and _pages(sample_path(pdf)) == 1          # the sample's longer subtitle fits too
     assert res.found == 60 and res.metrics["feed_rows"] == 40           # one line each: all 40 fit
     text = _text(pdf)
     assert "COMMERCE" not in text and "NORTH JERSEY RENOVATION AND HO..." in text   # cut to one line, marked
+    sample = _text(sample_path(pdf))
+    assert sample.count("NORTH JERSEY RENOVATION AND HO...") == 2 and "N•••• J•••••" in sample
 
 
 def test_empty_database(db, tmp_path):
