@@ -169,6 +169,11 @@ def run_streams(*, now: datetime, out_dir: Path, only: list[str] | None = None, 
                                                   if isinstance(v, (int, float, str, bool))}))
                 _set_state(s, **{key: now.isoformat(timespec="seconds")})
             rec = {"processed": res.processed, "found": res.found, "products": res.products, "queued": queued}
+            if send and key != "s2":
+                # paying / trial clients get this run's full report(s) once a week (s2 builds its own per-client
+                # digests); a delivery never waits for the cold gap or caps
+                with session_scope() as s:
+                    rec["delivered"] = fo.deliver(s, key, STREAMS[key][1], ctx.out_dir, now)
             if send and res.internal:
                 rec["internal_mailed"] = mail_internal(key, STREAMS[key][1], res.internal, now)
         except Exception as exc:                      # noqa: BLE001 - one stream's crash never stops the others

@@ -136,7 +136,8 @@ def test_a_prospects_reply_sets_the_stage_stops_cold_touches_and_can_be_answered
         subject, text, received, auto_reply = "Re: data", "Yes, interested. How do we start the trial?", None, False
     row = fo.handle_reply(db, M(), t.id, TUE)
     db.commit()
-    assert row.intent == "interested" and db.get(FirmTarget, t.id).stage == "INTERESTED"
+    # "start the trial" is the payment step (2026-11-10): a warm action like any yes, the target INTERESTED
+    assert row.intent == "start" and db.get(FirmTarget, t.id).stage == "INTERESTED"
     assert db.query(FirmOutbox).filter_by(key="later").one().status == "skipped"
     assert fo.warm(db)[0].id == row.id
     out = fo.answer_reply(db, row.id, "Great: the trial starts Monday.", stage="TRIAL", now=TUE)

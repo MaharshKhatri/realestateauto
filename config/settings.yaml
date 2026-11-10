@@ -384,6 +384,10 @@ research_firm:
                                      # week are the signals to slow down.
   ad_line: "Business offer from {who}."   # the cold footer's solicitation line (CAN-SPAM 7704(a)(5)(A)(i)); never "Ad:"
   sample_hold_days: 30               # a held Touch-2 sample nobody asked for expires after this many days
+  payment_link: ""                   # the operator's payment link (Stripe Payment Link / PayPal / Square); when set, a
+                                     # "start" reply gets it in their thread by itself. Per-product links go in
+  payment_links: {}                  # payment_links: {s3: "https://...", s4: "https://..."}. Paying / trial clients
+                                     # (a sealed note sets the target TRIAL / PAYING) get the full weekly report by itself.
   pitch_gap_days: 6                  # one cold pitch per target per this many days
   max_touches: 2                     # cold touches per target in all (a pitch + one follow-up); a reply ends them
   max_attempts: 3                    # a send that keeps failing is marked failed

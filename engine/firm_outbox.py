@@ -384,15 +384,47 @@ _YES = re.compile(r"(^\s*(yes|yep|yeah|sure|absolutely|definitely|ok|okay|please
                   r"\bhow do (we|i) (start|sign up|get started)\b|\bsounds (good|great|interesting)\b)", re.I)
 
 
+_START = re.compile(r"(^\s*(start|let'?s start|start it|sign (me|us) up|i'?m in|we'?re in|count (me|us) in)\b|"
+                    r"\bstart (the |a |my |our )?(trial|subscription)\b|\bhow (do|can) (i|we) pay\b|"
+                    r"\bsend (me |us )?(the |an )?(invoice|payment link|link to pay)\b|\bwe'?ll take it\b)", re.I)
+
+
 def classify(text: str) -> str:
     t = (text or "").strip()
     if _OPT_OUT.search(t):
         return "opt_out"
     if _NOT.search(t):
         return "not_interested"
+    if _START.search(t):
+        return "start"                            # they want to subscribe: payment step (warm action)
     if _YES.search(t):
         return "interested"
     return "question"
+
+
+def payment_link(stream: str | None) -> str:
+    """The operator's payment link for a stream's product (research_firm.payment_links.<stream>, else
+    research_firm.payment_link); empty until the operator creates one (Stripe Payment Link / PayPal / Square)."""
+    c = cfg()
+    links = dict(c.get("payment_links") or {})
+    return str(links.get(stream or "") or c.get("payment_link") or "").strip()
+
+
+def price_line(stream: str | None) -> str:
+    from engine.swarm_firm import stream_cfg
+    sc = stream_cfg(stream or "") if stream else {}
+    trial, monthly = sc.get("price_trial"), sc.get("price_monthly")
+    if trial and monthly:
+        return f"${float(trial):,.0f} for the first 30 days, then ${float(monthly):,.0f} a month"
+    if monthly:
+        return f"${float(monthly):,.0f} a month"
+    return "the flat monthly fee"
+
+
+def start_reply_text(stream: str | None, link: str) -> str:
+    return (f"Great, glad it's useful. Here's the link to start ({price_line(stream)}, flat, cancel any time by "
+            f"replying \"stop\"): {link}\n\nThe first full report goes out as soon as it's through, then every week. "
+            "It's research data only, with no commission or anything tied to a deal.")
 
 
 def known(session: Session) -> tuple[dict[str, int], dict[str, int]]:
@@ -441,6 +473,20 @@ def handle_reply(session: Session, mail: Any, target_id: int, now: datetime | No
             # Touch 2: "yes, send it" gets the sample in their thread by itself; the next yes (to the price) is the
             # warm action for the operator
             row.status = "sample_sent"
+        elif intent == "start":
+            t.stage = "INTERESTED"
+            t.data_json = {**(t.data_json or {}), "start_requested": _now(now).isoformat(timespec="minutes")}
+            link = payment_link(t.stream)
+            if link and getattr(mail, "from_email", None):
+                # the payment step goes out by itself in their thread; the reply stays a warm action until the
+                # operator confirms the payment (a sealed note sets the target TRIAL / PAYING, which starts delivery)
+                subj = re.sub(r"(?i)^\s*(re|fwd?):\s*", "", getattr(mail, "subject", "") or "").strip()
+                enqueue(session, Outbound(stream=t.stream or "s0", key=f"start:{mail.message_id}"[:200],
+                                          to=mail.from_email, subject=f"Re: {subj}"[:250],
+                                          body=start_reply_text(t.stream, link), priority=PRIORITY_REPLY,
+                                          kind="reply", target_id=t.id, in_reply_to=mail.message_id,
+                                          commercial=False), now)
+                t.data_json = {**(t.data_json or {}), "payment_link_sent": True}
     session.flush()
     return row
 
@@ -476,6 +522,54 @@ def set_stage(session: Session, target: FirmTarget, stage: str) -> None:
 
 
 def warm(session: Session, limit: int = 5) -> list[FirmReply]:
-    """Replies where someone said yes to a trial / more information, not yet answered."""
-    return list(session.scalars(select(FirmReply).where(FirmReply.intent == "interested", FirmReply.status == "new")
+    """Replies where someone said yes to a trial / the price ("start"), not yet settled by the operator."""
+    return list(session.scalars(select(FirmReply).where(FirmReply.intent.in_(("interested", "start")),
+                                                        FirmReply.status == "new")
                                 .order_by(FirmReply.created_at).limit(limit)))
+
+
+# -- delivery to subscribers ----------------------------------------------------------------------------------------
+SUBSCRIBED = ("TRIAL", "PAYING")
+
+
+def subscribers(session: Session, stream: str) -> list[FirmTarget]:
+    """Targets in TRIAL / PAYING for this stream's product (their own stream, or listed in data_json["products"])."""
+    out = []
+    for t in session.scalars(select(FirmTarget).where(FirmTarget.stage.in_(SUBSCRIBED), FirmTarget.email.is_not(None))):
+        products = (t.data_json or {}).get("products") if isinstance(t.data_json, dict) else None
+        if t.stream == stream or (isinstance(products, list) and stream in products):
+            out.append(t)
+    return out
+
+
+def delivery_files(out_dir: Path, county: str | None, limit: int = 3) -> list[Path]:
+    """This run's full reports for a subscriber: the ones naming their county first, else the newest few (a statewide
+    feed). Samples are never delivered to a paying client."""
+    files = [p for p in sorted(Path(out_dir).glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+             if ".sample." not in p.name]
+    if county:
+        key = re.sub(r"[^a-z]+", "_", county.lower()).strip("_")
+        mine = [p for p in files if key and key in p.name.lower()]
+        if mine:
+            return mine[:limit]
+    return files[:limit]
+
+
+def deliver(session: Session, stream: str, label: str, out_dir: Path, now: datetime | None = None) -> int:
+    """Once a week per subscriber: this run's full report(s) in a plain note (priority 1: they asked for it)."""
+    from engine.streams.base import week_of
+    y, w, _ = _now(now).isocalendar()
+    n = 0
+    for t in subscribers(session, stream):
+        files = delivery_files(out_dir, t.county)
+        if not files:
+            continue
+        first = (t.name or "").split(" ")[0] if t.name and " " in (t.name or "") else ""
+        body = (f"Hi {first or 'there'},\n\nHere's this week's {label} (week of {week_of(_now(now))}), attached. "
+                "Reply with any questions or a county you'd like added.")
+        row = enqueue(session, Outbound(stream=stream, key=f"deliver:{stream}:{t.id}:{y}-W{w:02d}", to=t.email,
+                                        subject=f"{label}: week of {week_of(_now(now))}", body=body,
+                                        priority=PRIORITY_REPLY, kind="delivery", attachments=files, target_id=t.id,
+                                        commercial=False), now)
+        n += int(row is not None)
+    return n
