@@ -489,3 +489,24 @@ def test_available_about_credits_is_not_the_house_being_available():
     assert "AVAILABLE" in rn.parse_reply("No credits available. It is available.").intents
     assert "AVAILABLE" in rn.parse_reply("Yes, still available, no credits available though").intents
     assert "AVAILABLE" in rn.parse_reply("Hello, it is available at this time.").intents
+
+
+def test_another_listings_price_is_not_their_number():
+    """2026-11-10, 901-11 Sherman Ave: "Still Available ..., I have another one 9 Castleton Ave Franklin Twp $509,000"
+    had read as a $509,000 counter on this house."""
+    p = rn.parse_reply("Hi,\n\nIt is [STATUS].Still Available 1 Test St, I have another one 9\nSample AveFranklin Twp $509,000.")
+    assert p.intents == {"AVAILABLE"} and p.counter_amount is None
+    q = rn.parse_reply("Seller wants 450. I also have another one at 12 Oak St for 399k.")
+    assert q.counter_amount == 450000
+    r = rn.parse_reply("We have another offer at 520, best by Friday.")
+    assert r.counter_amount == 520000                      # a competing offer still counts
+
+
+def test_under_contract_answer_claims_a_number_only_when_one_was_sent(db, operator):
+    """2026-11-10, 219 W 1st St: "my number is still good" went to an agent who never got a number from us."""
+    lead = listed(db)
+    a = rn.analyze(db, lead, "Sellers just accepted an offer.")
+    assert "number is still good" not in a.reply_text and "offer in writing the same day" in a.reply_text
+    lead.offer_amount = 245300
+    b = rn.analyze(db, lead, "Sellers just accepted an offer.")
+    assert "my number is still good" in b.reply_text

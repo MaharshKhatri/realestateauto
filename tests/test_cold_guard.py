@@ -171,3 +171,35 @@ def test_a_copy_fix_reaches_mail_already_queued(live):
     assert fo.rewrite_queued(db) == 1
     assert "may have one under contract soon" in db.get(FirmOutbox, row.id).body
     assert fo.rewrite_queued(db) == 0
+
+
+def test_a_domain_that_does_not_exist_is_never_mailed_cold(live, quick, monkeypatch):
+    """2026-11-10: "the domain atbnj.com couldn't be found" was the third bounce in 48 hours and paused all cold mail.
+    A cold e-mail to a domain DNS says doesn't exist is never sent and never counts as a bounce."""
+    import socket
+
+    from core import mail
+    from engine import agent_outreach as ao
+
+    def fake(host, *a, **k):
+        if host == "gone-firm.com":
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+        if host == "gmail.com":
+            return [("ok",)]
+        raise socket.gaierror(socket.EAI_AGAIN, "Temporary failure in name resolution")
+    monkeypatch.setattr(socket, "getaddrinfo", fake)
+    monkeypatch.setattr(mail, "_DOMAIN_CACHE", {})
+    assert mail.domain_missing("a@gone-firm.com")
+    assert not mail.domain_missing("a@slow-dns.com") and not mail.domain_missing("a@firm.example")
+    db = live
+    t = target(db, email="info@gone-firm.com", org="Gone LLC")
+    fo.enqueue(db, pitch(t, key="g1"), TUE)
+    db.commit()
+    FakeSMTP.sent = []
+    fo.send_due(now=TUE_ET, smtp_factory=FakeSMTP, pace=False)
+    assert FakeSMTP.sent == []
+    db.expire_all()
+    row = db.query(FirmOutbox).filter_by(key="g1").one()
+    assert row.status == "skipped" and "domain" in row.reason
+    assert "info@gone-firm.com" in ao.bounced_emails(db)
+    assert cold_guard.bounces_since(db, utcnow() - timedelta(days=1)) == []      # never sent: no bounce pause

@@ -246,6 +246,22 @@ def _amount_value(dollar: str | None, number: str, suffix: str | None, ask_befor
     return n
 
 
+# "I have another one 9 Castleton Ave, Franklin Twp $509,000" (2026-11-10, 901-11 Sherman Ave): the price of another
+# listing the agent mentions, never their number for this house. Needs both the "another one / other listing" words and a
+# street address after them in the same sentence, so "we have another offer at 520" still counts as a competing offer.
+_OTHER_HOUSE = re.compile(r"\b(?:another (?:one|listing|property|house|home)|(?:i|we) (?:also|now) have (?:a|one|another)|"
+                          r"other (?:listings?|propert(?:y|ies)|houses?|homes?))\b", re.I)
+_STREET_ADDR = re.compile(r"\b\d{1,5}\s+[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){0,2}\s*"
+                          r"(?:Ave|Avenue|St|Street|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Pl|Place|Blvd|Boulevard|Way|Ter|"
+                          r"Terrace|Pkwy|Parkway|Hwy|Cir|Circle)(?![a-z])")
+
+
+def _other_house_price(scrubbed: str, start: int) -> bool:
+    sentence = re.split(r"[.!?;]", scrubbed[max(0, start - 200):start])[-1]
+    other = _OTHER_HOUSE.search(sentence)
+    return bool(other and _STREET_ADDR.search(sentence, other.end()))
+
+
 def parse_reply(text: str) -> ParsedReply:
     """Amounts, the seller's counter and what the message is doing (intents), from plain agent-speak."""
     out = ParsedReply()
@@ -279,6 +295,9 @@ def parse_reply(text: str) -> ParsedReply:
             continue
         if _LIST_BEFORE.search(window_before) and not _FIRM_AFTER.search(window_after):
             out.notes.append(f"'{m.group(0).strip()}' is the list price quoted back, not their number")
+            continue
+        if _other_house_price(scrubbed, m.start()):
+            out.notes.append(f"'{m.group(0).strip()}' is the price of another listing they mentioned, not their number")
             continue
         if value < 20000 and not suffix:
             continue
@@ -939,8 +958,12 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
     if "UNDER_CONTRACT" in intents:
         an.headline = "OFF THE TABLE FOR NOW: under contract"
         an.actions = [f"Check back in {int(ncfg.get('under_contract_days', 45))} days; deals fall out of attorney review and inspection."] + an.actions
+        # "my number is still good" only when a number went out (2026-11-10, 219 W 1st St: no offer had been sent)
         sentences = ["Understood, and congratulations on getting it under contract.",
-                     "If it falls out in review or inspection I'd appreciate the first call; my number is still good.",
+                     "If it falls out in review or inspection I'd appreciate the first call; my number is still good."
+                     if lead.offer_amount else
+                     "If it falls out in review or inspection I'd appreciate the first call, and I can put an as-is "
+                     "cash offer in writing the same day.",
                      "Thanks for letting me know."]
         an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
         an.sms_text = f"Hi {first}, it's {me}. Understood on {st}; if it falls out of contract I'd love the first call." + sms_tail

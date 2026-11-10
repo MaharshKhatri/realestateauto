@@ -596,7 +596,9 @@ def bounced_emails(session: Session) -> set[str]:
     return {str(x).lower() for x in ((row.value_json or {}).get("emails") or [])} if row else set()
 
 
-def record_bounce(session: Session, email: str) -> None:
+def record_bounce(session: Session, email: str, *, sent: bool = True) -> None:
+    """Remember a dead address. sent=False: it never left (its domain doesn't exist), so it is kept off every list but
+    doesn't count toward the cold-mail bounce pause."""
     from db.models import SwarmState
     addr = (email or "").strip().lower()
     if not addr:
@@ -609,8 +611,9 @@ def record_bounce(session: Session, email: str) -> None:
     if addr not in emails:
         row.value_json = {"emails": emails + [addr]}
         session.flush()
-        from engine import cold_guard
-        cold_guard.log_bounce(session, addr)        # 3 in 48 h, or > 2% in a week, pause cold mail (cold_guard)
+        if sent:
+            from engine import cold_guard
+            cold_guard.log_bounce(session, addr)    # 3 in 48 h, or > 2% in a week, pause cold mail (cold_guard)
 
 
 def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = None, smtp_factory: Any = None,
@@ -641,6 +644,11 @@ def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = Non
         # 2026-11-04: a 48-hour nudge went to an address that had bounced ("inbox full") that morning; every repeat
         # bounce counts against the sender's reputation (bounce rate 3.8% in the first week).
         raise RuntimeError(f"{packet.agent_email} bounced before: not sent (call the agent or find a new e-mail)")
+    if not (engaged or in_reply_to) and _cfg().get("check_recipient_domain", True):
+        from core.mail import domain_missing
+        if domain_missing(packet.agent_email):
+            record_bounce(session, packet.agent_email, sent=False)
+            raise RuntimeError(f"the domain of {packet.agent_email} doesn't exist: not sent (find the agent's current e-mail)")
     message_id = new_message_id()
     msg = EmailMessage()
     msg["From"] = os.environ["SMTP_USER"]

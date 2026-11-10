@@ -1089,7 +1089,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     stands; no Touch 2 goes out by itself once the agent gave a number on the house (`earlier_counter`); the answer
     greets the person who wrote (a colleague the agent handed the thread to, or a teammate writing from an address we
     don't have: their display name, `gmail_autopilot.writer_contact`, never saved by itself), not the card's agent;
-    the ask-first note answers "interested in showing it?" too (photos / video first); "Prob 550" /
+    the ask-first note answers "interested in showing it?" too (photos / video first); "I have another one 9 Oak Ave
+    ... $509,000" is another listing's price, never their number (`_other_house_price`); "my number is still good" only
+    when an offer went out; "Prob 550" /
     "around 480" / a bare "550" read as thousands, never "stated plainly" (2026-11-04: Geri, Juliet);
     "Full price" / "seller wants asking" / "firm on list price" is their number = the ask, stated plainly
     (`reply_negotiator.full_price_asked`; not after "below" / "under" / "not", never "what's the asking price?");
@@ -1211,7 +1213,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
       CPA / cost-seg / 1031 cold mail after 6 PM or on a Friday afternoon (`professional_last_hour`).
     - **Stop rules**: 3+ bounces in 48 h, or > 2% of the last 7 days' cold sends (50+), pause every cold e-mail (B2B,
       nudges, listing-agent openers) until it clears; Gmail `550 5.7.1 ... unsolicited`, `421 4.7.28`, `550 5.7.28` or
-      `550 5.4.5` on a send or in a bounce pauses cold mail 7 days (`cold_pause`). Replies always go. 0 B2B replies to
+      `550 5.4.5` on a send or in a bounce pauses cold mail 7 days (`cold_pause`). Replies always go. A cold e-mail (B2B or
+      listing agent) to a domain DNS says doesn't exist is never sent (`core.mail.domain_missing`, NXDOMAIN only, checked
+      against gmail.com; the address is kept off every list but never counts as a bounce). 0 B2B replies to
       25+ first touches in 5 business days = "probably the spam folder: seed test" in the status.
     - **Copy**: every price "plus NJ sales tax" (N.J.S.A. 54:32B-3(b)(12); the operator registers NJ-REG before the
       first invoice); never "worth", "ARV", "equity", "over-assessed", "savings" in an e-mail; never pay tied to a deal,

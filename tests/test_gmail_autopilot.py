@@ -774,3 +774,26 @@ def test_the_ask_first_note_answers_a_showing_question(db):
         mod.offer_prices = real
     assert p.kind == "ask_first" and "What would the seller need to net" in p.email_body
     assert "As for seeing it, a few interior photos or a short video would help first" in p.email_body
+
+
+def test_a_cold_opener_to_a_domain_that_does_not_exist_is_not_sent(live, monkeypatch):
+    import socket
+
+    from core import mail
+    from engine import agent_outreach as ao
+
+    def fake(host, *a, **k):
+        if host == "gone-broker.com":
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+        return [("ok",)]
+    monkeypatch.setattr(socket, "getaddrinfo", fake)
+    monkeypatch.setattr(mail, "_DOMAIN_CACHE", {})
+    db = live
+    lead = listed(db)
+    agent = ao.agent_contact(lead)
+    agent.email = "kim@gone-broker.com"
+    db.commit()
+    FakeSMTP.sent = []
+    with pytest.raises(Exception, match="doesn't exist"):
+        ao.deliver(ao.build_opener(lead, agent), session=db, smtp_factory=FakeSMTP)
+    assert FakeSMTP.sent == [] and "kim@gone-broker.com" in ao.bounced_emails(db)

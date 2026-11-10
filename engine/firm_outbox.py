@@ -500,6 +500,11 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
             if why is None and row.kind in COLD_KINDS and target is not None and \
                     target.stage not in ("NEW", "CONTACTED"):
                 why = f"target {target.stage.lower()}"
+            if why is None and row.kind in COLD_KINDS and cfg().get("check_recipient_domain", True):
+                from core.mail import domain_missing
+                if domain_missing(row.to_email):     # it could only bounce, and bounces pause all cold mail
+                    ao.record_bounce(s, row.to_email, sent=False)
+                    why = "the e-mail's domain doesn't exist"
             if why:
                 row.status, row.reason, row.attachments_json = "skipped", why, []
                 continue
