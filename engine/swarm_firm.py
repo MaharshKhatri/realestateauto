@@ -103,6 +103,7 @@ KIND_STREAM = {
     "rehab_general_contractor": "s4", "dumpster_rental": "s4", "hard_money_lender": "s5", "mortgage_broker": "s5",
     "property_tax_appeal_attorney": "s6", "cost_segregation_firm": "s9", "qualified_intermediary_1031": "s9",
     "real_estate_cpa": "s9", "investor_friendly_broker": "s2", "investor_agent": "s2", "flipper": "s2",
+    "builder_developer": "s13",                     # the teardown digest (s13); seeded now, pitched once s13 runs
 }
 
 

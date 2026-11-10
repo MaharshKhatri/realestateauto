@@ -404,7 +404,8 @@ research_firm:
                                      # 60 days; 0 = never
   max_attempts: 3                    # a send that keeps failing is marked failed
   streams:
-    s1: {enabled: true, warm_days: 21, buyers_per_deal: 3}
+    s1: {enabled: true, warm_days: 21, buyers_per_deal: 3, buyers_per_run: 8, buyers_gap_days: 14, buyers_max: 2,
+         min_live_offers: 2}
     s2: {enabled: true, price_trial: 500, price_monthly: 1000, pitches_per_run: 4, agents_top: 300}
     s3: {enabled: true, price_monthly: 400, price_report: 150, pitches_per_run: 2, window_days: 60, min_equity: 75000,
          lookback_days: 730, min_surplus: 5000, max_rows_per_pdf: 12, min_confidence: 45, partial_debt_share: 0.25,
@@ -420,4 +421,8 @@ research_firm:
          keep_days: 60, cold_ok: false, max_detect: 200}
     s9: {enabled: true, price_monthly: 500, pitches_per_run: 2, min_price: 500000, max_price: 5000000, lookback_months: 18,
          min_hold_years: 8, min_gain_multiple: 1.5, max_annual_growth: 0.12, min_rows_to_pitch: 3}
-    s10: {enabled: true, max_rows: 16, fresh_days: 7, urgent_days: 30}
+    s10: {enabled: true, max_rows: 16, fresh_days: 7, urgent_days: 30, agent_pitches_per_run: 6,
+          agent_price_monthly: 99, agent_gap_days: 14, agent_recent_days: 30, agent_min_rows: 3,
+          agent_sheet_rows: 18, agent_harvest_days: 7}
+                                     # agent docket sheet: $99/month per town (the research's pre-foreclosure feed
+                                     # price, $99/month per county, applied to the narrower town sheet)

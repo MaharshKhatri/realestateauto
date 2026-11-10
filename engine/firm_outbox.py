@@ -244,12 +244,12 @@ COLD_KINDS = ("pitch", "followup", "buyer_note")
 # useful"). Counts and facts stay in Touch 1; the nudges add nothing new to check.
 SEQUENCE_WORDS = {
     "s2": ("this week's deal sheet for your towns", "a weekly deal sheet"),
-    "s3": ("the county surplus sheet", "the surplus research"),
-    "s4": ("this week's county sheet", "the weekly listing sheet"),
-    "s5": ("this month's borrower sheet", "a borrower feed"),
-    "s6": ("the recorded-sales sheet", "the Chapter 123 sales data"),
+    "s3": ("this week's county sheet", "the sheriff-sale case file"),
+    "s4": ("this week's county list for your trade", "the weekly listing sheet"),
+    "s5": ("the 1-page list", "the investor-company list"),
+    "s6": ("the comparable-sales packet", "the Chapter 123 sales packets"),
     "s7": ("the net sheet", "the net sheet"),
-    "s9": ("this month's purchases sheet", "a monthly purchases sheet"),
+    "s9": ("this week's county list", "the purchases list"),
     "s10": ("this week's docket sheet for your town", "the docket sheet"),
 }
 PROFESSIONAL_KINDS = {"property_tax_appeal_attorney", "foreclosure_surplus_attorney", "real_estate_cpa",
@@ -539,6 +539,7 @@ _YES = re.compile(r"(^\s*(yes|yep|yeah|sure|absolutely|definitely|ok|okay|please
 
 
 _START = re.compile(r"(^\s*(start|let'?s start|start it|sign (me|us) up|i'?m in|we'?re in|count (me|us) in)\b|"
+                    r"\bset (it|me|us|that) up\b|"
                     r"\bstart (the |a |my |our )?(trial|subscription)\b|\bhow (do|can) (i|we) pay\b|"
                     r"\bsend (me |us )?(the |an )?(invoice|payment link|link to pay)\b|\bwe'?ll take it\b)", re.I)
 

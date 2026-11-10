@@ -158,8 +158,14 @@ def _mask_word(w: str) -> str:
     core = re.sub(r"[^\w]", "", w)
     if not core or core.lower() in _KEEP_WORDS or w.lower() in _KEEP_WORDS:
         return w
-    if core.isdigit() or re.fullmatch(r"[\dA-Za-z-]*\d[\dA-Za-z-]*", core):
-        return re.sub(r"(?<=\w)[\dA-Za-z]", "\u2022", w, count=0) if len(core) > 1 else w
+    if re.search(r"\d", core):
+        # house numbers, dockets, sheriff #s: keep only the first character of the whole token ("12-14" -> "1•-••",
+        # "#F-8" -> "#F-•"); a one-digit house number is hidden entirely ("5" -> "•")
+        first = re.search(r"[\dA-Za-z]", w)
+        if len(core) == 1:
+            return re.sub(r"[\dA-Za-z]", "\u2022", w)
+        i = first.start() if first else 0
+        return w[:i + 1] + re.sub(r"[\dA-Za-z]", "\u2022", w[i + 1:])
     return w[0] + re.sub(r"[A-Za-z]", "\u2022", w[1:])
 
 
@@ -170,6 +176,9 @@ def mask_text(text: str) -> str:
     parts = re.split(r"(<br/>)", t, maxsplit=1)
     first = re.sub(r"</?b>", "", parts[0])
     head, sep, tail = first.partition(", ")
+    if sep and (re.search(r"\b(LLC|INC|CORP|CO|LP|LLP|TRUST|HOLDINGS|GROUP|PARTNERS)\b\.?", tail, re.I)
+                or not re.search(r"\d", head)):
+        head, sep, tail = first, "", ""            # an entity name with a comma: mask all of it
     masked = " ".join(_mask_word(w) for w in head.split(" ")) + (sep + tail if sep else "")
     return masked + "".join(parts[1:])
 

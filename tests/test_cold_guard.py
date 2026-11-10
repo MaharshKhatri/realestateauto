@@ -47,7 +47,7 @@ def test_the_nudge_and_close_the_loop_go_in_the_same_thread(live, quick):
     db.commit()
     nudge = db.query(FirmOutbox).filter_by(key=f"nudge:{p.id}:2").one()
     assert nudge.in_reply_to == "<p1@desk>" and nudge.subject == "Re: [Union] sales near Elizabeth"
-    assert nudge.body.startswith("Hi Dana,") and "want me to send the recorded-sales sheet?" in nudge.body
+    assert nudge.body.startswith("Hi Dana,") and "want me to send the comparable-sales packet?" in nudge.body
     assert nudge.attachments_json == [] and nudge.kind == "followup"
     FakeSMTP.sent = []
     assert fo.send_due(now=TUE_ET, smtp_factory=FakeSMTP, pace=False)["sent"] == 1

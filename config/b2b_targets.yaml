@@ -1117,3 +1117,2953 @@ targets:
   county: Camden
   source: https://alloysilverstein.com/industries/real-estate/
   note: Real estate team serving developers and land developers; contact form
+- kind: builder_developer
+  org: Michael Robert Construction
+  email: info@michaelrobertconstruction.com
+  phone: 908-232-0134
+  website: https://michaelrobertconstruction.com
+  town: Westfield
+  county: Union
+  source: https://michaelrobertconstruction.com/
+  note: Design-build firm (est. 2005) building custom new homes plus additions and whole-home renovations in Westfield, Summit,
+    Chatham area
+- kind: builder_developer
+  org: WA Construct
+  email: support@waconstruct.com
+  phone: 201-485-8887
+  website: https://waconstruct.com
+  town: Mountainside
+  county: Union
+  source: https://waconstruct.com/
+  note: 'Design-build firm: new custom homes, additions, major renovations; Summit, Millburn, Westfield, Livingston area'
+- kind: builder_developer
+  org: Main Street Custom Homes & Remodeling, LLC
+  email: don@mainstreetcustomhomes.com
+  phone: 973-998-7300
+  website: https://mainstreetcustomhomes.com
+  town: Succasunna
+  county: Morris
+  source: https://mainstreetcustomhomes.com/services.php
+  note: New custom single-family and lakefront homes in northwest NJ; services list Demolition/Knockdowns & Rebuilds
+- kind: builder_developer
+  org: Premier Design Custom Homes
+  email: gerald.infantino@premierdesigncustomhomes.com
+  phone: 201-370-3274
+  website: https://premierdesigncustomhomes.com
+  town: Westfield
+  county: Union
+  source: https://premierdesigncustomhomes.com/
+  note: Custom luxury homes and renovations in Westfield / Warren; site also says it buys homes from sellers
+- kind: builder_developer
+  org: Villane Building & Development
+  email: info@villanebuilding.com
+  phone: 908-789-9392
+  website: https://www.villanebuilding.com
+  town: Scotch Plains
+  county: Union
+  source: https://www.villanebuilding.com/
+  note: Custom new-construction luxury homes and high-end remodels in Union County and shore towns
+- kind: builder_developer
+  org: Colicchio Construction
+  email: tcolicchio@verizon.net
+  phone: 908-232-4619
+  website: https://www.colicchioconstruction.com
+  town: Westfield
+  county: Union
+  source: https://www.colicchioconstruction.com/
+  note: New homes, renovations and kitchens in the Westfield area
+- kind: builder_developer
+  org: Moore Fine Homes
+  email: info@moorefinehomes.com
+  phone: 973-224-1521
+  website: https://www.moorefinehomes.com
+  town: Short Hills
+  county: Essex
+  source: https://www.moorefinehomes.com/
+  note: Luxury custom home builder in Short Hills (Millburn) serving Summit, Chatham, Morristown, South Orange
+- kind: builder_developer
+  org: Gambrick Construction
+  email: info@gambrick.com
+  phone: 732-892-1386
+  website: https://gambrick.com
+  town: Point Pleasant
+  county: Ocean
+  source: https://gambrick.com/
+  note: Luxury custom homes and knock-down rebuilds (demolition through ground-up build) in Monmouth/Ocean; takes select Bergen/Essex/Morris
+    projects
+- kind: builder_developer
+  org: Dadak LLC
+  email: info@dadakllc.com
+  phone: 201-310-7968
+  website: https://dadakllc.com
+  town: ''
+  county: Bergen
+  source: https://dadakllc.com/pages/services/custom-home-building.html
+  note: Family custom home builder since 2004; tear-down and lot replacement builds in Hillsdale, River Vale, Park Ridge,
+    Westwood, Montvale
+- kind: builder_developer
+  org: Tru Habitat LLC
+  email: info@truhabitat.com
+  phone: 201-410-0292
+  website: https://www.truhabitat.com
+  town: ''
+  county: Bergen
+  source: https://www.truhabitat.com/
+  note: Custom home builder and new construction specialist serving Bergen and Morris counties
+- kind: builder_developer
+  org: Jazz Construction Group
+  email: info@jazzconstructiongroup.com
+  phone: 908-888-9418
+  website: https://www.jazzconstructiongroup.com
+  town: North Brunswick
+  county: Middlesex
+  source: https://www.jazzconstructiongroup.com/contact-us/
+  note: Ground-up custom home builds plus additions and remodels in central NJ
+- kind: builder_developer
+  org: Three in One Builders
+  email: info@3in1buildersusa.com
+  phone: 201-646-5808
+  website: https://www.3in1buildersusa.com
+  town: Teaneck
+  county: Bergen
+  source: https://www.3in1buildersusa.com/services/custom-homes/bergen-county/teaneck/
+  note: Custom homes in Bergen/Passaic; Teaneck page cites mid-century teardowns near Cedar Lane
+- kind: builder_developer
+  org: Mazzeo Construction
+  email: info@mazzeoconstruction.com
+  phone: 908-322-4755
+  website: https://mazzeoconstruction.com
+  town: Scotch Plains
+  county: Union
+  source: https://mazzeoconstruction.com/contact/
+  note: New home construction, renovations and additions in and around Union County
+- kind: builder_developer
+  org: Deon Builders
+  email: info@deonbuilders.com
+  phone: 914-330-3914
+  website: https://www.deonbuilders.com
+  town: Little Ferry
+  county: Bergen
+  source: https://www.deonbuilders.com/
+  note: Custom new homes plus residential/commercial remodeling; serves Bergen and Essex towns
+- kind: builder_developer
+  org: MG Builders LLC
+  email: info@mgbuildersllc.com
+  phone: 732-636-3000
+  website: https://www.mgbuildersllc.com
+  town: Edison
+  county: Middlesex
+  source: https://www.mgbuildersllc.com/services/new-construction
+  note: New home construction plus remodeling in Edison and central NJ
+- kind: builder_developer
+  org: Black River Design Build
+  email: info@blackriverdb.com
+  phone: ''
+  website: https://blackriverdb.com
+  town: Morristown
+  county: Morris
+  source: https://blackriverdb.com/custom-home-builder-in-saddle-river-bergen-county-nj/
+  note: Ground-up luxury custom homes, design-build / GC; pages for Saddle River, Millburn, Metuchen
+- kind: builder_developer
+  org: Diamond Builders, Inc.
+  email: shariwishengrad@gmail.com
+  phone: 908-670-6911
+  website: https://diamondbuildersnj.com
+  town: Point Pleasant
+  county: Ocean
+  source: https://diamondbuildersnj.com/
+  note: Custom new homes, add-a-levels and additions in central NJ / Monmouth-Ocean for 25+ years
+- kind: builder_developer
+  org: CitiScape Builders Group
+  email: info@citiscapebg.com
+  phone: 201-259-9575
+  website: https://www.citiscapebg.com
+  town: Livingston
+  county: Essex
+  source: https://www.citiscapebg.com/
+  note: Custom luxury single-family homes plus multi-family; Livingston, Short Hills/Millburn, Montclair, North Caldwell
+- kind: builder_developer
+  org: Heritage Manor Homes LLC
+  email: info@heritagemanorhomesllc.com
+  phone: 908-334-3861
+  website: https://www.heritagemanorhomesllc.com
+  town: Berkeley Heights
+  county: Union
+  source: https://www.heritagemanorhomesllc.com/contact-heritage-manor-homes/
+  note: Custom new-construction homes across Somerset, Morris, Union and Essex
+- kind: builder_developer
+  org: GHS Construction
+  email: info@ghsconstruction.net
+  phone: 732-913-0742
+  website: https://ghsconstruction.net
+  town: Edison
+  county: Middlesex
+  source: https://ghsconstruction.net/custom-house-builder/
+  note: Family-owned custom house builder (since 2003) in Edison, Metuchen and nearby towns
+- kind: builder_developer
+  org: JDG Developers (Jones Development Group)
+  email: info@jdgdevelopers.com
+  phone: 201-274-4154
+  website: https://www.jdgdevelopers.com
+  town: Hoboken
+  county: Hudson
+  source: https://www.jdgdevelopers.com/
+  note: Multifamily, mixed-use and urban infill redevelopment in Hoboken and Jersey City
+- kind: builder_developer
+  org: Build Better Live Happier
+  email: info@bblhnj.com
+  phone: 201-839-4444
+  website: https://buildbetterlivehappier.com
+  town: Englewood Cliffs
+  county: Bergen
+  source: https://buildbetterlivehappier.com/
+  note: New luxury houses, expansions and full remodels in Bergen County (Franklin Lakes, Upper Saddle River, Tenafly)
+- kind: builder_developer
+  org: CMG Custom Builders
+  email: kevin@cmgcustombuilders.com
+  phone: 732-800-2447
+  website: https://www.cmgcustombuilders.com
+  town: Bay Head
+  county: Ocean
+  source: https://cmgcustombuilders.com/contact-us
+  note: Custom shore homes; site services list New Home Construction and Teardown and Rebuilding (e-mail shown for Bay Head
+    office)
+- kind: builder_developer
+  org: Lead Dog Builders LLC
+  email: michael@leaddogcustomhomes.com
+  phone: 732-747-3553
+  website: https://leaddogcustomhomes.com
+  town: Red Bank
+  county: Monmouth
+  source: https://leaddogcustomhomes.com/
+  note: Custom homes, renovations and construction management in Rumson, Little Silver, Spring Lake area
+- kind: builder_developer
+  org: Boan Built
+  email: scott@boanbuilt.com
+  phone: 201-296-1859
+  website: https://www.boanbuilt.com
+  town: Wall
+  county: Monmouth
+  source: https://www.boanbuilt.com/
+  note: Custom homes, additions and remodels in Monmouth County shore towns (Brielle, Manasquan, Spring Lake)
+- kind: builder_developer
+  org: KBR Builders
+  email: info@kbrbuilders.com
+  phone: 732-664-2557
+  website: https://www.kbrbuilders.com
+  town: Point Pleasant
+  county: Ocean
+  source: https://www.kbrbuilders.com/custom-homes
+  note: Ground-up custom homes and tear-down rebuilds on the Jersey Shore (Spring Lake, Sea Girt, Manasquan)
+- kind: builder_developer
+  org: Starck Builders
+  email: connect@starckbuilders.com
+  phone: 732-655-4020
+  website: https://www.starckbuilders.com
+  town: Sea Girt
+  county: Monmouth
+  source: https://www.starckbuilders.com/contact
+  note: Custom luxury homes and full renovations in Sea Girt, Spring Lake, Manasquan, Brielle
+- kind: builder_developer
+  org: Prestige Design and Build
+  email: info@prestigedesignbuildnj.com
+  phone: 201-884-3080
+  website: https://prestigedesignbuildnj.com
+  town: Montclair
+  county: Essex
+  source: https://prestigedesignbuildnj.com/
+  note: New home construction plus renovations; serves Franklin Lakes, Upper Saddle River, Saddle River
+- kind: builder_developer
+  org: Millennium Custom Homes, LLC
+  email: pcalinda@millenniumcustomhomes.com
+  phone: 973-486-6969
+  website: https://millenniumcustomhomes.com
+  town: Livingston
+  county: Essex
+  source: https://millenniumcustomhomes.com/contact/
+  note: Custom homes and remodeling in Livingston and surrounding Essex towns for 20+ years
+- kind: builder_developer
+  org: Hofmann Design Build
+  email: ernie@hofmanndb.com
+  phone: 973-998-6820
+  website: https://www.hofmanndb.com
+  town: New Providence
+  county: Union
+  source: https://www.hofmanndb.com/contact
+  note: Custom home building, additions and full remodels; Livingston, Millburn, Montclair, Summit area
+- kind: builder_developer
+  org: Brooks Builders
+  email: brooksbuilders1@gmail.com
+  phone: 201-891-6618
+  website: https://brooksbuildersnj.com
+  town: Franklin Lakes
+  county: Bergen
+  source: https://brooksbuildersnj.com/
+  note: Upscale custom homes, renovations and additions in Franklin Lakes, Saddle River (since 1971)
+- kind: builder_developer
+  org: Herrmann Construction, Inc.
+  email: info@herrmannconstruction.com
+  phone: 732-223-6684
+  website: http://www.herrmannconstruction.com
+  town: Manasquan
+  county: Monmouth
+  source: http://www.herrmannconstruction.com/
+  note: 'Custom home builder since 1987: new homes, whole-house remodels, additions at the Jersey Shore (site is http-only)'
+- kind: builder_developer
+  org: ERNA Properties
+  email: houzz@ernaproperties.com
+  phone: 732-733-6273
+  website: https://ernaproperties.com
+  town: Red Bank
+  county: Monmouth
+  source: https://ernaproperties.com/
+  note: Custom homes plus remodels and additions in Monmouth, Ocean and Middlesex
+- kind: builder_developer
+  org: Martin Modular Builders
+  email: kevin@martinmodular.com
+  phone: 201-394-3934
+  website: https://martinmodular.com
+  town: Allendale
+  county: Bergen
+  source: https://martinmodular.com/
+  note: Modular new home construction in Bergen County (registered new home builder)
+- kind: builder_developer
+  org: Omar Construction
+  email: omar@omarconstruction.com
+  phone: 973-418-6375
+  website: https://omarconstruction.com
+  town: Clifton
+  county: Passaic
+  source: https://omarconstruction.com/
+  note: 'Licensed NJ home builder / GC: custom homes, additions and remodels across North Jersey'
+- kind: builder_developer
+  org: One Horizon Homes
+  email: info@onehorizonhomes.com
+  phone: 201-749-7545
+  website: https://www.onehorizonhomes.com
+  town: Ridgewood
+  county: Bergen
+  source: https://www.onehorizonhomes.com/
+  note: Ground-up custom homes plus whole-home renovations in Ridgewood/Paramus area
+- kind: builder_developer
+  org: BNE Real Estate Group
+  email: development@bnerealestate.com
+  phone: 973-992-2443
+  website: https://bnerealestate.com
+  town: West Orange
+  county: Essex
+  source: https://bnerealestate.com/contact-us/
+  note: NJ residential developer; this inbox is for investment and development opportunities
+- kind: builder_developer
+  org: Bijou Properties
+  email: info@bijouproperties.com
+  phone: 201-222-2580
+  website: http://www.bijouproperties.com
+  town: Hoboken
+  county: Hudson
+  source: http://www.bijouproperties.com/
+  note: Hoboken loft / condo developer (urban infill and conversions)
+- kind: builder_developer
+  org: SilverMan
+  email: info@silvermanbuilding.com
+  phone: 201-435-8000
+  website: https://silvermanbuilding.com
+  town: Jersey City
+  county: Hudson
+  source: https://silvermanbuilding.com/
+  note: Jersey City residential developer / landlord (apartments, for-sale homes, commercial space)
+- kind: builder_developer
+  org: Panepinto Properties
+  email: info@panprop.com
+  phone: 201-521-9000
+  website: https://panepintodevelopment.com
+  town: Jersey City
+  county: Hudson
+  source: https://panepintodevelopment.com/contact/
+  note: Jersey City urban residential / mixed-use developer
+- kind: builder_developer
+  org: Ironstate Development
+  email: info@ironstate.com
+  phone: ''
+  website: https://ironstate.com
+  town: Hoboken
+  county: Hudson
+  source: https://ironstate.com/
+  note: NJ / NY developer of residential and mixed-use redevelopment projects
+- kind: builder_developer
+  org: Delmer Home Improvements
+  email: delmerhomeimprovements@gmail.com
+  phone: 732-905-2064
+  website: https://delmerhomeimprovements.com
+  town: Howell
+  county: Monmouth
+  source: https://delmerhomeimprovements.com/services/custom-home-building/
+  note: Builds new custom homes (foundation to walkthrough) in Monmouth and Ocean plus additions/remodels
+- kind: builder_developer
+  org: CMM Custom Homes
+  email: social@teamcmm.com
+  phone: 732-455-3650
+  website: https://www.teamcmm.com
+  town: Wall
+  county: Monmouth
+  source: https://www.teamcmm.com/
+  note: Design-build custom home builder in Monmouth and Ocean since 1983 (published inbox is social@)
+- kind: builder_developer
+  org: Heritage Homes Construction LLC
+  email: heritagehomesllc14@gmail.com
+  phone: 908-301-6033
+  website: https://www.heritagehomesnj.com
+  town: ''
+  county: Union
+  source: https://www.heritagehomesnj.com/contact
+  note: New homes and renovations; no office town on site (Houzz profile lists Westfield)
+- kind: transaction_coordinator
+  org: TransactionAlly
+  email: ellie@transaction-ally.com
+  phone: 908-659-6255
+  website: https://www.transaction-ally.com
+  town: ''
+  county: ''
+  source: https://www.transaction-ally.com/
+  note: NJ contract-to-close transaction coordination for agents (no town published; 908 number)
+- kind: transaction_coordinator
+  org: NextManagement
+  email: info@nextmanagementre.com
+  phone: 973-400-9690
+  website: https://www.nextmanagementre.com
+  town: ''
+  county: ''
+  source: https://www.nextmanagementre.com/contact
+  note: NJ transaction coordination, contract management and compliance for agents and brokerages (no town published)
+- kind: transaction_coordinator
+  org: Transaction Coordinator Solutions
+  email: admin@transactioncoordinatorsolutions.com
+  phone: 856-318-4458
+  website: https://www.transactioncoordinatorsolution.com
+  town: Williamstown
+  county: Gloucester
+  source: https://www.transactioncoordinatorsolution.com/
+  note: Prelisting coordination, contract-to-close TC and broker file audits (e-mail domain spelled 'solutions', site 'solution')
+- kind: transaction_coordinator
+  org: Precision Leverage Solutions
+  email: leverage@precisionleveragesolutions.com
+  phone: 717-610-6224
+  website: https://precisionleveragesolutions.com
+  town: Mechanicsburg, PA
+  county: ''
+  source: https://precisionleveragesolutions.com/transaction-coordination
+  note: PA-based TC serving NJ, PA and DE ($450 contract-to-close; NJ county guides)
+- kind: transaction_coordinator
+  org: Nationwide TC
+  email: info@nationwidetc.com
+  phone: 321-499-9048
+  website: https://nationwidetc.com
+  town: Florida
+  county: ''
+  source: https://nationwidetc.com/locations/new-jersey/
+  note: Florida-based TC with a New Jersey service page (cash and creative-finance deals)
+- kind: transaction_coordinator
+  org: Be Happy TC
+  email: hello@behappytc.com
+  phone: 951-297-9922
+  website: https://www.behappytc.com
+  town: California
+  county: ''
+  source: https://www.behappytc.com/contact
+  note: California-based TC; site lists New Jersey among the states it serves
+- kind: transaction_coordinator
+  org: Hello Leverage
+  email: info@helloleverage.com
+  phone: 770-545-5648
+  website: https://helloleverage.com
+  town: Carrollton, GA
+  county: ''
+  source: https://helloleverage.com/
+  note: Georgia-based TC (contract-to-close and listing services); NJ listed among current locations
+- kind: real_estate_cpa
+  org: The Curchin Group
+  email: info@curchin.com
+  phone: 732-747-0500
+  website: https://www.curchin.com
+  town: Red Bank
+  county: Monmouth
+  source: https://www.curchin.com/contact/
+  note: NJ CPA firm with a 1031 like-kind exchange practice page; joined HBK CPAs Oct 2026
+- kind: real_estate_cpa
+  org: Monaco CPA
+  email: taxhelp@monacocpa.cpa
+  phone: (862) 320-9554
+  website: https://www.monacocpa.cpa
+  town: Livingston
+  county: Essex
+  source: https://www.monacocpa.cpa/industries/real-estate
+  note: 'Real estate investor tax page: Schedule E, depreciation, passive loss rules, 1031 guidance'
+- kind: real_estate_cpa
+  org: ProAxis CPA
+  email: info@proaxiscpa.com
+  phone: (201) 800-2330
+  website: https://proaxiscpa.com
+  town: Hasbrouck Heights
+  county: Bergen
+  source: https://proaxiscpa.com/industries/real-estate/
+  note: 'NJ real estate investor CPA: 1031, REPS, cost seg, rental portfolios'
+- kind: real_estate_cpa
+  org: Magone Advisors (Magone & Company, P.C.)
+  email: info@magoneadvisors.com
+  phone: (973) 301-2300
+  website: https://www.magoneadvisors.com
+  town: Parsippany
+  county: Morris
+  source: https://www.magoneadvisors.com/contact
+  note: Real estate accounting services page; Real Estate listed among industries
+- kind: real_estate_cpa
+  org: hfco (Haefele Flanagan)
+  email: info@hfco.com
+  phone: 856-722-5300
+  website: https://hfco.com
+  town: Maple Shade
+  county: Burlington
+  source: https://hfco.com/contact-us/
+  note: Real estate accounting & advisory for owners, developers, investors; in-house cost segregation page
+- kind: real_estate_cpa
+  org: RRBB Accountants and Advisors
+  email: info@rrbb.com
+  phone: (908) 231-1000
+  website: https://rrbb.com
+  town: Somerset
+  county: Somerset
+  source: https://rrbb.com/contact/
+  note: Lists Real Estate among industries served; HQ Somerset, office in Union
+- kind: real_estate_cpa
+  org: PKF O'Connor Davies
+  email: jhaslbauer@pkfod.com
+  phone: 201-712-9800
+  website: https://www.pkfod.com
+  town: Woodcliff Lake
+  county: Bergen
+  source: https://www.pkfod.com/industries/real-estate/
+  note: Partner listed on the real estate practice page; NJ offices Woodcliff Lake, Cranford, Haddonfield, Voorhees, Woodbury
+- kind: cost_segregation_firm
+  org: Marshall & Stevens
+  email: info@marshall-stevens.com
+  phone: 908.888.6030
+  website: https://marshall-stevens.com
+  town: Princeton
+  county: Mercer
+  source: https://marshall-stevens.com/contact/
+  note: Valuation firm with a cost segregation service; Princeton NJ office (HQ Los Angeles)
+- kind: cost_segregation_firm
+  org: MVO Cost Segregation (Cost Seg EZ)
+  email: sales@mvocostseg.com
+  phone: 833-432-7098
+  website: https://www.mvocostseg.com
+  town: Princeton
+  county: Mercer
+  source: https://www.mvocostseg.com/
+  note: Cost segregation studies in all 50 states; also runs Cost Seg EZ for small residential rentals
+- kind: cost_segregation_firm
+  org: Cost Recovery Solutions LLC
+  email: info@crscostseg.com
+  phone: 732.548.3855
+  website: https://www.costrecoverysolutions.com
+  town: Tinton Falls
+  county: Monmouth
+  source: https://www.costrecoverysolutions.com/
+  note: NJ cost segregation firm (also energy tax, tangible asset appraisals, fixed asset reviews)
+- kind: cost_segregation_firm
+  org: Cost Segregation Experts (Duffy+Duffy)
+  email: craig@costsegexperts.com
+  phone: 440.892.3339
+  website: https://costsegexperts.com
+  town: Westlake, OH
+  county: ''
+  source: https://costsegexperts.com/contact-us.cfm
+  note: Engineering-based cost segregation studies in all 50 states
+- kind: cost_segregation_firm
+  org: The Cost Segregation Company
+  email: info@costsegregation.net
+  phone: (239) 970-9698
+  website: https://costsegregation.net
+  town: ''
+  county: ''
+  source: https://costsegregation.net/
+  note: Cost segregation studies for property owners across the country
+- kind: cost_segregation_firm
+  org: Cost Seg Smart
+  email: hello@costsegsmart.com
+  phone: (213) 444-2776
+  website: https://www.costsegsmart.com
+  town: Los Angeles, CA
+  county: ''
+  source: https://www.costsegsmart.com/
+  note: Online cost segregation studies, remote nationwide
+- kind: cost_segregation_firm
+  org: SmartCostSeg.com
+  email: team@smartcostseg.com
+  phone: (401) 216-1942
+  website: https://smartcostseg.com
+  town: ''
+  county: ''
+  source: https://smartcostseg.com/
+  note: Cost segregation for rental owners, any qualifying property in any state
+- kind: cost_segregation_firm
+  org: Align Tax Consulting
+  email: info@aligntaxconsulting.com
+  phone: (317) 536-0200
+  website: https://aligntaxconsulting.com
+  town: Indianapolis, IN
+  county: ''
+  source: https://aligntaxconsulting.com/contact/
+  note: Specialty tax firm (cost segregation, 179D) serving clients nationwide
+- kind: cost_segregation_firm
+  org: O'Connor
+  email: info@poconnor.com
+  phone: 713-686-9955
+  website: https://www.poconnor.com
+  town: Houston, TX
+  county: ''
+  source: https://www.poconnor.com/contact/
+  note: Property tax firm with a cost segregation service
+- kind: qualified_intermediary_1031
+  org: Congress Asset Exchange
+  email: info@congressassetexchange.com
+  phone: (215) 583-6803
+  website: https://www.congressassetexchange.com
+  town: North Wales, PA
+  county: ''
+  source: https://www.congressassetexchange.com/contact
+  note: 1031 qualified intermediary in the Philadelphia suburbs
+- kind: qualified_intermediary_1031
+  org: Exchange Authority
+  email: 1031@exchangeauthority.com
+  phone: (978) 433-6061
+  website: https://www.exchangeauthority.com
+  town: Worcester, MA
+  county: ''
+  source: https://www.exchangeauthority.com/
+  note: 1031 qualified intermediary (e-mail shown via the site's Cloudflare e-mail link)
+- kind: qualified_intermediary_1031
+  org: Realty Exchange Corporation
+  email: rec@1031.us
+  phone: 703-754-9411
+  website: https://www.1031.us
+  town: Gainesville, VA
+  county: ''
+  source: https://www.1031.us/
+  note: 1031 qualified intermediary
+- kind: qualified_intermediary_1031
+  org: National Realty Exchange Corporation
+  email: team@nrx1031.com
+  phone: 910.616.1991
+  website: https://www.nrx1031.com
+  town: Wilmington, NC
+  county: ''
+  source: https://www.nrx1031.com/
+  note: 1031 qualified intermediary
+- kind: qualified_intermediary_1031
+  org: Edmund & Wheeler
+  email: exchange@section1031.com
+  phone: (866) 794-0020
+  website: https://www.section1031.com
+  town: ''
+  county: ''
+  source: https://www.section1031.com/
+  note: 1031 qualified intermediary for 45+ years (New Hampshire)
+- kind: qualified_intermediary_1031
+  org: Asset Exchange Company (AEC)
+  email: info@ax1031.com
+  phone: 877.471.1031
+  website: https://www.ax1031.com
+  town: Lafayette, CA
+  county: ''
+  source: https://www.ax1031.com/
+  note: Full-service QI; ~22,000 exchanges for investors nationwide
+- kind: qualified_intermediary_1031
+  org: 1031X
+  email: exchange@1031x.com
+  phone: (888) 899-1031
+  website: https://www.1031x.com
+  town: Denver, CO
+  county: ''
+  source: https://www.1031x.com/
+  note: Nationwide 1031 exchange company and QI
+- kind: qualified_intermediary_1031
+  org: Exchange Solutions, Inc.
+  email: dianes@exchange-solutions.com
+  phone: 516-771-2400
+  website: https://www.exchange-solutions.com
+  town: East Meadow, NY
+  county: ''
+  source: https://www.exchange-solutions.com/contact
+  note: New York QI providing services nationwide; FEA member
+- kind: qualified_intermediary_1031
+  org: Sutton Alliance (Sutton 1031 Exchange Services)
+  email: info@suttonalliance.com
+  phone: 516.837.6000
+  website: https://www.suttonalliance.com
+  town: Valley Stream, NY
+  county: ''
+  source: https://www.suttonalliance.com/contact
+  note: NY title agency group with 1031 exchange services, coast-to-coast capabilities
+- kind: qualified_intermediary_1031
+  org: Strategic Property Exchanges LLC
+  email: katie@spe1031.com
+  phone: (513) 412-3481
+  website: https://www.spe1031.com
+  town: Cincinnati, OH
+  county: ''
+  source: https://www.spe1031.com/
+  note: QI assisting clients nationwide for 30+ years
+- kind: qualified_intermediary_1031
+  org: Deferred
+  email: support@deferred.com
+  phone: 866-442-1031
+  website: https://www.deferred.com
+  town: Pasadena, CA
+  county: ''
+  source: https://www.deferred.com/contact
+  note: Online QI; publishes a New Jersey 1031 page
+- kind: qualified_intermediary_1031
+  org: Allied 1031 Exchange
+  email: geneva@allied1031exchange.net
+  phone: (888) 738-1031
+  website: https://allied1031exchange.net
+  town: Reno, NV
+  county: ''
+  source: https://allied1031exchange.net/
+  note: 1031 QI serving investors nationally
+- kind: qualified_intermediary_1031
+  org: Exchange Resources, Inc.
+  email: info@exchangeresources.net
+  phone: (877) 799-1031
+  website: https://exchangeresources.net
+  town: San Diego, CA
+  county: ''
+  source: https://exchangeresources.net/contact-us/
+  note: QI with Certified Exchange Specialists; clients across the country
+- kind: qualified_intermediary_1031
+  org: Vaulted Escrow & Exchange
+  email: jbosley@vaultedescrow.com
+  phone: ''
+  website: https://www.vaultedescrow.com
+  town: ''
+  county: ''
+  source: https://www.vaultedescrow.com/
+  note: Colorado QI (Land Title Exchange + FirstBank 1031 Corp) serving clients nationwide
+- kind: qualified_intermediary_1031
+  org: Olympic Exchange Accommodators
+  email: jhelsdon@olympic1031.com
+  phone: 253.512.1031
+  website: https://olympic1031.com
+  town: Tacoma, WA
+  county: ''
+  source: https://olympic1031.com/contact
+  note: QI handling exchanges throughout the United States
+- kind: qualified_intermediary_1031
+  org: Pioneer 1031 Co.
+  email: main@pioneer1031.com
+  phone: 208.373.3734
+  website: https://pioneer1031.com
+  town: Boise, ID
+  county: ''
+  source: https://pioneer1031.com/
+  note: 1031 QI serving clients nationwide
+- kind: qualified_intermediary_1031
+  org: Pacific Financial Exchange
+  email: info@pac1031.com
+  phone: 562-863-1968
+  website: https://www.pac1031.com
+  town: Salt Lake City, UT
+  county: ''
+  source: https://www.pac1031.com/
+  note: Nationwide 1031 exchange facilitator
+- kind: qualified_intermediary_1031
+  org: Exchange Resource Group, LLC
+  email: info@erg1031.com
+  phone: 303-789-1031
+  website: https://www.erg1031.com
+  town: Lakewood, CO
+  county: ''
+  source: https://www.erg1031.com/contact/
+  note: 1031 QI serving clients nationwide
+- kind: qualified_intermediary_1031
+  org: Dimov Tax & CPA Services
+  email: info@dimovtax.com
+  phone: (866) 554-0148
+  website: https://dimovtax.com
+  town: Philadelphia, PA
+  county: ''
+  source: https://dimovtax.com/tax-services/1031-exchange-intermediary/
+  note: CPA firm acting as 1031 QI for real estate investors in all 50 states
+- kind: qualified_intermediary_1031
+  org: 1031 Exchange Corporation
+  email: tbecker@1031exchangecorp.com
+  phone: 512-419-1031
+  website: https://www.1031exchangecorp.com
+  town: Austin, TX
+  county: ''
+  source: https://www.1031exchangecorp.com/
+  note: QI since 1993 handling exchanges in all 50 states
+- kind: qualified_intermediary_1031
+  org: 1031 Nationwide
+  email: info@1031nationwide.com
+  phone: 888-570-7170
+  website: https://www.1031nationwide.com
+  town: Tustin, CA
+  county: ''
+  source: https://www.1031nationwide.com/contact-us
+  note: Nationwide 1031 exchange company
+- kind: qualified_intermediary_1031
+  org: 1031 Specialists
+  email: info@1031specialists.com
+  phone: (631) 438-1031
+  website: https://www.1031specialists.com
+  town: ''
+  county: ''
+  source: https://www.1031specialists.com/
+  note: QI with expertise in every state (631 Long Island number)
+- kind: qualified_intermediary_1031
+  org: 1031 Exchange Place
+  email: hello@1031ex.com
+  phone: 1-800-872-1031
+  website: https://1031ex.com
+  town: Riverton, UT
+  county: ''
+  source: https://1031ex.com/contact/
+  note: QI services plus DST/TIC options, nationwide
+- kind: qualified_intermediary_1031
+  org: Starker Services
+  email: 1031@starker.com
+  phone: (800) 332-1031
+  website: https://www.starker.com
+  town: Los Gatos, CA
+  county: ''
+  source: https://www.starker.com/contact
+  note: QI with regional offices and a national desk
+- kind: qualified_intermediary_1031
+  org: Peak 1031 Exchange (Peak Companies)
+  email: info@peakcorp.com
+  phone: (855) 732-5300
+  website: https://www.peakcorp.com
+  town: New York, NY
+  county: ''
+  source: https://www.peakcorp.com/contact
+  note: Peak Companies' 1031 exchange division; NY office at 1430 Broadway (HQ Woodland Hills, CA)
+- kind: qualified_intermediary_1031
+  org: RI 1031 Exchange Company
+  email: barbara@ri1031exchange.com
+  phone: (401) 333-6107
+  website: https://ri1031exchange.com
+  town: Johnston, RI
+  county: ''
+  source: https://ri1031exchange.com/contact/
+  note: New England 1031 qualified intermediary
+- kind: mortgage_broker
+  org: Anywhere Lending
+  email: rick@anywherelending.com
+  phone: 973-900-0518
+  website: https://www.anywherelending.com
+  town: Verona
+  county: Essex
+  source: https://www.anywherelending.com/contact
+  note: Verona NJ mortgage broker; listed among BiggerPockets NJ investor lenders
+- kind: mortgage_broker
+  org: The Lakewood Group, LLC
+  email: cm@lwgf.us
+  phone: 973-287-6145
+  website: https://lwgf.us
+  town: Fairfield
+  county: Essex
+  source: https://lwgf.us/contact
+  note: 'Fairfield NJ commercial finance firm: CRE financing + broker program (HardMoneyHome: NJ rental and fix-and-flip loans)'
+- kind: mortgage_broker
+  org: Alpine Mortgage Services, LLC
+  email: mail@alpinebanker.com
+  phone: (201) 488-8809
+  website: https://www.alpinebanker.com
+  town: Montvale
+  county: Bergen
+  source: https://www.alpinebanker.com/contact
+  note: NJ-licensed mortgage broker; DSCR investment-property and non-QM loans
+- kind: mortgage_broker
+  org: Empire State Mortgage (L.B.A. Mortgage Services, Inc.)
+  email: info@empirestatemortgage.net
+  phone: 201-271-9000
+  website: https://www.empirestatemortgage.net
+  town: Weehawken
+  county: Hudson
+  source: https://www.empirestatemortgage.net/
+  note: NJ correspondent banker / NY broker; short-term hard money commercial loans
+- kind: mortgage_broker
+  org: CapPro Funding Group
+  email: info@capproent.com
+  phone: 856-208-7745
+  website: https://capprofunding.com
+  town: Delran
+  county: Burlington
+  source: https://capprofunding.com/contact-us/
+  note: fix-and-flip, DSCR, 5+ unit multifamily and construction loans; serves NJ, PA, DE
+- kind: hard_money_lender
+  org: Waring Investments, Inc.
+  email: contact@waringinvestments.com
+  phone: 973-472-7218
+  website: http://waringinvestments.com
+  town: Clifton
+  county: Passaic
+  source: http://waringinvestments.com/contact/
+  note: commercial hard money (purchase, bridge, construction, refi) in NJ, PA, TX; brokers welcome
+- kind: hard_money_lender
+  org: Commercial Mortgage Depot
+  email: info@cmdnj.net
+  phone: (973) 742-1111
+  website: https://commercialmortgagedepot.com
+  town: Clifton
+  county: Passaic
+  source: https://commercialmortgagedepot.com/
+  note: 'NJ direct lender $250K-$5MM: DSCR, stated income, fix & flip, bridge (e-mail shown in the site contact block; JavaScript
+    page)'
+- kind: hard_money_lender
+  org: West Forest Capital
+  email: credit@westforestcapital.com
+  phone: 212-537-5833
+  website: https://www.westforestcapital.com
+  town: Newark
+  county: Essex
+  source: https://www.westforestcapital.com/contact
+  note: hard money lender in NY, NJ, CT, MA, NH, RI, GA, FL; offices Newark NJ, Cedarhurst NY, Cheshire CT
+- kind: hard_money_lender
+  org: Manhattan Bridge Capital
+  email: info@manhattanbridgecapital.com
+  phone: 516-444-3400
+  website: https://www.manhattanbridgecapital.com
+  town: Great Neck, NY
+  county: ''
+  source: https://www.manhattanbridgecapital.com/
+  note: 'Nasdaq: LOAN; short-term fix-and-flip / bridge loans in the NY metro area incl. NJ'
+- kind: hard_money_lender
+  org: CoreVest Finance
+  email: info@cvest.com
+  phone: (844) 223-7496
+  website: https://www.corevestfinance.com
+  town: Irvine, CA
+  county: ''
+  source: https://www.corevestfinance.com/contact
+  note: rental (DSCR), bridge, construction and multifamily loans; NJ bridge and DSCR market pages
+- kind: hard_money_lender
+  org: Lima One Capital
+  email: hello@limaone.com
+  phone: (800) 390-4212
+  website: https://www.limaone.com
+  town: Greenville, SC
+  county: ''
+  source: https://www.limaone.com/contact
+  note: fix-and-flip, rental and construction loans; NJ hard money page, Trenton / Phillipsburg case studies
+- kind: hard_money_lender
+  org: New Silver
+  email: sales@newsilver.com
+  phone: (855) 844-5626
+  website: https://www.newsilver.com
+  town: West Hartford, CT
+  county: ''
+  source: https://www.newsilver.com/contact-us
+  note: fix-and-flip up to 90% LTC, DSCR and construction loans; NJ pages for Newark, Jersey City, Trenton
+- kind: hard_money_lender
+  org: Anchor Loans
+  email: info@anchorloans.com
+  phone: (888) 719-5299
+  website: https://www.anchorloans.com
+  town: Thousand Oaks, CA
+  county: ''
+  source: https://www.anchorloans.com/contact
+  note: 'direct private lender: fix-and-flip and ground-up loans; NJ state resources page'
+- kind: hard_money_lender
+  org: LendingOne
+  email: info@lendingone.com
+  phone: (888) 987-1276
+  website: https://www.lendingone.com
+  town: Boca Raton, FL
+  county: ''
+  source: https://www.lendingone.com/contact-us
+  note: DSCR rental, fix-and-flip, new construction, portfolio loans; lends across NJ
+- kind: hard_money_lender
+  org: American Heritage Lending
+  email: info@ahlend.com
+  phone: (800) 745-9280
+  website: https://www.ahlend.com
+  town: Irvine, CA
+  county: ''
+  source: https://www.ahlend.com/contact
+  note: bridge, fix-and-flip, DSCR and construction loans; NJ DSCR case studies (Irvington, Collingswood)
+- kind: hard_money_lender
+  org: Gelt Financial
+  email: loans@geltfinancial.com
+  phone: 561-221-0900
+  website: https://www.geltfinancial.com
+  town: Boca Raton, FL
+  county: ''
+  source: https://www.geltfinancial.com/contact
+  note: asset-based / bridge lender; closed NJ loans (Newark, Ramsey, Atlantic City)
+- kind: mortgage_broker
+  org: LBC Mortgage
+  email: loans@lbcmortgage.com
+  phone: (818) 309-2999
+  website: https://www.lbcmortgage.com
+  town: North Hollywood, CA
+  county: ''
+  source: https://www.lbcmortgage.com/contact
+  note: DSCR / investment-property mortgages; NJ DSCR program page
+- kind: hard_money_lender
+  org: Center Street Lending
+  email: team@centerstreetlending.com
+  phone: (949) 259-2438
+  website: https://www.centerstreetlending.com
+  town: Irvine, CA
+  county: ''
+  source: https://www.centerstreetlending.com/contact
+  note: fix & flip, new construction, bridge, DSCR loans; NJ location page
+- kind: hard_money_lender
+  org: EquityMax
+  email: info@equitymax.com
+  phone: (954) 267-9103
+  website: https://www.equitymax.com
+  town: Fort Lauderdale, FL
+  county: ''
+  source: https://www.equitymax.com/contact
+  note: family-money private lender; NJ lending page
+- kind: hard_money_lender
+  org: Express Capital Financing
+  email: info@expresscapitalfinancing.com
+  phone: (718) 285-0806
+  website: https://www.expresscapitalfinancing.com
+  town: Brooklyn, NY
+  county: ''
+  source: https://www.expresscapitalfinancing.com/contact
+  note: fix & flip, DSCR and ground-up loans; NY/NJ DSCR focus, NJ investor events
+- kind: hard_money_lender
+  org: Gauntlet Funding
+  email: info@gauntletfunding.com
+  phone: (631) 201-5569
+  website: https://www.gauntletfunding.com
+  town: Melville, NY
+  county: ''
+  source: https://www.gauntletfunding.com/contact
+  note: hard / private money, residential and commercial; NJ hard money and fix-and-flip pages
+- kind: hard_money_lender
+  org: HouseMax Funding
+  email: info@housemaxfunding.com
+  phone: (737) 587-3471
+  website: https://www.housemaxfunding.com
+  town: Austin, TX
+  county: ''
+  source: https://www.housemaxfunding.com/contact
+  note: direct investor lender nationwide; NJ DSCR page
+- kind: hard_money_lender
+  org: Layla Capital
+  email: info@laylacapital.com
+  phone: (561) 571-5200
+  website: https://www.laylacapital.com
+  town: Boca Raton, FL
+  county: ''
+  source: https://www.laylacapital.com/
+  note: direct bridge lender $1-10M, East Coast focus; closes NY and NJ loans
+- kind: hard_money_lender
+  org: Pepe Berard Capital
+  email: pbc@pepeberard.com
+  phone: 914-428-8888
+  website: https://pepeberard.com
+  town: New Rochelle, NY
+  county: ''
+  source: https://pepeberard.com/contact
+  note: direct bridge lender; NJ in service area (Belleville, Englewood, Fairview deals)
+- kind: hard_money_lender
+  org: Sharestates
+  email: greetings@sharestates.com
+  phone: (212) 201-0750
+  website: https://www.sharestates.com
+  town: Great Neck, NY
+  county: ''
+  source: https://www.sharestates.com/contact
+  note: private lender for fix-and-flip / construction nationwide; North Jersey projects
+- kind: hard_money_lender
+  org: Singer Financial
+  email: paul@singerfinancial.com
+  phone: (215) 893-9722
+  website: https://www.singerfinancial.com
+  town: Philadelphia, PA
+  county: ''
+  source: https://www.singerfinancial.com/contact
+  note: private direct lender for commercial and investment real estate in PA, NJ, DE
+- kind: hard_money_lender
+  org: Red Rock Capital
+  email: sales@fundwithredrock.com
+  phone: 719-900-5400
+  website: https://www.fundwithredrock.com
+  town: Colorado Springs, CO
+  county: ''
+  source: https://www.fundwithredrock.com/contact
+  note: fix & flip, bridge, rental and IRA loans; NJ city pages, AAPL area incl. NJ
+- kind: hard_money_lender
+  org: T&M Commercial Funding
+  email: info@tmfunding.com
+  phone: (207) 344-6669
+  website: https://tmfunding.com
+  town: Auburn, ME
+  county: ''
+  source: https://tmfunding.com/contact
+  note: hard money lender; NJ hard money page and Burlington NJ commercial deal
+- kind: hard_money_lender
+  org: Baker Collins
+  email: loans@bakercollins.com
+  phone: 866-781-9235
+  website: https://bakercollins.com
+  town: Atlanta, GA
+  county: ''
+  source: https://bakercollins.com/contact
+  note: private real estate lender; NJ in lending footprint
+- kind: hard_money_lender
+  org: Conventus
+  email: info@cvlending.com
+  phone: (800) 204-2705
+  website: https://www.cvlending.com
+  town: New York, NY
+  county: ''
+  source: https://www.cvlending.com/contact
+  note: fix-and-flip, bridge, DSCR, construction and multifamily loans nationwide incl. NJ
+- kind: hard_money_lender
+  org: JCAP Private Lending
+  email: lending@jcap.net
+  phone: 949-236-6600
+  website: https://www.jcap.net
+  town: Costa Mesa, CA
+  county: ''
+  source: https://www.jcap.net/contact
+  note: private investor lender; NJ listed on its site and HardMoneyHome NJ pages
+- kind: hard_money_lender
+  org: Malve Capital
+  email: info@malvecapital.com
+  phone: (866) 625-8321
+  website: https://www.malvecapital.com
+  town: Port Washington, NY
+  county: ''
+  source: https://www.malvecapital.com/contact
+  note: bridge / fix-and-flip / multifamily private lender; AAPL service area incl. NJ
+- kind: hard_money_lender
+  org: Velocity Mortgage Capital
+  email: info@velocitymortgage.com
+  phone: (888) 822-3304
+  website: https://www.velocitymortgage.com
+  town: ''
+  county: ''
+  source: https://www.velocitymortgage.com/contact
+  note: investor 1-4, multifamily, mixed-use loans via brokers; active NJ lender (e-mail Cloudflare-protected on page)
+- kind: hard_money_lender
+  org: Genesis Capital
+  email: info@genesiscapital.com
+  phone: (800) 663-2195
+  website: https://www.genesiscapital.com
+  town: Woodland Hills, CA
+  county: ''
+  source: https://www.genesiscapital.com/contact
+  note: construction, fix & flip, bridge and rental loans for pro investors; active in NJ
+- kind: hard_money_lender
+  org: Temple View Capital
+  email: info@templeviewcap.com
+  phone: (844) 232-7878
+  website: https://www.templeviewcap.com
+  town: Bethesda, MD
+  county: ''
+  source: https://www.templeviewcap.com/contact-us
+  note: nationwide portfolio lender for experienced investors; HardMoneyHome NJ list
+- kind: hard_money_lender
+  org: Silver Hill Funding
+  email: info@silverhillcap.com
+  phone: (866) 616-0330
+  website: https://silverhillfunding.com
+  town: Coral Gables, FL
+  county: ''
+  source: https://silverhillfunding.com/contact
+  note: small-balance commercial / investor property loans; HardMoneyHome NJ list (e-mail Cloudflare-protected on page)
+- kind: hard_money_lender
+  org: Certain Lending
+  email: hello@certainlending.com
+  phone: ''
+  website: https://www.certainlending.com
+  town: Seattle, WA
+  county: ''
+  source: https://www.certainlending.com/
+  note: fix-and-flip, rental and construction loans; FlipperForce NJ lender list
+- kind: hard_money_lender
+  org: Ternus
+  email: info@ternus.com
+  phone: (972) 755-1880
+  website: https://www.ternus.com
+  town: Garland, TX
+  county: ''
+  source: https://www.ternus.com/contact
+  note: fix & flip, DSCR, bridge, construction loans; FlipperForce NJ lender list
+- kind: hard_money_lender
+  org: Lendmarq
+  email: info@lendmarq.com
+  phone: (305) 395-5393
+  website: https://www.lendmarq.com
+  town: Westport, CT
+  county: ''
+  source: https://www.lendmarq.com/
+  note: fix & flip, construction, bridge, DSCR, multifamily bridge; lends in 45 states and DC
+- kind: hard_money_lender
+  org: Capital Three Sixty
+  email: apply@capitalthreesixty.com
+  phone: 860-673-2300
+  website: https://www.capitalthreesixty.com
+  town: Avon, CT
+  county: ''
+  source: https://www.capitalthreesixty.com/contact
+  note: 100% fix & flip financing, DSCR, bridge, construction; HardMoneyHome NJ list
+- kind: hard_money_lender
+  org: Secured Investment Lending
+  email: info@securedinvestmentlending.com
+  phone: (407) 878-2830
+  website: https://www.securedinvestmentlending.com
+  town: Altamonte Springs, FL
+  county: ''
+  source: https://www.securedinvestmentlending.com/
+  note: DSCR rental and fix-and-flip loans; HardMoneyHome NJ list
+- kind: hard_money_lender
+  org: Sky Equity
+  email: info@skyequity.com
+  phone: 212-239-5242
+  website: https://www.skyequity.com
+  town: New York, NY
+  county: ''
+  source: https://www.skyequity.com/contact
+  note: national private lender and REI firm; HardMoneyHome NJ list
+- kind: hard_money_lender
+  org: Straightline Funding
+  email: info@straightlinefunding.com
+  phone: 888-309-1972
+  website: https://www.straightlinefunding.com
+  town: Charlotte, NC
+  county: ''
+  source: https://www.straightlinefunding.com/
+  note: fix and flip, new construction, bridge, DSCR, transactional funding; HardMoneyHome NJ list
+- kind: hard_money_lender
+  org: CMN Funding
+  email: info@cmnfunding.com
+  phone: 518-807-1710
+  website: https://cmnfunding.com
+  town: Albany, NY
+  county: ''
+  source: https://cmnfunding.com/contact
+  note: commercial / hard money lender; HardMoneyHome NJ commercial list
+- kind: hard_money_lender
+  org: JG Funding
+  email: info@jgfunding.com
+  phone: (718) 502-6012
+  website: https://www.jgfunding.com
+  town: Staten Island, NY
+  county: ''
+  source: https://www.jgfunding.com/
+  note: private hard money lender; HardMoneyHome NJ commercial list
+- kind: hard_money_lender
+  org: Vega Funding Solutions
+  email: apply@vegafunding.com
+  phone: ''
+  website: https://www.vegafunding.com
+  town: Forest Hills, NY
+  county: ''
+  source: https://www.vegafunding.com/
+  note: commercial and hard money loans; HardMoneyHome NJ commercial list
+- kind: hard_money_lender
+  org: Park Place Finance
+  email: marketing@parkplaceus.com
+  phone: (866) 407-1599
+  website: https://www.parkplacefinance.com
+  town: Austin, TX
+  county: ''
+  source: https://www.parkplacefinance.com/contact
+  note: direct nationwide private lender; FlipperForce / HardMoneyHome NJ lists
+- kind: hard_money_lender
+  org: BridgeWell Capital
+  email: loans@bridgewellcapital.com
+  phone: (407) 447-5000
+  website: https://www.bridgewellcapital.com
+  town: Orlando, FL
+  county: ''
+  source: https://www.bridgewellcapital.com/contact
+  note: residential and commercial private money loans; HardMoneyHome NJ list
+- kind: hard_money_lender
+  org: Allied Commercial Funding
+  email: loans@alliedcommercialfunding.com
+  phone: (800) 247-8212
+  website: https://alliedcommercialfunding.com
+  town: ''
+  county: ''
+  source: https://alliedcommercialfunding.com/contact
+  note: direct stated-income and hard money lender, nationwide; HardMoneyHome NJ list
+- kind: hard_money_lender
+  org: Investor Rehab Funding
+  email: support@investorrehabfunding.com
+  phone: 844-244-1420
+  website: https://www.investorrehabfunding.com
+  town: ''
+  county: ''
+  source: https://www.investorrehabfunding.com/contact
+  note: fix and flip, rental and new construction loans; HardMoneyHome NJ list
+- kind: hard_money_lender
+  org: Sherman Bridge Lending
+  email: info@shermanbridge.com
+  phone: (866) 376-4876
+  website: https://shermanbridge.com
+  town: Irving, TX
+  county: ''
+  source: https://shermanbridge.com/contact-us/
+  note: private money loans for investors; NJ in lending states (e-mail Cloudflare-protected on page)
+- kind: hard_money_lender
+  org: 11 Capital Finance
+  email: loans@11capitalfinance.com
+  phone: (877) 957-4357
+  website: https://www.11capitalfinance.com
+  town: Lansdale, PA
+  county: ''
+  source: https://www.11capitalfinance.com/
+  note: PA investor lender on HardMoneyHome NJ city pages (e-mail Cloudflare-protected on page)
+- kind: hard_money_lender
+  org: Conquest Funding
+  email: info@conquestfunding.com
+  phone: (484) 712-7372
+  website: https://conquestfunding.com
+  town: Allentown, PA
+  county: ''
+  source: https://conquestfunding.com/contact-us/
+  note: commercial bridge, residential investment and rehab loans; HardMoneyHome NJ city pages
+- kind: hard_money_lender
+  org: Direct Mortgage Loan Company
+  email: info@dmlc-lending.com
+  phone: (215) 844-1200
+  website: https://dmlc-lending.com
+  town: Philadelphia, PA
+  county: ''
+  source: https://dmlc-lending.com/
+  note: acquisition, renovation, construction and cash-out loans; Philadelphia/South Jersey
+- kind: hard_money_lender
+  org: Avant Capital Partners
+  email: info@avant-capital.com
+  phone: (203) 612-9580
+  website: https://www.avant-capital.com
+  town: New Canaan, CT
+  county: ''
+  source: https://www.avant-capital.com/
+  note: short-term value-add / transitional CRE loans nationwide; HardMoneyHome NJ city pages
+- kind: hard_money_lender
+  org: Dimension Equities
+  email: info@dimensionequities.com
+  phone: 212-203-0613
+  website: https://www.dimensionequities.com
+  town: Brooklyn, NY
+  county: ''
+  source: https://www.dimensionequities.com/
+  note: commercial mortgages and bridge loans; HardMoneyHome NJ city pages
+- kind: hard_money_lender
+  org: Hard Money Brooklyn
+  email: john@hardmoneybrooklyn.com
+  phone: 718-593-4527
+  website: https://www.hardmoneybrooklyn.com
+  town: Brooklyn, NY
+  county: ''
+  source: https://www.hardmoneybrooklyn.com/
+  note: NYC-area hard money lender; HardMoneyHome NJ city pages
+- kind: hard_money_lender
+  org: Rental Home Financing
+  email: staff@rentalhomefinancing.com
+  phone: 888-375-7977
+  website: https://www.rentalhomefinancing.com
+  town: Indianapolis, IN
+  county: ''
+  source: https://www.rentalhomefinancing.com/
+  note: DSCR, blanket and portfolio loans for rental investors; HardMoneyHome NJ list
+- kind: hard_money_lender
+  org: Capital Funding Financial
+  email: info@capitalfunding.com
+  phone: (866) 999-2011
+  website: https://capitalfundingfinancial.com
+  town: Boca Raton, FL
+  county: ''
+  source: https://capitalfundingfinancial.com/
+  note: direct hard money lender, residential and commercial nationwide; AAPL area incl. NJ
+- kind: hard_money_lender
+  org: RSC Private Lending
+  email: info@rscprivatelending.com
+  phone: (832) 648-4619
+  website: https://rscprivatelending.com
+  town: Houston, TX
+  county: ''
+  source: https://rscprivatelending.com/
+  note: business-purpose loans $150K-$6M; AAPL service area incl. NJ
+- kind: hard_money_lender
+  org: Arion Fund
+  email: office@arionfund.com
+  phone: 315-618-0118
+  website: https://www.arionfund.com
+  town: ''
+  county: ''
+  source: https://www.arionfund.com/
+  note: private bridge lender; AAPL nationwide area incl. NJ (e-mail Cloudflare-protected on page)
+- kind: hard_money_lender
+  org: Coastal Capital Funding
+  email: info@coastalcapitalfunding.com
+  phone: (757) 333-4663
+  website: https://coastalcapitalfunding.com
+  town: Virginia Beach, VA
+  county: ''
+  source: https://coastalcapitalfunding.com/pdf-build-your-investor-team/
+  note: bridge funding for investment property purchase / refi; AAPL nationwide area incl. NJ
+- kind: hard_money_lender
+  org: FENG Capital Inc
+  email: info@fengcapitals.com
+  phone: 888-962-3456
+  website: https://www.fengcapitals.com
+  town: Flushing, NY
+  county: ''
+  source: https://www.fengcapitals.com/
+  note: asset-based loans on non-owner-occupied investment property; AAPL area incl. NJ
+- kind: mortgage_broker
+  org: LoanBidz
+  email: info@loanbidz.com
+  phone: (636) 552-4710
+  website: https://www.loanbidz.com
+  town: ''
+  county: ''
+  source: https://www.loanbidz.com/
+  note: 'broker: DSCR, BRRRR and portfolio loans for 3-100 rental investors; AAPL area incl. NJ'
+- kind: mortgage_broker
+  org: NSS Lending, LLC
+  email: info@nsslending.com
+  phone: (312) 952-5150
+  website: https://www.nsslending.com
+  town: ''
+  county: ''
+  source: https://www.nsslending.com/
+  note: 'broker: DSCR, fix & flip and new construction in all 50 states'
+- kind: hard_money_lender
+  org: Pacific Bay Lending Group
+  email: contact@pacbaylending.com
+  phone: 855-550-8500
+  website: https://www.pacbaylending.com
+  town: La Mirada, CA
+  county: ''
+  source: https://www.pacbaylending.com/
+  note: wholesale private lender for mortgage brokers; AAPL nationwide area incl. NJ
+- kind: hard_money_lender
+  org: Perfecto Capital
+  email: funding@perfectocapital.com
+  phone: (561) 990-1884
+  website: https://www.perfectocapital.com
+  town: Boca Raton, FL
+  county: ''
+  source: https://www.perfectocapital.com/
+  note: bridge / private lender; AAPL nationwide area incl. NJ
+- kind: hard_money_lender
+  org: Sphinx Capital
+  email: info@sphinxcap.com
+  phone: (941) 237-0419
+  website: https://www.sphinxcap.com
+  town: Sarasota, FL
+  county: ''
+  source: https://www.sphinxcap.com/
+  note: direct private lender, residential and commercial nationwide; AAPL area incl. NJ
+- kind: hard_money_lender
+  org: Suncrest Capital Group
+  email: info@suncrestcapitalgroup.com
+  phone: (800) 204-6018
+  website: https://www.suncrestcapitalgroup.com
+  town: ''
+  county: ''
+  source: https://www.suncrestcapitalgroup.com/
+  note: fix-and-flip (100% purchase & rehab) and rental loans; AAPL area incl. NJ
+- kind: hard_money_lender
+  org: Hamilton Square Capital
+  email: info@hamiltonsq.com
+  phone: (212) 706-0630
+  website: https://www.hamiltonsquarecapital.com
+  town: New York, NY
+  county: ''
+  source: https://www.hamiltonsquarecapital.com/
+  note: fix & flip, ground-up, bridge, DSCR; focus NY/NJ/CT + Philadelphia
+- kind: hard_money_lender
+  org: Brooklyn Funding Group Ltd.
+  email: info@brooklynfundinggroup.com
+  phone: 877-716-3221
+  website: https://brooklynfundinggroup.com
+  town: Brooklyn, NY
+  county: ''
+  source: https://brooklynfundinggroup.com/
+  note: bridge / commercial / multifamily private lender; AAPL area incl. NJ
+- kind: hard_money_lender
+  org: TIDAL Loans
+  email: info@tidalloans.com
+  phone: 832-757-1262
+  website: https://www.tidalloans.com
+  town: Houston, TX
+  county: ''
+  source: https://www.tidalloans.com/
+  note: hard money loans for investors; AAPL nationwide area incl. NJ
+- kind: roofer
+  org: CMNG Roofing
+  email: info@cmngnj.com
+  phone: 201-535-2488
+  website: https://cmngroofing.com
+  town: North Arlington
+  county: Bergen
+  source: https://cmngroofing.com/
+  note: Roof inspections and replacement estimates; North Arlington / North NJ
+- kind: roofer
+  org: E Pro Construction
+  email: info@eproconstruction.us
+  phone: 201-776-9102
+  website: https://eproconstruction.us
+  town: Elmwood Park
+  county: Bergen
+  source: https://eproconstruction.us/contact-us/
+  note: Roofing, masonry, chimney repair; Bergen/Passaic/Union/Essex
+- kind: roofer
+  org: Grayson Roofing & Chimney
+  email: info@graysonconstructiongroup.com
+  phone: (201) 310-7147
+  website: https://graysonconstructiongroup.com
+  town: Garfield
+  county: Bergen
+  source: https://graysonconstructiongroup.com/contact-us/
+  note: Roofing and chimney work since 2013; Bergen, Morris, Somerset and north NJ
+- kind: roofer
+  org: Jersey Roofing LLC
+  email: jerseyroofingoffice@gmail.com
+  phone: (201) 931-5367
+  website: https://jerseyroofingllc.com
+  town: Garfield
+  county: Bergen
+  source: https://jerseyroofingllc.com/contact
+  note: Roof repair/replacement, gutters, siding, skylights; North NJ
+- kind: roofer
+  org: Top Shield Construction
+  email: topshieldnj@gmail.com
+  phone: (201) 266-0968
+  website: https://topshieldconstruction.com
+  town: Elmwood Park
+  county: Bergen
+  source: https://topshieldconstruction.com/
+  note: 'Licensed roofing contractor: repair/replacement, chimney, masonry, siding, gutters; Bergen/Passaic'
+- kind: roofer
+  org: Tri-State Roofing and Chimneys
+  email: tristateroofingandchimneys@gmail.com
+  phone: (201) 779-3961
+  website: https://tristateroofingandchimneys.com
+  town: Garfield
+  county: Bergen
+  source: https://tristateroofingandchimneys.com/contact
+  note: Roofing and chimney repair, 24/7; Bergen/Hudson/Passaic and statewide
+- kind: roofer
+  org: Epic Exteriors Roofing
+  email: george@epicexteriorsnj.com
+  phone: (609) 342-9829
+  website: https://epicexteriorsnj.com
+  town: Chatsworth
+  county: Burlington
+  source: https://epicexteriorsnj.com/contact-us/
+  note: Roofing and exteriors; Ocean/Burlington (Toms River area)
+- kind: roofer
+  org: Gasper Roofing
+  email: gasperroofing@gmail.com
+  phone: 856.786.9333
+  website: https://www.gasperroofing.com
+  town: Merchantville
+  county: Camden
+  source: https://www.gasperroofing.com/contact/
+  note: Residential and commercial roofing; Camden County / South Jersey
+- kind: roofer
+  org: Somerset Contractors
+  email: info@somersetcontractors.com
+  phone: (856) 480-1413
+  website: https://somersetcontractors.com
+  town: Voorhees
+  county: Camden
+  source: https://somersetcontractors.com/
+  note: Residential and commercial roofing, storm damage restoration, windows; Camden County / South Jersey
+- kind: roofer
+  org: Dream Remodeling NJ
+  email: contact@dreamremodelingnj.com
+  phone: 800-788-1193
+  website: https://dreamremodelingnj.com
+  town: Newark
+  county: Essex
+  source: https://dreamremodelingnj.com/contact/
+  note: Roof repair/replacement, siding, windows, remodeling; north/central NJ
+- kind: roofer
+  org: AM Construction Roofing & Siding
+  email: amconstructco@gmail.com
+  phone: (856) 769-9918
+  website: https://www.amconj.com
+  town: Deptford
+  county: Gloucester
+  source: https://www.amconj.com/contact/
+  note: Roof repair/replacement, siding; Camden/Gloucester South Jersey
+- kind: roofer
+  org: T.A. Hughes III Roofing, Siding & Windows
+  email: hughesroofing479@gmail.com
+  phone: (856) 845-8505
+  website: https://tahughes.com
+  town: West Deptford
+  county: Gloucester
+  source: https://tahughes.com/contact/
+  note: Roof repair/replacement, siding, windows; Camden/Gloucester/Burlington
+- kind: roofer
+  org: Elite Roofing
+  email: eliteroofinginc@hotmail.com
+  phone: (201) 436-1011
+  website: https://www.eliteroofingincnj.com
+  town: Bayonne
+  county: Hudson
+  source: https://www.eliteroofingincnj.com/contact
+  note: Flat and shingle roofs; Hudson County (Bayonne, Jersey City, Hoboken)
+- kind: roofer
+  org: Gaby Roofing
+  email: damian@gabyroofing.com
+  phone: 201-638-8556
+  website: https://www.gabyroofing.com
+  town: Union City
+  county: Hudson
+  source: https://www.gabyroofing.com/newroofcontact/
+  note: Flat roof and shingle specialist; Hudson County
+- kind: roofer
+  org: MK Roofing Co
+  email: mike@mkroofs.com
+  phone: 908-323-9686
+  website: https://mkroofs.com
+  town: Hampton
+  county: Hunterdon
+  source: https://mkroofs.com/contact-us/
+  note: Residential and commercial roofing; Hunterdon, Somerset, Warren
+- kind: roofer
+  org: Hamilton Contractors LLC
+  email: hamiltoncontractorsllc609@gmail.com
+  phone: (609) 638-1211
+  website: https://hamiltoncontractorsnj.com
+  town: Hamilton Township
+  county: Mercer
+  source: https://hamiltoncontractorsnj.com/
+  note: Roof repair/installation/replacement, siding, gutters, residential and commercial; Mercer and central NJ
+- kind: roofer
+  org: Amore Roofing & Siding
+  email: amorehomeimprovement@gmail.com
+  phone: (732) 810-9500
+  website: https://amorehomesllc.com
+  town: Monroe Township
+  county: Middlesex
+  source: https://amorehomesllc.com/contact/
+  note: Family-owned roofing/siding, GAF Master Elite; Middlesex/central NJ
+- kind: roofer
+  org: Penyak Roofing
+  email: penyakestimates@yahoo.com
+  phone: (908) 753-4222
+  website: https://penyakroofing.com
+  town: South Plainfield
+  county: Middlesex
+  source: https://penyakroofing.com/contact-us/
+  note: Family roofer since 1960; Middlesex/Union/Somerset
+- kind: roofer
+  org: Feria Construction LLC
+  email: feriaconstructionllc@gmail.com
+  phone: (732) 275-8121
+  website: https://www.renovationsnj.com
+  town: Belmar
+  county: Monmouth
+  source: https://www.renovationsnj.com/contact
+  note: Residential/commercial roofing, siding, gutters, exterior renovations; Monmouth and Ocean
+- kind: roofer
+  org: Bachman's Roofing
+  email: info@bachmansroofing.com
+  phone: (888) 775-7384
+  website: https://bachmansroofing.com
+  town: Rockaway
+  county: Morris
+  source: https://bachmansroofing.com/contact-us/
+  note: Roofing, siding, gutters; northern NJ + PA
+- kind: roofer
+  org: Morris County Roofing
+  email: info@morriscountyroofing.com
+  phone: (973) 975-9110
+  website: https://morriscountyroofing.com
+  town: Chester
+  county: Morris
+  source: https://morriscountyroofing.com/
+  note: GAF/CertainTeed certified roofing, 24/7 storm repair; Morris County
+- kind: roofer
+  org: Wayne Johnson & Sons
+  email: info@waynejohnsonandsons.com
+  phone: 973-838-2358
+  website: https://waynejohnsonandsons.com
+  town: Kinnelon
+  county: Morris
+  source: https://waynejohnsonandsons.com/contact/
+  note: Roofing, siding, windows since 1962; Morris/Passaic/Bergen
+- kind: roofer
+  org: Paragon Exteriors LLC
+  email: paragonexteriors.co@gmail.com
+  phone: (848) 633-6440
+  website: https://www.paragonexteriorsnj.com
+  town: Toms River
+  county: Ocean
+  source: https://www.paragonexteriorsnj.com/contact/
+  note: Roof replacement/repair, siding; Ocean, Monmouth, Middlesex, Burlington
+- kind: roofer
+  org: Wayne's Roofing Co.
+  email: office@waynesroofingco.com
+  phone: (732) 847-6201
+  website: https://waynesroofingco.com
+  town: Toms River
+  county: Ocean
+  source: https://waynesroofingco.com/contact-us/
+  note: Family-owned roofing and gutters; Toms River, Lakewood, Brick, Manchester
+- kind: roofer
+  org: A-1 Affordable Construction
+  email: services@a1affordable.com
+  phone: 973-556-0927
+  website: https://www.a1affordable.com
+  town: Clifton
+  county: Passaic
+  source: https://www.a1affordable.com/contact
+  note: Roofing, masonry, chimney, gutters; Bergen/Passaic/Essex/Morris
+- kind: roofer
+  org: Andrew's Construction LLC
+  email: andrewsconstructionllc@aol.com
+  phone: 973-305-6900
+  website: https://www.andrewsconstructionllc.com
+  town: Wayne
+  county: Passaic
+  source: https://www.andrewsconstructionllc.com/contact-us
+  note: Roofing contractor since 1994; Passaic/Bergen, northern NJ
+- kind: roofer
+  org: Better Built Construction
+  email: info@betterbuiltroofingnj.com
+  phone: (201) 598-0336
+  website: https://betterbuiltroofingnj.com
+  town: Clifton
+  county: Passaic
+  source: https://betterbuiltroofingnj.com/contact-us/
+  note: Roof replacement incl. multifamily, 25-yr warranty; Passaic/Bergen/Somerset
+- kind: roofer
+  org: BlueSky Roofing & Siding Solutions
+  email: info@blueskyroofingsiding.com
+  phone: (201) 875-1122
+  website: https://blueskyroofingsiding.com
+  town: Clifton
+  county: Passaic
+  source: https://blueskyroofingsiding.com/contact-us/
+  note: Roofing/siding since 1981, 24/7 emergency; Passaic/Bergen/Hudson/Essex
+- kind: roofer
+  org: Creative Pro Construction LLC
+  email: creativeproconstruction0@gmail.com
+  phone: 201-800-0710
+  website: https://www.creativeproconstructionllc.com
+  town: Clifton
+  county: Passaic
+  source: https://www.creativeproconstructionllc.com/
+  note: Roof repair/replacement, free estimates, written warranties; Bergen/Passaic
+- kind: roofer
+  org: Master Pro Construction
+  email: info@masterproconstruction.com
+  phone: 800 400 9293
+  website: https://masterproconstruction.com
+  town: Sparta
+  county: Sussex
+  source: https://masterproconstruction.com/contact/
+  note: Residential/commercial roofing, storm damage, siding, masonry, chimneys; North NJ
+- kind: roofer
+  org: Herts Roofing & Construction
+  email: info@hertsroofingnj.com
+  phone: (908) 206-4240
+  website: https://hertsroofingnj.com
+  town: Cranford
+  county: Union
+  source: https://hertsroofingnj.com/contact/
+  note: Residential/commercial roofing, GAF/OC/CertainTeed certified; NJ + PA
+- kind: roofer
+  org: Powell's Roofing & Siding
+  email: info@powellsroofing.com
+  phone: (908) 928-0362
+  website: https://www.powellsroofing.com
+  town: Garwood
+  county: Union
+  source: https://www.powellsroofing.com/contact-us/
+  note: Roofing/siding since 1999, GAF Master Elite; Union County and central NJ
+- kind: roofer
+  org: Weathertite Solutions
+  email: laura@weathertiteroofs.com
+  phone: (908) 484-7077
+  website: https://weathertiteroofs.com
+  town: Port Murray
+  county: Warren
+  source: https://weathertiteroofs.com/contact-us/
+  note: Commercial and residential roof replacement/repair; northern/central NJ
+- kind: hvac_contractor
+  org: All Zone Heating & Cooling
+  email: allzonehvace@gmail.com
+  phone: 609.289.0024
+  website: https://www.allzoneheatingandcooling.com
+  town: Egg Harbor Township
+  county: Atlantic
+  source: https://www.allzoneheatingandcooling.com/
+  note: Heating and cooling contractor; Atlantic County / South Jersey
+- kind: hvac_contractor
+  org: Comfort Now by Bob McAllister
+  email: info@iwantcomfortnow.com
+  phone: 609-283-5445
+  website: https://www.iwantcomfortnow.com
+  town: Egg Harbor Township
+  county: Atlantic
+  source: https://www.iwantcomfortnow.com/contact/
+  note: Heating, AC, heat pumps; Atlantic and Cape May counties
+- kind: hvac_contractor
+  org: Cool Guys Comfort, LLC
+  email: iwant@coolguyscomfort.com
+  phone: (609) 225-5242
+  website: https://coolguyscomfort.com
+  town: Galloway
+  county: Atlantic
+  source: https://coolguyscomfort.com/contact-us/
+  note: Heating and cooling service and installation; Atlantic County
+- kind: hvac_contractor
+  org: New Jersey HVAC
+  email: admin@newjerseyhvac.net
+  phone: (201) 286-3036
+  website: https://www.newjerseyhvac.net
+  town: Saddle Brook
+  county: Bergen
+  source: https://www.newjerseyhvac.net/contact-us/
+  note: Central air, furnaces, ductwork, HVAC design, 24/7 emergency; Bergen County / North NJ
+- kind: hvac_contractor
+  org: All Shore Heating and Air Conditioning
+  email: allshorehvac@comcast.net
+  phone: 856.596.5000
+  website: https://allshorehvac.com
+  town: Marlton
+  county: Burlington
+  source: https://allshorehvac.com/
+  note: HVAC installation and maintenance; Marlton / Burlington, LBI
+- kind: hvac_contractor
+  org: Jonathan's Plumbing Heating & Air
+  email: office@jonathansheatingandair.com
+  phone: (609) 246-5249
+  website: https://www.jonathansheatingandair.com
+  town: Lumberton
+  county: Burlington
+  source: https://www.jonathansheatingandair.com/contact
+  note: Plumbing and HVAC; Burlington County
+- kind: hvac_contractor
+  org: Raynor Services
+  email: theoffice@raynorservicesnj.com
+  phone: (609) 604-5007
+  website: https://raynorservices.com
+  town: Mount Holly
+  county: Burlington
+  source: https://raynorservices.com/contact-us/
+  note: Heating, AC and electrical; Burlington County / South Jersey
+- kind: hvac_contractor
+  org: Bovio Rubino Service
+  email: info@bovio-rubino.com
+  phone: 856-272-7000
+  website: https://www.bovio-rubino.com
+  town: Voorhees
+  county: Camden
+  source: https://www.bovio-rubino.com/contact-us/
+  note: Furnace/AC repair and installation; Cherry Hill, Mount Laurel, Camden/Burlington
+- kind: hvac_contractor
+  org: D. Burgo Plumbing and Heating
+  email: info@dburgoplumbing.com
+  phone: 856.858.7858
+  website: https://dburgoplumbing.com
+  town: Blackwood
+  county: Camden
+  source: https://dburgoplumbing.com/
+  note: Family-owned plumbing, heating and HVAC; Camden County / South Jersey
+- kind: hvac_contractor
+  org: McAllister Energy
+  email: info@mcallisterenergy.com
+  phone: (856) 665-4545
+  website: https://www.mcallisterenergy.com
+  town: Pennsauken
+  county: Camden
+  source: https://www.mcallisterenergy.com/
+  note: HVAC contractor, heating oil delivery, commercial HVAC; Camden County / South Jersey
+- kind: hvac_contractor
+  org: Johnson & Sons HVAC LLC
+  email: mjohnson@johnsonandsonshvac.com
+  phone: 856.455.8070
+  website: https://johnsonandsonshvac.com
+  town: Bridgeton
+  county: Cumberland
+  source: https://johnsonandsonshvac.com/contact-us
+  note: Heating and air conditioning service/installation; Cumberland County / South Jersey
+- kind: hvac_contractor
+  org: Maple Wood Plumbing and Heating
+  email: info@maplewoodplumbingandheating.com
+  phone: 862 364 0066
+  website: https://maplewoodplumbingandheating.com
+  town: Maplewood
+  county: Essex
+  source: https://maplewoodplumbingandheating.com/contact-us/
+  note: Residential plumbing and heating since 2000; Essex, Union, Hudson, Middlesex, Morris, Bergen
+- kind: hvac_contractor
+  org: Long Lane Home Services
+  email: longlaneappl@aol.com
+  phone: (856) 241-7726
+  website: https://longlanehomeservices.com
+  town: Swedesboro
+  county: Gloucester
+  source: https://longlanehomeservices.com/contact
+  note: Heating and cooling service plus appliance repair; Gloucester County / South Jersey
+- kind: hvac_contractor
+  org: Tanous HVAC
+  email: info@tanousnj.com
+  phone: 201-245-5151
+  website: https://www.tanousnj.com
+  town: Hoboken
+  county: Hudson
+  source: https://www.tanousnj.com/contact/
+  note: 'Family-owned since 2001: AC, heating, boilers, IAQ, water heaters, 24/7; Hoboken, Jersey City, Hudson County'
+- kind: hvac_contractor
+  org: Union City Heating
+  email: info@unioncityheating.com
+  phone: (201) 720-4005
+  website: https://unioncityheating.com
+  town: Union City
+  county: Hudson
+  source: https://unioncityheating.com/contact-us/
+  note: AC install/repair, boilers, furnaces, commercial HVAC; Union City / Hudson County
+- kind: hvac_contractor
+  org: Air Professionals
+  email: info@airprofessionalsnj.com
+  phone: 908.284.2422
+  website: https://www.airprofessionalsnj.com
+  town: Flemington
+  county: Hunterdon
+  source: https://www.airprofessionalsnj.com/
+  note: Heating and AC installation/service; Hunterdon and Somerset
+- kind: hvac_contractor
+  org: Exceptional Care Heating and Air, LLC
+  email: info@exceptionalcareheatingandair.com
+  phone: (908) 331-0434
+  website: https://exceptionalcareheatingandair.com
+  town: High Bridge
+  county: Hunterdon
+  source: https://exceptionalcareheatingandair.com/
+  note: Heating, cooling and air quality service; Hunterdon / central NJ
+- kind: hvac_contractor
+  org: Princeton Air
+  email: info@princetonair.com
+  phone: (609) 799-3434
+  website: https://www.princetonair.com
+  town: Princeton Junction
+  county: Mercer
+  source: https://www.princetonair.com/contact/
+  note: Heating, cooling, plumbing service and installation; Mercer, Somerset, Middlesex, Hunterdon
+- kind: hvac_contractor
+  org: Edison Heating & Cooling
+  email: info@edisonhvac.com
+  phone: (732) 372-7161
+  website: https://www.edisonhvac.com
+  town: Edison
+  county: Middlesex
+  source: https://www.edisonhvac.com/contact-us/
+  note: Residential/commercial HVAC; central NJ
+- kind: hvac_contractor
+  org: Temp Control LLC
+  email: info@tempcontrolnj.com
+  phone: (732) 218-8400
+  website: https://tempcontrolnj.com
+  town: Woodbridge
+  county: Middlesex
+  source: https://tempcontrolnj.com/contact-us/
+  note: HVAC repair and installation; Woodbridge / Middlesex County
+- kind: hvac_contractor
+  org: Dwyer Home Services
+  email: service@dwyerservices.com
+  phone: (732) 201-5247
+  website: https://dwyerservices.com
+  town: Freehold
+  county: Monmouth
+  source: https://dwyerservices.com/contact-us/
+  note: HVAC, plumbing, water heaters; Monmouth and Ocean counties
+- kind: hvac_contractor
+  org: Climate Plus
+  email: office@climateplus.com
+  phone: (973) 838-3200
+  website: https://www.climateplus.com
+  town: Oak Ridge
+  county: Morris
+  source: https://www.climateplus.com/contact-us/
+  note: Furnace/AC repair and installation, heat pumps, oil-to-gas conversions, duct cleaning; Morris/Passaic/Sussex
+- kind: hvac_contractor
+  org: Hassle Free HVAC
+  email: info@hasslefreehvacnj.com
+  phone: 862.268.9377
+  website: https://hasslefreehvacnj.com
+  town: Long Valley
+  county: Morris
+  source: https://hasslefreehvacnj.com/contact
+  note: Heating and cooling installation/service; Morris County
+- kind: hvac_contractor
+  org: Lamco Plumbing & Heating Contractors
+  email: info@lamcoplumbingheating.com
+  phone: (973) 895-1400
+  website: https://lamcoplumbingheating.com
+  town: Randolph
+  county: Morris
+  source: https://lamcoplumbingheating.com/
+  note: Heating/furnace systems and plumbing; Randolph and Morris County
+- kind: hvac_contractor
+  org: Speer Air
+  email: service@speerair.com
+  phone: (800) 547-2580
+  website: https://speerair.com
+  town: Rockaway
+  county: Morris
+  source: https://speerair.com/contact-us/
+  note: AC and heating repair/installation, 24/7; Morris County
+- kind: hvac_contractor
+  org: Mark Lindsay & Son Plumbing & Heating
+  email: info@marklindsayplumbing.com
+  phone: (973) 728-8900
+  website: https://www.marklindsayplumbing.com
+  town: Newfoundland
+  county: Passaic
+  source: https://www.marklindsayplumbing.com/
+  note: Plumbing, heating and AC, 24/7; West Milford, Passaic/Morris/Sussex
+- kind: hvac_contractor
+  org: Dave's Sheetmetalwork & HVAC, LLC
+  email: sheetmetaldave@gmail.com
+  phone: 908-377-1440
+  website: https://www.davessheetmetalwork.com
+  town: Bridgewater
+  county: Somerset
+  source: https://www.davessheetmetalwork.com/
+  note: Heating and cooling install/repair, custom ductwork, whole-house humidifiers; Bridgewater / Somerset
+- kind: hvac_contractor
+  org: Nextgen Plumbing, Heating & Cooling
+  email: info@nextgenplumbingnj.com
+  phone: 908-608-7776
+  website: https://nextgenplumbingnj.com
+  town: Somerville
+  county: Somerset
+  source: https://nextgenplumbingnj.com/contact/
+  note: Plumbing, heating and cooling; Somerset County
+- kind: hvac_contractor
+  org: Creative Air Systems
+  email: hvac@creativeairsystems.com
+  phone: 973-222-0738
+  website: https://www.creativeairsystems.com
+  town: Lafayette
+  county: Sussex
+  source: https://www.creativeairsystems.com/
+  note: HVAC installations, service, natural gas conversions; Sussex County
+- kind: hvac_contractor
+  org: Dynamic Mechanical Services
+  email: info@dms-nj.com
+  phone: (973) 875-4804
+  website: https://www.dms-nj.com
+  town: Sussex
+  county: Sussex
+  source: https://www.dms-nj.com/contact-us
+  note: HVAC installation and service; Sussex and northwest NJ
+- kind: hvac_contractor
+  org: Your Ultimate Comfort
+  email: info@yourultimatecomfort.com
+  phone: 973-945-8696
+  website: https://www.yourultimatecomfort.com
+  town: Sparta
+  county: Sussex
+  source: https://www.yourultimatecomfort.com/
+  note: Heating and cooling service and installation; Sussex/Morris
+- kind: hvac_contractor
+  org: Blue Air One
+  email: info@blueaironenj.com
+  phone: 908.275.3953
+  website: https://blueaironenj.com
+  town: Linden
+  county: Union
+  source: https://blueaironenj.com/
+  note: Heating and air conditioning service/installation; Union County
+- kind: hvac_contractor
+  org: Cranford Gas Light
+  email: info@cranfordgaslight.com
+  phone: (908) 276-4328
+  website: https://www.cranfordgaslight.com
+  town: Roselle
+  county: Union
+  source: https://www.cranfordgaslight.com/
+  note: Gas furnaces, AC, boilers, water heaters; Union County
+- kind: hvac_contractor
+  org: Dawson Mechanical Contracting
+  email: info@dawsonmechanical.com
+  phone: 908-464-4181
+  website: https://www.dawsonmechanical.com
+  town: Berkeley Heights
+  county: Union
+  source: https://www.dawsonmechanical.com/contact-2/
+  note: Plumbing and high-efficiency heating/hot-water systems, residential and commercial; NJ
+- kind: hvac_contractor
+  org: Meyer & Depew
+  email: clientservice@meyer-depew.com
+  phone: 908-272-2100
+  website: https://www.meyer-depew.com
+  town: Kenilworth
+  county: Union
+  source: https://www.meyer-depew.com/contact/
+  note: AC, heating and HVAC service; Union and surrounding counties
+- kind: hvac_contractor
+  org: Apex Heating & Cooling
+  email: service@apexhvacnj.com
+  phone: (908) 223-1938
+  website: https://www.apexhvacnj.com
+  town: Washington
+  county: Warren
+  source: https://www.apexhvacnj.com/
+  note: Residential/commercial HVAC, heat pumps, Mitsubishi, rooftop units; Warren/Hunterdon/Morris
+- kind: hvac_contractor
+  org: TGM Services
+  email: tgmelectric@yahoo.com
+  phone: 908-852-6355
+  website: https://tgmservices.com
+  town: Hackettstown
+  county: Warren
+  source: https://tgmservices.com/
+  note: Heating, cooling, plumbing and electrical; Hackettstown / Warren and Morris
+- kind: rehab_general_contractor
+  org: Garden State Contractors
+  email: info@gardenstatecontractorsnj.com
+  phone: (609) 470-9859
+  website: https://gardenstatecontractorsnj.com
+  town: Atlantic City
+  county: Atlantic
+  source: https://gardenstatecontractorsnj.com/contact/
+  note: Remodeling, painting, drywall, flooring, project management and rental turnovers; South Jersey
+- kind: rehab_general_contractor
+  org: New Jersey Renovations
+  email: service@newjerseyrenovations.com
+  phone: (201) 540-8787
+  website: https://newjerseyrenovations.com
+  town: Teaneck
+  county: Bergen
+  source: https://newjerseyrenovations.com/
+  note: Complete home remodeling, kitchens/baths, siding, flooring, painting; offices in Teaneck and Sewell
+- kind: rehab_general_contractor
+  org: Home Comforts Design
+  email: info@homecomfortsdesign.com
+  phone: (856) 554-2550
+  website: https://www.homecomfortsdesign.com
+  town: Marlton
+  county: Burlington
+  source: https://www.homecomfortsdesign.com/
+  note: Design-first kitchen and bath remodeling (NJ HIC 13VH14325500); Burlington / South Jersey
+- kind: rehab_general_contractor
+  org: Moorestown Construction
+  email: info@moorestownconstruction.com
+  phone: 856-222-4800
+  website: https://www.moorestownconstruction.com
+  town: Moorestown
+  county: Burlington
+  source: https://www.moorestownconstruction.com/
+  note: 'Family-owned GC: additions, kitchens, baths, interiors, exteriors, decks, commercial; Burlington / South Jersey'
+- kind: rehab_general_contractor
+  org: Cherry Hill Remodeling
+  email: info@cherryhillremodeling.com
+  phone: (609) 707-4174
+  website: https://cherryhillremodeling.com
+  town: Cherry Hill
+  county: Camden
+  source: https://cherryhillremodeling.com/
+  note: Kitchen, bath and basement remodeling, home additions; Cherry Hill / Camden County
+- kind: rehab_general_contractor
+  org: Haddonfield Kitchen & Bath Remodelers LLC
+  email: haddonfieldremodelers@gmail.com
+  phone: (856) 624-5618
+  website: https://haddonfieldremodelers.com
+  town: Haddonfield
+  county: Camden
+  source: https://haddonfieldremodelers.com/
+  note: General contractor for kitchen and bath remodeling; Haddonfield / Camden County
+- kind: rehab_general_contractor
+  org: Peter's Precision Remodeling, LLC
+  email: sales@pprsj.com
+  phone: (609) 576-7868
+  website: https://precisionremodelers.com
+  town: Ocean City
+  county: Cape May
+  source: https://precisionremodelers.com/
+  note: Home remodeling from kitchens to whole homes (NJ HIC 13VH09706600); Ocean City / Cape May and Atlantic
+- kind: rehab_general_contractor
+  org: Steger Associates
+  email: info@stegerassociates.com
+  phone: (609) 675-4978
+  website: https://www.stegerassociates.com
+  town: West Cape May
+  county: Cape May
+  source: https://www.stegerassociates.com/
+  note: General contracting, fine home remodeling, construction management, historic restorations; Cape May County
+- kind: rehab_general_contractor
+  org: North Jersey Contractors
+  email: segundo2530@gmail.com
+  phone: (201) 201-7533
+  website: https://northjerseycontractors.com
+  town: Newark
+  county: Essex
+  source: https://northjerseycontractors.com/
+  note: 'Home improvement contractor: remodeling, renovation, roofing, siding; Newark / Essex County'
+- kind: rehab_general_contractor
+  org: Roesly Plumbing & Contracting
+  email: info@roeslyinc.com
+  phone: 856-422-0407
+  website: https://www.roeslyplumbing.com
+  town: Turnersville
+  county: Gloucester
+  source: https://www.roeslyplumbing.com/
+  note: General contracting, remodeling, construction management and plumbing, 30+ yrs; South Jersey + PA
+- kind: rehab_general_contractor
+  org: Garden State Contracting
+  email: info@gardenstatecontracting.com
+  phone: 201.435.0077
+  website: https://www.gardenstatecontracting.com
+  town: Hoboken
+  county: Hudson
+  source: https://www.gardenstatecontracting.com/
+  note: Kitchen and bath remodeling, 20+ yrs; Hudson / North Jersey
+- kind: rehab_general_contractor
+  org: Hoboken General Contractor
+  email: info@hobokengeneralcontractor.com
+  phone: (201) 228-0703
+  website: https://www.hobokengeneralcontractor.com
+  town: Hoboken
+  county: Hudson
+  source: https://www.hobokengeneralcontractor.com/
+  note: 'Licensed NJ HIC: kitchen/bath remodeling, basement finishing, painting, floors, home repair; Hudson County'
+- kind: rehab_general_contractor
+  org: Hoboken Kitchen & Bath
+  email: info@hobokenkitchenandbath.com
+  phone: 917-443-8586
+  website: https://hobokenkitchenandbath.com
+  town: Hoboken
+  county: Hudson
+  source: https://hobokenkitchenandbath.com/contact
+  note: Kitchen/bath contractors, combined renovations and whole-home remodels; Hoboken / Hudson County
+- kind: rehab_general_contractor
+  org: Robbinsville Remodeling
+  email: jose@robbinsvilleremodeling.com
+  phone: 609-208-9993
+  website: https://robbinsvilleremodeling.com
+  town: Robbinsville
+  county: Mercer
+  source: https://robbinsvilleremodeling.com/contact-us/
+  note: Kitchens, bathrooms, basements, additions, exteriors; Robbinsville / Mercer County
+- kind: rehab_general_contractor
+  org: C&E Home Improvement LLC
+  email: clhome888@gmail.com
+  phone: (848) 250-6025
+  website: https://perthamboyremodel.com
+  town: Hopelawn
+  county: Middlesex
+  source: https://perthamboyremodel.com/contact
+  note: 'Repairs to renovations: remodeling, electrical, painting, flooring; Perth Amboy / Middlesex'
+- kind: rehab_general_contractor
+  org: Central Jersey Renovations
+  email: info@centraljerseyrenovations.com
+  phone: 732-641-0740
+  website: https://centraljerseyrenovations.com
+  town: Tinton Falls
+  county: Monmouth
+  source: https://centraljerseyrenovations.com/contact-us/
+  note: 'Home renovation: kitchens, baths, flooring, decks, handyman (NJ REG 13VH14019200); Monmouth and nearby'
+- kind: rehab_general_contractor
+  org: Monmouth Construction
+  email: michael@monmouthconstruction.com
+  phone: 732.299.0911
+  website: https://www.monmouthconstruction.com
+  town: West Long Branch
+  county: Monmouth
+  source: https://www.monmouthconstruction.com/
+  note: Kitchen/bath remodels, interior/exterior finishing, additions and renovations; Monmouth County
+- kind: rehab_general_contractor
+  org: KraftMaster Renovations
+  email: info@kmrenovate.com
+  phone: (908) 517-5581
+  website: https://www.kmrenovate.com
+  town: Chatham
+  county: Morris
+  source: https://www.kmrenovate.com/contact-us/
+  note: Full-service home remodeling, kitchens, baths; Morris, Union, Somerset, Essex
+- kind: rehab_general_contractor
+  org: Endreson Construction Company, LLC
+  email: endresonconstr@aol.com
+  phone: 732 793-7008
+  website: https://endresonconstruction.com
+  town: Toms River
+  county: Ocean
+  source: https://endresonconstruction.com/contact-us/
+  note: Remodeling and custom homes, serving the Shore since 1936; Ocean / Monmouth
+- kind: rehab_general_contractor
+  org: Rasinski Construction
+  email: info@rasinskiconstructionnj.com
+  phone: (732) 803-5688
+  website: https://rasinskiconstructionnj.com
+  town: ''
+  county: Ocean
+  source: https://rasinskiconstructionnj.com/contact-us/
+  note: Kitchen and whole-home remodeling, additions, exterior renovations (NJ HIC + new home builder); Ocean, Monmouth, Mercer,
+    Middlesex
+- kind: rehab_general_contractor
+  org: Sussex Contractors
+  email: info@sussexcontractors.com
+  phone: (862) 200-9138
+  website: https://www.sussexcontractors.com
+  town: Pompton Lakes
+  county: Passaic
+  source: https://www.sussexcontractors.com/contact
+  note: Custom construction, construction management and maintenance, design consultation; Passaic / North NJ
+- kind: rehab_general_contractor
+  org: Magnolia Home Remodeling Group
+  email: magnoliahrg@gmail.com
+  phone: (855) 624-6655
+  website: https://magnoliahomeremodeling.com
+  town: Union
+  county: Union
+  source: https://magnoliahomeremodeling.com/contact/
+  note: Family-owned remodeling contractor (roofing, siding, interiors), GAF certified; Union/Essex/Middlesex
+- kind: rehab_general_contractor
+  org: VG Capriglione Contracting LLC
+  email: vinnycapriglione@live.com
+  phone: 908.967.1803
+  website: https://www.capriglionecontracting.com
+  town: Westfield
+  county: Union
+  source: https://www.capriglionecontracting.com/contact-vg-capriglione-contracting
+  note: 'Licensed HIC (13VH09482800): basements, kitchens, bathrooms, decks, home renovations; Union County'
+- kind: rehab_general_contractor
+  org: Westfield Construction, Inc
+  email: mfederico@mac.com
+  phone: (908) 789-8829
+  website: https://www.westfieldconstructioninc.com
+  town: Westfield
+  county: Union
+  source: https://www.westfieldconstructioninc.com/contact/
+  note: Residential builder and renovator since 1985, historic restoration, interiors; Union County
+- kind: rehab_general_contractor
+  org: Jersey Renovations LLC
+  email: justin@jerseyrenovationsllc.com
+  phone: 732-977-5556
+  website: https://www.jerseyrenovationsllc.com
+  town: ''
+  county: ''
+  source: https://www.jerseyrenovationsllc.com/contact
+  note: Home renovations, remodels and additions; central NJ
+- kind: rehab_general_contractor
+  org: NJ Pro Remodeling LLC
+  email: njproremodeling@gmail.com
+  phone: (201) 564-5544
+  website: https://njproremodeling.com
+  town: ''
+  county: ''
+  source: https://njproremodeling.com/contact-us/
+  note: 'Remodeling and renovations: kitchens, baths, roofing, flooring, additions; Bergen, Hudson, Essex, Passaic'
+- kind: rehab_general_contractor
+  org: North Jersey Remodelers
+  email: northjerseyremodelers@hotmail.com
+  phone: 973.962.1811
+  website: https://www.northjerseyremodelers.com
+  town: ''
+  county: ''
+  source: https://www.northjerseyremodelers.com/contact/
+  note: Kitchen, bath and basement remodeling (NJ HIC 13VH11222400); Bergen, Passaic and Morris counties
+- kind: rehab_general_contractor
+  org: Ridgewood Home Improvement
+  email: ridgewoodhomeimprovement@gmail.com
+  phone: (201) 220-2029
+  website: https://ridgewoodhomeimprovement.com
+  town: ''
+  county: ''
+  source: https://ridgewoodhomeimprovement.com/
+  note: Kitchen/bath remodeling, construction and project management, custom cabinetry; North NJ
+- kind: rehab_general_contractor
+  org: Summit Construction
+  email: richjr@summitconstructionnj.com
+  phone: 908.625.5645
+  website: https://www.summitconstructionnj.com
+  town: ''
+  county: ''
+  source: https://www.summitconstructionnj.com/
+  note: 'Family builder since 1987 (NJ HIC 13VH10444400): additions, add-a-level, kitchen/bath renovations, basements; NJ/NY/PA'
+- kind: oil_tank_contractor
+  org: A1 Tank Guys
+  email: info@a1tankguys.com
+  phone: (973) 922-9002
+  website: https://a1-oiltankremoval.com/
+  town: Verona
+  county: Essex
+  source: https://a1-oiltankremoval.com/
+  note: Residential oil tank removal, soil remediation, permits; offices Verona, Jersey City, Edison; North & Central NJ
+- kind: oil_tank_contractor
+  org: Tankmen of NJ
+  email: info@tankmennj.com
+  phone: ''
+  website: http://tankmennj.com/
+  town: Lyndhurst
+  county: Bergen
+  source: http://tankmennj.com/contact.html
+  note: Oil tank removal, abandonment, testing, soil remediation; North NJ
+- kind: oil_tank_contractor
+  org: Qualified Tank Services
+  email: qualifiedtank@gmail.com
+  phone: (908) 245-0220
+  website: https://oiltankexperts.com/
+  town: Lebanon
+  county: Hunterdon
+  source: https://oiltankexperts.com/contact-us/
+  note: Oil tank removal specialist; statewide NJ
+- kind: oil_tank_contractor
+  org: Oil Tank Sweep Premier LLC
+  email: oiltanksweeppremier@gmail.com
+  phone: (908) 246-0852
+  website: https://oiltanksweeppremier.com/
+  town: Glen Gardner
+  county: Hunterdon
+  source: https://oiltanksweeppremier.com/contact-harris
+  note: Oil tank sweeps with GPR for home sales; Central/North NJ
+- kind: oil_tank_contractor
+  org: Brinks Tank Services
+  email: info@brinksconsulting.com
+  phone: (844) 462-7465
+  website: https://brinkstankservices.com/
+  town: Hillside
+  county: Union
+  source: https://brinkstankservices.com/contact/nj
+  note: Oil tank removal, tank search/sweep (GPR), soil testing; Union, Essex, Hudson, Middlesex
+- kind: oil_tank_contractor
+  org: ATS Environmental
+  email: info@atsenvironmental.com
+  phone: (973) 218-5310
+  website: https://www.atsenvironmental.com/
+  town: Sparta
+  county: Sussex
+  source: https://www.atsenvironmental.com/contact-us/
+  note: Oil tank sweeps, removal, installation, testing; North NJ (Bergen, Essex, Morris, Sussex)
+- kind: oil_tank_contractor
+  org: C2G Environmental Consultants
+  email: info@c2g.us
+  phone: 201-574-0555
+  website: https://c2g.us/
+  town: Mahwah
+  county: Bergen
+  source: https://c2g.us/environmental_services/23/Contact_Us.php
+  note: Residential oil tank removal, abandonment, replacement; Bergen County and North NJ
+- kind: oil_tank_contractor
+  org: TADCO Engineering & Environmental Services
+  email: connect@tadcosolutions.com
+  phone: (201) 222-5322
+  website: https://tadcosolutions.com/
+  town: Lyndhurst
+  county: Bergen
+  source: https://tadcosolutions.com/contact-us/
+  note: Oil tank removal, GPR tank sweeps, soil remediation; Bergen/North NJ
+- kind: oil_tank_contractor
+  org: Curren Environmental
+  email: info@currenenvironmental.com
+  phone: 888-301-1050
+  website: https://www.currenenvironmental.com/
+  town: Cherry Hill
+  county: Camden
+  source: https://www.currenenvironmental.com/contact-us
+  note: Residential heating oil tank and commercial UST removal, LSRP/ISRA; NJ, PA, DE
+- kind: oil_tank_contractor
+  org: Peak Environmental
+  email: info@peak-environmental.com
+  phone: (732) 326-1010
+  website: https://peak-environmental.com/
+  town: East Brunswick
+  county: Middlesex
+  source: https://peak-environmental.com/contact/
+  note: NJDEP-certified UST and unregulated heating oil tank (UHOT) services, site remediation; NJ
+- kind: oil_tank_contractor
+  org: Applied Service Corp
+  email: info@appliedservice.com
+  phone: 973-579-3397
+  website: https://www.appliedservice.com/
+  town: Lafayette
+  county: Sussex
+  source: https://www.appliedservice.com/contact-us
+  note: Underground/aboveground storage tank removal, installation, testing; North NJ
+- kind: oil_tank_contractor
+  org: AIM Tank Services
+  email: aimtankservices@aol.com
+  phone: (973) 633-5275
+  website: https://aimtank.com/
+  town: Wayne
+  county: Passaic
+  source: https://aimtank.com/contact/
+  note: Oil tank removal and installation; Passaic, Bergen, Morris
+- kind: oil_tank_contractor
+  org: Audubon Environmental
+  email: info@audubonenvironmental.com
+  phone: 609-859-3652
+  website: https://audubonenvironmental.com/
+  town: Shamong
+  county: Burlington
+  source: https://audubonenvironmental.com/contact/
+  note: UST removal, remediation, well drilling; South Jersey
+- kind: oil_tank_contractor
+  org: GeoEnvironmental Solutions
+  email: drew@geoenvironmentalsolutions.com
+  phone: (973) 747-9766
+  website: https://www.geoenvironmentalsolutions.com/
+  town: Lincoln Park
+  county: Morris
+  source: https://www.geoenvironmentalsolutions.com/
+  note: 'Heating oil tanks: sweeps, removals; geotechnical/environmental engineering; North NJ'
+- kind: oil_tank_contractor
+  org: Remedi Tec
+  email: matt@remeditec.com
+  phone: 609.709.9005
+  website: https://remeditec.com/
+  town: Barnegat
+  county: Ocean
+  source: https://remeditec.com/contact
+  note: Underground heating oil tank removal, remediation, closure; NJ (Ocean/Shore)
+- kind: oil_tank_contractor
+  org: Venture Tank Co.
+  email: info@venturetank.com
+  phone: 609.698.4434
+  website: https://venturetank.com/
+  town: Barnegat
+  county: Ocean
+  source: https://venturetank.com/
+  note: Fuel oil tank removal, real-estate tank searches, soil/groundwater remediation; offices Barnegat and Williamstown
+- kind: oil_tank_contractor
+  org: TEF Environmental
+  email: tefenvironmental@verizon.net
+  phone: (973) 664-1188
+  website: https://tefenvironmental.com/
+  town: Hibernia
+  county: Morris
+  source: https://tefenvironmental.com/contact-us/
+  note: Tank removal and installation (UST/AST), gas station work; North NJ
+- kind: oil_tank_contractor
+  org: Hudd Environmental Services
+  email: jhudzina@huddenvironmental.com
+  phone: 201-390-8225
+  website: https://huddenvironmental.com/
+  town: Oakland
+  county: Bergen
+  source: https://huddenvironmental.com/contact-us/
+  note: Underground storage tank removals and testing, Phase I/II, soil and groundwater; North NJ
+- kind: oil_tank_contractor
+  org: EnviroTech Services, Inc.
+  email: jbuehler7873@verizon.net
+  phone: 732-687-2341
+  website: https://www.envirotechservicesnj.com/
+  town: Farmingdale
+  county: Monmouth
+  source: https://www.envirotechservicesnj.com/contact
+  note: UST/AST tank installation and removal, investigations, remediation; Monmouth/Central NJ
+- kind: oil_tank_contractor
+  org: Rich's Heating and Cooling
+  email: info@richshvacexperts.com
+  phone: (732) 433-0068
+  website: https://richshvacexperts.com/
+  town: Dunellen
+  county: Middlesex
+  source: https://richshvacexperts.com/contact-us/
+  note: HVAC contractor offering oil tank removal, soil testing, NJDEP coordination; Middlesex/Union/Somerset
+- kind: oil_tank_contractor
+  org: Excel Environmental Resources
+  email: info@excelenv.com
+  phone: 732-545-9525
+  website: https://excelenv.com/
+  town: Somerset
+  county: Somerset
+  source: https://excelenv.com/contact-us/
+  note: UST closure and remediation, site investigation, LSRP services; NJ
+- kind: oil_tank_contractor
+  org: EnviroTrac Ltd.
+  email: info@envirotrac.com
+  phone: ''
+  website: https://envirotrac.com/
+  town: South Plainfield
+  county: Middlesex
+  source: https://envirotrac.com/contact-us/
+  note: Environmental consulting/remediation, NJDEP-certified UST firm; NJ offices South Plainfield, Sea Girt, Burlington
+- kind: oil_tank_contractor
+  org: Potomac Hudson Environmental
+  email: admin@phenv.com
+  phone: (201) 413-0960
+  website: https://phenv.com/
+  town: South Amboy
+  county: Middlesex
+  source: https://phenv.com/
+  note: UST/AST management, soil and groundwater investigation, remediation; offices South Amboy and Jersey City
+- kind: oil_tank_contractor
+  org: Sterling Environmental Services
+  email: info@sterlingenviro.com
+  phone: (973) 343-6716
+  website: https://sterlingenviro.com/
+  town: West Caldwell
+  county: Essex
+  source: https://sterlingenviro.com/contact-us
+  note: Oil tank sweeps, removal, remediation; Essex, Morris, Bergen, Hudson, Passaic
+- kind: oil_tank_contractor
+  org: Independence Constructors, Inc.
+  email: information@independenceconstructors.com
+  phone: 908.625.7910
+  website: https://independenceconstructors.com/
+  town: Bernardsville
+  county: Somerset
+  source: https://independenceconstructors.com/
+  note: Turnkey aboveground and underground storage tank services, environmental contractor; NJ
+- kind: oil_tank_contractor
+  org: Petro Mechanics
+  email: service@petromechanics.com
+  phone: 973-300-0011
+  website: https://petromechanics.com/
+  town: Lafayette
+  county: Sussex
+  source: https://petromechanics.com/contact.html
+  note: 'Pump and tank contractor: tank removal and installation, fuel system work; North NJ'
+- kind: oil_tank_contractor
+  org: ACER Associates, LLC
+  email: info@acerassociates.com
+  phone: (856) 809-1202
+  website: https://www.acerassociates.com/
+  town: West Berlin
+  county: Camden
+  source: https://www.acerassociates.com/contact
+  note: Environmental consulting and geotechnical engineering, NJDEP-certified UST firm; South Jersey
+- kind: oil_tank_contractor
+  org: TTI Environmental
+  email: tti-info@ttienv.com
+  phone: ''
+  website: https://ttienvinc.com/
+  town: Moorestown
+  county: Burlington
+  source: https://ttienvinc.com/
+  note: UST/oil/fuel tank removal, installation, inspection, environmental consulting; NJ, PA, NY
+- kind: oil_tank_contractor
+  org: Simple Solutions Environmental
+  email: simplesolutionsenvironmental@gmail.com
+  phone: (609) 214-1652
+  website: https://www.simplesolutionsenvironmental.com/
+  town: Somers Point
+  county: Atlantic
+  source: https://www.simplesolutionsenvironmental.com/contact
+  note: LSRP and NJDEP subsurface-evaluation certified consulting, remediation and closure; NJ
+- kind: oil_tank_contractor
+  org: Eikon Planning and Design (Eikon Environmental Services)
+  email: eikonplanning@gmail.com
+  phone: (908) 813-2323
+  website: https://www.eikonplanning.com/
+  town: Hackettstown
+  county: Warren
+  source: https://www.eikonplanning.com/contact
+  note: Environmental services, NJDEP-certified UST subsurface evaluation and closure firm; Warren/NW NJ
+- kind: oil_tank_contractor
+  org: Bristol Developers Inc.
+  email: bristol1008@ymail.com
+  phone: (973) 627-0634
+  website: https://bristoldevelopers.com/
+  town: Denville
+  county: Morris
+  source: https://bristoldevelopers.com/contact/
+  note: 'Environmental contracting: oil tank removal and tank services; Morris/North NJ'
+- kind: oil_tank_contractor
+  org: W.S. King and Son
+  email: waynekingsr@wskingandson.com
+  phone: 201-481-4840
+  website: https://www.wskingandson.com/
+  town: Ridgefield
+  county: Bergen
+  source: https://www.wskingandson.com/
+  note: Oil tank removal and installation; Bergen County
+- kind: oil_tank_contractor
+  org: EcoLogic Testing
+  email: contact@ecologictesting.com
+  phone: (877) 729-5628
+  website: https://ecologictestinginc.com/
+  town: Sparta
+  county: Sussex
+  source: https://ecologictestinginc.com/contact-us/
+  note: Oil tank and septic inspections/testing for home buyers; NW NJ
+- kind: oil_tank_contractor
+  org: Stem Brothers
+  email: heating@stembrothers.com
+  phone: (908) 995-4825
+  website: https://stembrothers.com/
+  town: Milford
+  county: Hunterdon
+  source: https://stembrothers.com/contact-us/general-information/
+  note: Heating oil/propane dealer with tank installs and tank removals; Hunterdon/Warren
+- kind: oil_tank_contractor
+  org: Calmar Associates LLC
+  email: mail@calmarassociates.com
+  phone: (609) 476-4500
+  website: https://calmarassociates.com/
+  town: Dorothy
+  county: Atlantic
+  source: https://calmarassociates.com/index_files/Contact_Us.htm
+  note: LSRP environmental consulting, NJDEP-certified UST subsurface evaluation/closure firm; South Jersey
+- kind: oil_tank_contractor
+  org: Catamount Environmental LLC
+  email: dave@catamountenv.com
+  phone: (732) 502-0652
+  website: https://catamountenv.com/
+  town: Ocean Township
+  county: Monmouth
+  source: https://catamountenv.com/contact.html
+  note: Environmental consultancy (site assessments), NJDEP-certified UST subsurface evaluator; Monmouth/Shore
+- kind: oil_tank_contractor
+  org: Envirotactics
+  email: info@envirotactics.com
+  phone: 732.449.0077
+  website: https://envirotactics.com/
+  town: Sea Girt
+  county: Monmouth
+  source: https://envirotactics.com/contact-us/
+  note: Remediation, investigation and due diligence incl. residential; NJDEP-certified UST closure firm; NJ
+- kind: oil_tank_contractor
+  org: BEM Systems, Inc.
+  email: headquarters@bemsys.com
+  phone: 908-598-2600
+  website: https://bemsys.com/
+  town: Madison
+  county: Morris
+  source: https://bemsys.com/contact-us/
+  note: Environmental consulting/remediation, NJDEP-certified UST firm; NJ
+- kind: dumpster_rental
+  org: Hook N Dump
+  email: rentals@hookndump.com
+  phone: (973) 477-6805
+  website: https://hookndump.com/
+  town: Roseland
+  county: Essex
+  source: https://hookndump.com/
+  note: Roll-off dumpster rental 10-40 yd, junk removal, demolition; North/Central NJ
+- kind: dumpster_rental
+  org: Bin-Drop Waste Services
+  email: office@bin-drop.com
+  phone: (201) 566-7719
+  website: https://www.bindropdumpsters.com/
+  town: Carlstadt
+  county: Bergen
+  source: https://www.bindropdumpsters.com/contact-us/
+  note: Roll-off dumpsters 10-30 yd, flat all-in pricing, all 21 NJ counties (e-mail shown via Cloudflare e-mail protection
+    on the page)
+- kind: dumpster_rental
+  org: Hometown Waste & Recycling
+  email: info@hometownwastenj.com
+  phone: 732-525-2555
+  website: https://hometownwastenj.com/
+  town: Old Bridge
+  county: Middlesex
+  source: https://hometownwastenj.com/contact-us/
+  note: Dumpster rentals 10-40 yd; Middlesex, Monmouth, Union, Essex counties
+- kind: dumpster_rental
+  org: Galluzzo Brothers Carting
+  email: galluzzobrothers@aol.com
+  phone: (973) 424-9640
+  website: https://galluzzobrothers.com/
+  town: Newark
+  county: Essex
+  source: https://galluzzobrothers.com/contact
+  note: Roll-off containers 10-40 yd, carting; Essex, Union, Hudson
+- kind: dumpster_rental
+  org: West World Disposal
+  email: info@westworlddisposal.com
+  phone: 201-256-1725
+  website: https://www.westworlddisposal.com/
+  town: Orange
+  county: Essex
+  source: https://www.westworlddisposal.com/contact-us
+  note: Dumpster rental 10-30 yd, same-day delivery; Essex County and North NJ
+- kind: dumpster_rental
+  org: NWJ Dumpster Rental
+  email: info@nwjdumpsterrental.com
+  phone: (862) 307-9238
+  website: https://nwjdumpsterrental.com/
+  town: Newark
+  county: Essex
+  source: https://nwjdumpsterrental.com/contact.html
+  note: Roll-off dumpster rental; Newark, Essex, Union, Hudson
+- kind: dumpster_rental
+  org: Lift Away Dumpster Rentals
+  email: appointments@liftawaydumpsters.com
+  phone: (973) 943-4528
+  website: https://www.liftawaydumpsters.com/
+  town: Rockaway
+  county: Morris
+  source: https://www.liftawaydumpsters.com/contact-us
+  note: Dumpster rentals and junk removal; Morris, Bergen, Sussex, Passaic
+- kind: dumpster_rental
+  org: Cali Carting
+  email: info@calicarting.com
+  phone: (201) 991-5400
+  website: https://www.calicarting.com/
+  town: Kearny
+  county: Hudson
+  source: https://www.calicarting.com/contact-us/
+  note: Dumpster rentals 10-30 yd and commercial carting; Hudson, Bergen, Essex, Monmouth
+- kind: dumpster_rental
+  org: The Dumpster Guy
+  email: mar93russ@yahoo.com
+  phone: 908-482-7604
+  website: https://www.thedumpsterguy.com/
+  town: Toms River
+  county: Ocean
+  source: https://www.thedumpsterguy.com/contact
+  note: Family-owned residential dumpster rental; Ocean and Monmouth
+- kind: dumpster_rental
+  org: SES Dumpster
+  email: cans@sesdumpster.com
+  phone: ''
+  website: https://sesdumpster.com/
+  town: Dorothy
+  county: Atlantic
+  source: https://sesdumpster.com/
+  note: Roll-off dumpster rentals; South Jersey (Atlantic, Cape May, Cumberland)
+- kind: dumpster_rental
+  org: L&M Disposal LLC
+  email: info@lmdisposal.com
+  phone: (973) 777-3770
+  website: https://lmdisposal.com/
+  town: Lodi
+  county: Bergen
+  source: https://lmdisposal.com/
+  note: Dumpster rental and waste services; Bergen, Passaic, Essex
+- kind: dumpster_rental
+  org: Direct Waste Services
+  email: inquiries@directwasteservice.com
+  phone: (973) 242-8008
+  website: https://fratellodisposal.com/
+  town: Newark
+  county: Essex
+  source: https://fratellodisposal.com/
+  note: Dumpster rentals, containers and compactors, residential/commercial pickup since 1958; Essex/North NJ
+- kind: dumpster_rental
+  org: Tri-State Carting & Recycling
+  email: recycling@tristatecarting.com
+  phone: 1-800-315-9787
+  website: https://tristatecarting.com/
+  town: Toms River
+  county: Ocean
+  source: https://tristatecarting.com/
+  note: Residential and commercial roll-off, rear/front load, recycling; Ocean/Monmouth and statewide
+- kind: dumpster_rental
+  org: A-Lot-Cleaner
+  email: info@alotcleaner.com
+  phone: (732) 244-8980
+  website: https://alotcleaner.com/
+  town: Toms River
+  county: Ocean
+  source: https://alotcleaner.com/
+  note: Dumpster rental and junk removal; Ocean and Monmouth
+- kind: dumpster_rental
+  org: B&B Disposal
+  email: info@bandbdisposal.com
+  phone: (877) 465-4433
+  website: http://bandbdisposal.com/
+  town: Hillside
+  county: Union
+  source: https://bandbdisposal.com/
+  note: Family-owned waste hauling, roll-off dumpsters; Union/Essex/North NJ
+- kind: dumpster_rental
+  org: Standard Waste
+  email: info@standardwaste.com
+  phone: 732-967-1565
+  website: https://standardwaste.com/
+  town: East Brunswick
+  county: Middlesex
+  source: https://standardwaste.com/
+  note: 10/20/30-yd containers, construction and demolition, residential; Central NJ
+- kind: dumpster_rental
+  org: Bayshore Recycling
+  email: sales@bayshorerecycling.com
+  phone: 732-738-6000
+  website: https://bayshorerecycling.com/
+  town: Keasbey
+  county: Middlesex
+  source: https://bayshorerecycling.com/
+  note: Roll-offs and transportation, C&D and soil recycling; Central NJ
+- kind: dumpster_rental
+  org: 905 Junk
+  email: office@905junk.com
+  phone: 732-905-5865
+  website: https://905junk.com/
+  town: Toms River
+  county: Ocean
+  source: https://905junk.com/
+  note: Dumpster rentals, junk removal, demolition; Ocean/Monmouth and NJ
+- kind: dumpster_rental
+  org: Classic Recycling
+  email: customerservice@classicrecycling.com
+  phone: 973-777-0600
+  website: https://classicrecycling.com/
+  town: Clifton
+  county: Passaic
+  source: https://classicrecycling.com/
+  note: Roll-off services, containers and compactors, commercial waste; NJ and NYC
+- kind: dumpster_rental
+  org: Jersey Specialized Hauling
+  email: orders@jerseyspecializedhauling.com
+  phone: (732) 251-5747
+  website: https://www.jerseyspecializedhauling.com/
+  town: Monroe Township
+  county: Middlesex
+  source: https://www.jerseyspecializedhauling.com/
+  note: Dumpsters, demo trailers, compactors, waste removal; Central NJ
+- kind: dumpster_rental
+  org: Freehold Cartage
+  email: sales@freeholdcartage.com
+  phone: (732) 462-1001
+  website: https://freeholdcartage.com/
+  town: Freehold
+  county: Monmouth
+  source: https://freeholdcartage.com/contact/
+  note: Dumpster rental, residential/commercial collection, recycling; Central NJ
+- kind: dumpster_rental
+  org: Importico Disposal
+  email: info@importicodisposal.com
+  phone: (848) 393-9956
+  website: https://importicodisposal.com/
+  town: Middlesex
+  county: Middlesex
+  source: https://importicodisposal.com/contact/
+  note: Roll-off dumpster rental since 1954; Middlesex County and NJ
+- kind: dumpster_rental
+  org: Mr. Dumpster
+  email: joe.aiossa@mrdumpster123.com
+  phone: 888-467-3867
+  website: https://www.mrdumpster123.com/
+  town: Ramsey
+  county: Bergen
+  source: https://www.mrdumpster123.com/contact
+  note: Roll-off dumpsters 10-30 yd, same-day delivery; Bergen and Passaic
+- kind: dumpster_rental
+  org: Gaeta Recycling
+  email: info@gaetarecycling.com
+  phone: 973-278-6625
+  website: https://www.gaetarecycling.com/
+  town: Paterson
+  county: Passaic
+  source: https://www.gaetarecycling.com/privacy-policy
+  note: Dumpster rental, transfer station, commercial/residential recycling; Passaic/North NJ
+- kind: dumpster_rental
+  org: Cardella Waste
+  email: orders@cardellawaste.com
+  phone: 800-548-7001
+  website: https://www.cardellawaste.com/
+  town: North Bergen
+  county: Hudson
+  source: https://www.cardellawaste.com/rent-a-dumpster/
+  note: Roll-off dumpster rental, C&D transfer stations (Tonnelle Ave, Westside Ave); Northern NJ

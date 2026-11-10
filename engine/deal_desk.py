@@ -328,7 +328,7 @@ def pitch_lines(prof: BuyerProfile, op: dict[str, str], audience: str = "buyer")
     return [
         first,
         f"<b>30-day trial: ${TRIAL_FEE:,} flat. Then ${MONTHLY_FEE:,}/month flat. Zero commission, zero per-deal fees "
-        "or splits.</b> Reply \"activate\" to start the trial.",
+        "or splits.</b> Reply \"start\" to begin the trial.",
         f"{op.get('name') or ''} provides software and research only: not a licensed real estate broker or agent, never "
         "negotiates, buys or sells on your behalf, and is paid the flat fee only, never on a deal. Figures are estimates "
         "from public records and listing data: verify before you offer.",
