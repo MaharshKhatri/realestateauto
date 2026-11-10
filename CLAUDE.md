@@ -172,6 +172,9 @@ engine/
                                 reply_negotiator → auto_queued Touch 2 (in-thread, LOI, human delay, send hours) or
                                 needs_approval → approve() / dismiss(); paced outbound batch (pick_cards, start_campaign,
                                 25-60 s, 25 / 24 h); background poller; status() for the simple home; GmailRepliesAgent
+  vip_agents.py               ← VIP pocket-listing agents (sealed note {"vip_agent": e-mail}): a new address in their
+                                e-mail → NJGIN parcel (class 2, not suppressed, not the signature) → pocket listing at
+                                their price → live underwrite → answered as "still available" (firm number or net ask)
   daniels_law.py              ← Daniel's Law takedown inbox: nondisclosure requests from any sender (body + text / CSV /
                                 PDF attachments) → every NJ address / phone suppressed (source daniels_law), our parcels
                                 at that street too, recorded with a 10-business-day deadline, never answered by itself
@@ -1412,6 +1415,15 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
       "it's available" (the bare pattern had no word boundary: "cred-its available"); "available" after credits /
       repairs / financing / concessions / times is never the house (`reply_negotiator._AVAIL_NOT_HOUSE`);
     - the inbox step is repeated once after a Gmail timeout (60 s per socket operation): 6 of 29 runs had lost it.
+  - **VIP pocket-listing agents** (operator 2026-11-10, `engine/vip_agents.py`): an agent who offered to send her
+    other as-is / estate listings is marked with a sealed note `{"vip_agent": "<e-mail>"}` (swarm_state `vip_agents`).
+    When she e-mails an address we don't have, the same inbox check finds the parcel on NJGIN in a target county
+    (residential class 2 only, never a suppressed address or her signature's office), stores a pocket listing
+    (Listing + ACTIVE_LISTING, source `vip_agent`, her price as the ask, her words as the description), makes her the
+    listing agent, underwrites it live and reads her e-mail as "still available" on that house (`match_method`
+    `vip_pocket`): the desk's one firm number when every certainty check passes (sent by itself under the Touch 2
+    rules), else the no-price net question. A street we already hold in the same town is reused; one the parcel
+    lookup can't find stays on the original thread for a person.
   - **Written answers, no stalls** (`reply_negotiator`): a "call me" with no number gets "I'm in classes; e-mail is
     fastest; the seller's as-is bottom line and big repair items?" (or a call-window ask when the agent won't negotiate
     by e-mail); a proof-of-funds ask with no verified partner gets "no letter today; the sqft and condition?" instead of

@@ -553,6 +553,7 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       the LOI attached at it (`offer_math.note_price`); a house that may not get a number in writing (HOLD, no living
       area, old comps, retail, FRFPA, offered above today's final) is refused and nothing is sent;
     - "cold_guard": "reset" (no "lead"): start the bounce count over (engine/cold_guard.reset);
+    - "vip_agent": "<e-mail>" (+ "remove"): a VIP pocket-listing agent (engine/vip_agents.py);
     - "daniels_law" + "done" (no "lead"): the operator looked at that Daniel's Law request; "suppress_address" /
       "suppress_phone": a home address / phone the request named that the parser missed (source daniels_law);
     - "prospect" (no "lead"): a flipper's public business contacts / pitch stage for the Deal Desk pipeline
@@ -572,6 +573,18 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("operator"), dict)]:
         try:
             set_operator(item["operator"])
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
+            errors.append(type(exc).__name__)
+        items = [i for i in items if i is not item]
+    for item in [i for i in items if isinstance(i, dict) and i.get("vip_agent") and not i.get("lead")
+                 and not i.get("street")]:
+        # {"vip_agent": "<e-mail>"} (+ "remove": true): a pocket-listing agent whose new addresses become leads, priced
+        # and answered on the next inbox check (engine/vip_agents.py). Kept in swarm_state, never in a committed file.
+        try:
+            from engine import vip_agents
+            with session_scope() as s:
+                vip_agents.set_vip(s, str(item["vip_agent"]), remove=bool(item.get("remove")))
             done += 1
         except Exception as exc:                   # noqa: BLE001 - reported by name only
             errors.append(type(exc).__name__)

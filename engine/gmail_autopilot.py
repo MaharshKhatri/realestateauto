@@ -597,7 +597,7 @@ def auto_touch2_block(session: Session, lead: Lead, analysis: Any, method: str |
     if (method or "").startswith("voice"):
         return ("they texted you" if method == "voice_text" else "they left you a voicemail") + \
             ": call them back, or text back from your phone (the drafted text is on the lead)"
-    if method not in ("thread", "agent_email"):
+    if method not in ("thread", "agent_email", "vip_pocket"):
         return "matched by the street name only: confirm it's about this listing"
     intents = set(analysis.parsed.intents)
     if analysis.parsed.counter_amount:
@@ -706,6 +706,13 @@ def _drop_email(session: Session, contact: Contact, why: str) -> None:
         session.flush()
 
 
+def analysis_text(method: str | None, text: str) -> str:
+    """What the reader analyzes: a VIP's new pocket listing reads as "still available" on that house (Touch 2: the
+    desk's firm number, or the no-price net question), never as a reply about the thread's first house."""
+    from engine.vip_agents import POCKET_TEXT
+    return POCKET_TEXT if method == "vip_pocket" else text
+
+
 _NOT_A_PERSON = re.compile(r"\b(realty|realtors?|real estate|team|group|office|properties|homes|inc|llc|associates|"
                            r"brokerage|re/?max|info|admin|support|no-?reply|notifications?|mailer|sales)\b", re.I)
 
@@ -779,6 +786,22 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
     if voice:
         # The Voice relay address would turn an e-mail into a text from the operator's number: never store it.
         mail = replace(mail, text=strip_voice(mail.text))
+    if not voice and mail.from_email:
+        # A VIP pocket-listing agent naming a house we don't have: that house becomes the lead, priced now
+        # (engine/vip_agents.py), and her e-mail is answered as a "still available" on it.
+        from engine import vip_agents as vip
+        if mail.from_email in vip.vip_emails(session):
+            try:
+                pocket = vip.open_pocket_lead(session, text=mail.text, from_email=mail.from_email,
+                                              from_name=mail.from_name, message_id=mail.message_id,
+                                              current_lead=lead, agent=agent)
+            except Exception as exc:                # noqa: BLE001 - the e-mail is still read on its own thread
+                log.warning("VIP pocket listing failed: %s", type(exc).__name__)
+                pocket = None
+            if pocket is not None and pocket.id != lead.id:
+                lead, method = pocket, "vip_pocket"
+                agent = next((c for c in lead.contacts if c.email and c.email.strip().lower() == mail.from_email),
+                             None) or ao.agent_contact(lead)
     row = InboundReply(message_id=mail.message_id, lead_id=lead.id, contact_id=agent.id if agent else None,
                        from_email=None if voice else mail.from_email, from_name=mail.from_name[:160],
                        subject=mail.subject[:300], received_at=when, in_reply_to=mail.in_reply_to,
@@ -806,7 +829,7 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
         row.headline = "OK TO CHECK BACK: nothing to answer (the check-in date stands)"
         row.note = "they agreed to our check-in: nothing to answer, no call; the follow-up already set stays"
         return row
-    an = rn.analyze(session, lead, mail.text, now=now,
+    an = rn.analyze(session, lead, analysis_text(method, mail.text), now=now,
                     agent=writer_contact(lead, mail.from_email, mail.from_name, card=agent))
     inter = rn.record(session, lead, an, mail.text, now=now)
     if voice:
@@ -823,7 +846,7 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
         row.status, row.resolved_at = "opted_out", when
         row.note = "they asked to stop: no more e-mails or calls to this agent (internal stop list)"
         return row
-    block = auto_touch2_block(session, lead, an, method, mail.text)
+    block = auto_touch2_block(session, lead, an, method, analysis_text(method, mail.text))
     if block is None:
         lo, hi = (_cfg().get("touch2_delay_minutes") or [4, 11])[:2]
         row.status = "auto_queued"
@@ -1008,7 +1031,7 @@ def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
             Interaction.outcome.in_((*ao.TOUCH_OUTCOMES, ao.REPLY_OUTCOME, ao.PHONE_YES_OUTCOME))).limit(1))
         writer = writer_contact(lead, row.from_email, row.from_name,
                                 card=s.get(Contact, row.contact_id) if row.contact_id else None)
-        an = rn.analyze(s, lead, row.body_text or "", now=now, agent=writer)
+        an = rn.analyze(s, lead, analysis_text(row.match_method, row.body_text or ""), now=now, agent=writer)
         block = ("something happened on this lead after the reply" if newer else
                  auto_touch2_block(s, lead, an, row.match_method, row.body_text or ""))
         if block:
@@ -1387,7 +1410,7 @@ def refresh_open_replies(session: Session, now: datetime | None = None, *, promo
         lead = session.get(Lead, row.lead_id)
         if lead is None or not row.body_text:
             continue
-        text = strip_quoted(row.body_text)
+        text = analysis_text(row.match_method, strip_quoted(row.body_text))
         an = rn.analyze(session, lead, text, now=now,
                         agent=writer_contact(lead, row.from_email, row.from_name,
                                              card=session.get(Contact, row.contact_id) if row.contact_id else None))

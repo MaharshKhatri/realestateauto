@@ -791,3 +791,80 @@ def test_a_cold_opener_to_a_domain_that_does_not_exist_is_not_sent(live, monkeyp
     with pytest.raises(Exception, match="doesn't exist"):
         ao.deliver(ao.build_opener(lead, agent), session=db, smtp_factory=FakeSMTP)
     assert FakeSMTP.sent == [] and "kim@gone-broker.com" in ao.bounced_emails(db)
+
+
+def test_a_vip_agents_new_address_becomes_a_priced_lead_and_is_answered(live, monkeypatch):
+    """Operator 2026-11-10 (Olga, 219 W 1st St, said she'd send her other as-is / estate listings): a VIP agent's new
+    address is found on NJGIN, stored as a pocket listing at her price, underwritten and answered on that house."""
+    import agents.scrapers.njgis_client as njgis
+    import engine.underwriter as uw
+    from db.models import Listing, Valuation
+    from engine import vip_agents as vip
+
+    class FakeGIS:
+        def resolve_municipality(self, county, town):
+            return ("NEWARK CITY", "0714") if county == "Essex" and town.lower().startswith("newark") else None
+
+        def find_by_address(self, county, street, mun):
+            return {"street": street} if street.startswith("12 SAMPLE") else None
+
+    def fake_property(feature):
+        return {"parcel_id": "ESSEX-0714-900-1", "county": "Essex", "municipality": "NEWARK CITY", "mun_code": "0714",
+                "street_address": feature["street"], "city": "Newark", "zip_code": "07106", "property_class": "2",
+                "dwellings": 1, "year_built": 1925, "assessed_total": 200000, "sq_ft": 1400}
+
+    class FakeUW:
+        def __init__(self, **kw):
+            pass
+
+        def underwrite(self, session, prop):
+            session.add(Valuation(property=prop, arv_estimate=500000, as_is_value=400000, est_repair_cost=60000,
+                                  rehab_tier="MEDIUM", mao_conservative=278800, mao_aggressive=292000,
+                                  anchor_offer=245300, confidence_score=80, verdict="STRONG", is_current=True,
+                                  comp_count=4, assumptions_json={"arv_before_tax_drag": 500000, "frfpa_applies": False}))
+            session.flush()
+            return True
+    monkeypatch.setattr(njgis, "NJGISClient", FakeGIS)
+    monkeypatch.setattr(njgis, "feature_to_property", fake_property)
+    monkeypatch.setattr(uw, "Underwriter", FakeUW)
+    monkeypatch.setattr(uw, "_default_listing_provider", lambda: None)
+    db = live
+    lead = listed(db)
+    opener(db, lead)
+    vip.set_vip(db, "pat@broker.test")
+    db.commit()
+    body = ("Hi, I have another one coming up: 12 Sample Ave, Newark. Estate sale, needs work, asking 320k.\n\n"
+            "Pat Agent\nGarden Realty\n100 Office Blvd, Newark NJ 07102")
+    fake = FakeIMAP({31: mail(31, body, subject="new one")})
+    gm.set_imap_factory(lambda: fake)
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
+    db.expire_all()
+    row = db.query(InboundReply).one()
+    new = db.get(Lead, row.lead_id)
+    assert new.id != lead.id and new.property.street_address.upper().startswith("12 SAMPLE AVE")
+    assert row.match_method == "vip_pocket"
+    lst = db.query(Listing).filter_by(property_id=new.property.id).one()
+    assert lst.list_price == 320000 and "Estate sale" in lst.description
+    assert "12 Sample Ave" in ((row.analysis_json or {}).get("reply_text") or "")
+    assert db.query(Lead).count() == 2                                   # the signature's office address made nothing
+
+
+def test_pocket_addresses_skip_the_signature_and_read_the_price():
+    from engine import vip_agents as vip
+    text = ("Two coming: 12 Oak St in Edison, as-is, 350k. Also 4 Pine Ave, Newark NJ 07106 for $299,000.\n\n"
+            "Olga Sample\nSample Realtors\n123 Lincoln Highway, Edison")
+    found = vip.pocket_addresses(text, "Olga Sample")
+    assert [(a["street"], a["town"]) for a in found] == [("12 Oak St", "Edison"), ("4 Pine Ave", "Newark")]
+    assert vip.pocket_price(text, found[0]["end"]) == 350000
+    assert vip.pocket_price(text, found[1]["end"]) == 299000
+
+
+def test_a_sealed_note_marks_a_vip_agent(live):
+    from engine import cloud_desk
+    from engine import vip_agents as vip
+    key = "k" * 32
+    out = cloud_desk.apply_note(cloud_desk.seal_note([{"vip_agent": "Olga@Sample.test"}], cloud_desk.public_hex(key)),
+                                key)
+    assert out["note_done"] == 1 and not out.get("note_errors"), out
+    live.expire_all()
+    assert vip.vip_emails(live) == {"olga@sample.test"}
