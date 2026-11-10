@@ -46,6 +46,7 @@ STREAMS: dict[str, tuple[str, str]] = {
     "s8": ("engine.streams.s8_contract_fallout", "Contract fallout"),
     "s9": ("engine.streams.s9_cpa_1031_feed", "CPA cost-seg / 1031 feed"),
     "s10": ("engine.streams.s10_pre_mls_distress", "Pre-MLS distress"),
+    "s11": ("engine.streams.s11_sheriff_bid_sheets", "Sheriff-sale bid sheets"),
 }
 STATE_KEY = "firm_last_run"
 TARGETS_FILE = ROOT / "config" / "b2b_targets.yaml"
@@ -103,6 +104,7 @@ KIND_STREAM = {
     "rehab_general_contractor": "s4", "dumpster_rental": "s4", "hard_money_lender": "s5", "mortgage_broker": "s5",
     "property_tax_appeal_attorney": "s6", "cost_segregation_firm": "s9", "qualified_intermediary_1031": "s9",
     "real_estate_cpa": "s9", "investor_friendly_broker": "s2", "investor_agent": "s2", "flipper": "s2",
+    "sheriff_bidder": "s11",                        # cash buyers who took title by a sheriff's deed
     "builder_developer": "s13",                     # the teardown digest (s13); seeded now, pitched once s13 runs
 }
 

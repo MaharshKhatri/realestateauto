@@ -430,3 +430,6 @@ research_firm:
           agent_sheet_rows: 18, agent_harvest_days: 7}
                                      # agent docket sheet: $99/month per town (the research's pre-foreclosure feed
                                      # price, $99/month per county, applied to the narrower town sheet)
+    s11: {enabled: true, price_monthly: 199, price_property: 39, pitches_per_run: 3, window_days: 21,
+          feature_lead_days: 3, min_rows_to_pitch: 3, sample_rows: 16, max_stale_days: 14, comp_months: 36,
+          min_comp_sales: 3, sync_lookback_days: 1095, target_kinds: [sheriff_bidder, flipper]}

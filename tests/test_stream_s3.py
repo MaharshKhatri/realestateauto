@@ -79,7 +79,9 @@ def test_surplus_math_amounts_and_names():
     # a private plaintiff is never named; a party line keeps only its business parts
     assert s3.plaintiff_label("QUINN SAMPLE") == "(private party)"
     assert s3.plaintiff_label("QUINN SAMPLE, AND ALEX EXAMPLE AND SAMPLE LIVE LLC") == "SAMPLE LIVE LLC"
-    assert s3.plaintiff_label("WELLS FARGO BANK, N.A.") == "WELLS FARGO BANK, N.A"
+    assert s3.plaintiff_label("WELLS FARGO BANK, N.A.") == "WELLS FARGO BANK, N.A."
+    assert s3.plaintiff_label("PENNYMAC LOAN SERVICES, LLC") == "PENNYMAC LOAN SERVICES, LLC"     # was "LLC"
+    assert s3.plaintiff_label("TOWNSHIP OF IRVINGTON") == "TOWNSHIP OF IRVINGTON"                 # was "(private party)"
     # association / municipal plaintiffs are junior; a "National Association" lender is not
     assert s3.junior_plaintiff("SAMPLE HILL TOWNHOUSE ASSOCIATION, INC.")
     assert s3.junior_plaintiff("TOWNSHIP OF SAMPLE")

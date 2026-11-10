@@ -193,17 +193,11 @@ def third_party_grantee(grantee: str | None, plaintiff: str | None) -> bool:
 
 
 def plaintiff_label(name: str | None, n: int = 48) -> str:
-    """A lender or other business plaintiff by name, a private person never (product rule): a party line such as
-    "QUINN SAMPLE, AND ALEX EXAMPLE AND SAMPLE LIVE LLC" keeps only its business parts ("SAMPLE LIVE LLC")."""
-    s = clean(name).strip(" ,;")
-    if not s:
-        return "-"
-    parts = [clean(x).strip(" ,.;") for x in re.split(r";|&|\bAND\b|,", s, flags=re.I)]
-    keep = [x for x in parts if x and (entity_like(x) or is_lender(x.upper()))]
-    if not keep:
-        return "(private party)"
-    out = ", ".join(keep)
-    return out if len(out) <= n else out[: n - 3].rstrip(" ,") + "..."
+    """A lender, association or town by name, a private person never (product rule). Shared with s11
+    (`plaintiff_name`): "PENNYMAC LOAN SERVICES, LLC" stays whole (it used to print "LLC"), "TOWNSHIP OF IRVINGTON" is
+    the town (it used to print "(private party)"), "QUINN SAMPLE AND SAMPLE LIVE LLC" keeps only "SAMPLE LIVE LLC"."""
+    from engine.streams.s11_sheriff_bid_sheets import plaintiff_name
+    return plaintiff_name(name, n)
 
 
 def adjournment_line(meta: dict[str, Any]) -> str:

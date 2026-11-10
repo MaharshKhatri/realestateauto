@@ -120,10 +120,21 @@ def agent_hook(t: FirmTarget, towns: str) -> str:
 
 # -- targets ------------------------------------------------------------------------------------------------------
 def sync_flipper_prospects(session: Session) -> int:
-    """Flipper prospects with a business e-mail become (or stay) firm targets (one row per address)."""
+    """Flipper prospects with a business e-mail become (or stay) firm targets (one row per address). A family that
+    took title by a sheriff's deed is left for s11 (the bid sheets fit them better; one target row per e-mail)."""
+    from datetime import date as _date
+
+    from engine.streams import s11_sheriff_bid_sheets as s11
+    try:
+        bidders = set(s11.sheriff_families(session, _date.today(), 1095))
+    except Exception:                                    # noqa: BLE001 - never blocks s2's own sync
+        bidders = set()
     n = 0
     for p in session.scalars(select(Prospect).where(Prospect.email.is_not(None),
                                                     Prospect.stage.notin_(("LOST", "PAYING")))):
+        if p.family_key and p.family_key in bidders and \
+                not session.scalar(select(FirmTarget.id).where(FirmTarget.email == p.email)):
+            continue
         t = fo.upsert_target(session, kind="flipper", stream="s2", email=p.email, org=p.entity_name,
                              phone=p.phone, website=p.website, source=p.source,
                              score=float(p.purchases_36m or 0), data={"prospect_key": p.key,
