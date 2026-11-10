@@ -18,8 +18,15 @@ deed records, so cost-seg triggers look back 18 months.
 
 Privacy: buyers are shown only when they are business entities (trusts, estates, lenders, churches and governments
 are left out: a personal trust carries a person's name; a lender's REO deed or a tax-exempt owner is no cost-seg
-client). 1031 rows show the public listing address, the town, the ask, the last recorded sale and the listing
-brokerage, never an owner (often individuals). Every row passes the Daniel's Law / stop suppression list.
+client). Cost-seg rows show the property's street, the business-entity buyer, the price and the deed month; 1031 rows
+show the public listing address, the town, the ask, the last recorded sale and the listing brokerage, never an owner
+(often individuals). Every row passes the Daniel's Law / stop suppression list.
+
+The pitch is the 2-step funnel (2026-11-10): Touch 1 is two plain sentences with no attachment and no "$" (how many
+rows we pulled in the prospect's county, one public-record street, "Want the property and buyer-entity list?"). The
+feed built for that county, with the named row first, waits as the held sample: its masked copy (`sample_path`: rows
+1-2 in full, the property and the entity / brokerage hidden from row 3) with the flat price, released in the
+prospect's own thread when they say yes. The second cold touch is one sentence in the first one's thread.
 """
 from __future__ import annotations
 
@@ -48,6 +55,7 @@ from db.models import (
 )
 from engine.streams.base import (
     PRIORITY_SPECIALTY,
+    SAMPLE_FULL_ROWS,
     Outbound,
     Stream,
     StreamContext,
@@ -56,12 +64,23 @@ from engine.streams.base import (
     money,
     operator_footer,
     render_table_pdf,
+    sample_path,
+    slug,
 )
-from engine.streams.s6_tax_appeals import pdf_pages, place_ok
+from engine.streams.s6_tax_appeals import (
+    earlier_pitch,
+    names_street,
+    pdf_pages,
+    pitch_due,
+    place_ok,
+    thread_subject,
+)
 
 KEY = "s9"
 TARGET_KINDS = ("cost_segregation_firm", "qualified_intermediary_1031", "real_estate_cpa")
 COMMERCIAL = ("4A", "4C")
+QI = "qualified_intermediary_1031"
+STATEWIDE = {"", "statewide", "nj", "new jersey", "all"}
 ACTIVE_STATUSES = ("for_sale", "active")
 ELIGIBILITY_LINE = "Triggers from public records; eligibility is for the client's CPA to determine."
 BONUS_LINE = ("Under the 2025 federal law, building components with recovery periods of 20 years or less of property "
@@ -187,6 +206,7 @@ class CostSegRow:
     kind: str
     source: str                      # "deed export" / "MOD-IV" / "recorded purchase"
     keys: tuple[tuple[Any, ...], ...]  # one purchase seen in two sources shares a key
+    street: str = ""                 # the property's street (blank when the record has none)
 
 
 def purchase_keys(entity: str | None, street: str | None, price: float | None, when: date) -> tuple[tuple[Any, ...], ...]:
@@ -246,7 +266,7 @@ def cost_seg_rows(session: Session, today: date, limits: dict[str, Any], metrics
                                 owner_mailing_address=d.grantee_address, owner_city_state_zip="")
         add(CostSegRow(entity=str(d.grantee).strip(), town=_title(town), county=(d.county or "").title(),
                        price=float(d.sale_price or 0), deed_date=d.deed_date, kind=kind, source="deed export",
-                       keys=purchase_keys(d.grantee, street, d.sale_price, d.deed_date)), place, prop)
+                       keys=purchase_keys(d.grantee, street, d.sale_price, d.deed_date), street=street), place, prop)
 
     # 2. purchases recorded on our cash-buyer records
     for cb in session.scalars(select(CashBuyer).where(or_(CashBuyer.last_purchase_date >= since,
@@ -271,7 +291,8 @@ def cost_seg_rows(session: Session, today: date, limits: dict[str, Any], metrics
                                     owner_mailing_address=cb.mailing_address, owner_city_state_zip="")
             add(CostSegRow(entity=cb.entity_name.strip(), town=_title(town), county=str(x.get("county") or "").title(),
                            price=float(x["price"]), deed_date=when, kind=kind, source="recorded purchase",
-                           keys=purchase_keys(cb.entity_name, x.get("address"), x["price"], when)), place)
+                           keys=purchase_keys(cb.entity_name, x.get("address"), x["price"], when),
+                           street=str(x.get("address") or "")), place)
 
     # 3. MOD-IV last sale on parcels owned by an entity
     props = session.scalars(select(Property).where(
@@ -284,7 +305,8 @@ def cost_seg_rows(session: Session, today: date, limits: dict[str, Any], metrics
             continue
         add(CostSegRow(entity=str(p.owner_name).strip(), town=_title(p.municipality), county=(p.county or "").title(),
                        price=float(p.last_sale_price or 0), deed_date=p.last_sale_date, kind=kind, source="MOD-IV",
-                       keys=purchase_keys(p.owner_name, p.street_address, p.last_sale_price, p.last_sale_date)), p)
+                       keys=purchase_keys(p.owner_name, p.street_address, p.last_sale_price, p.last_sale_date),
+                       street=p.street_address or ""), p)
     return sorted(found, key=lambda r: (-r.price, -r.deed_date.toordinal()))
 
 
@@ -380,89 +402,242 @@ def exchange_rows(session: Session, today: date, limits: dict[str, Any], metrics
 
 
 # -- the feed -----------------------------------------------------------------------------------------------------
-def feed_rows(cs: list[CostSegRow], ex: list[ExchangeRow]) -> list[list[str]]:
+def street_text(row: CostSegRow | ExchangeRow) -> str:
+    """The street line only ("12-14 ELM ST, ELIZABETH" -> "12-14 Elm St"): the town has its own column."""
     from core.text import postal_title
+    return postal_title((row.street or "").split(",")[0]).strip(" .,")
 
+
+def short_kind(kind: str) -> str:
+    """The table's Kind column: "apartment (class 4C)" -> "Apartments (4C)", "3 units (class 2)" -> "3 units"."""
+    k = kind or ""
+    if "4C" in k:
+        return "Apartments (4C)"
+    if "4A" in k:
+        return "Commercial (4A)"
+    m = re.match(r"(\d+) units", k)
+    if m:
+        return f"{m.group(1)} units"
+    return "Multi-family" if "multi" in k.lower() else k
+
+
+def feed_rows(cs: list[CostSegRow], ex: list[ExchangeRow], exchange_first: bool = False) -> list[list[str]]:
+    """One line per row. The Property and entity / brokerage columns are the identifying ones (masked from row 3 in
+    the sample); town, kind, price and the public-record detail stay visible."""
     def place(town: str, county: str) -> str:
         return _e(clip(f"{town} ({county})" if town and county else town or f"{county} County", 28))
 
-    rows = [["A cost seg", place(r.town, r.county), _e(r.kind), f"<b>{_e(clip(r.entity, 42))}</b>",
-             f"{money(r.price)} paid", f"Bought {r.deed_date:%b %Y} ({r.source})"] for r in cs]
-    rows += [["B 1031", place(r.town, r.county), f"{_e(clip(postal_title(r.street), 30))} · {_e(r.kind)}",
-              _e(clip(r.brokerage, 40)) or "not on record", f"{money(r.list_price)} ask",
-              f"Last sale {r.last_sale_date.year} at {money(r.last_sale_price)}; ask {r.multiple:.1f}x"] for r in ex]
-    return rows
+    a = [["A cost seg", place(r.town, r.county), _e(clip(street_text(r), 30)) or "-", _e(short_kind(r.kind)),
+          f"<b>{_e(clip(r.entity, 38))}</b>", f"{money(r.price)} paid",
+          f"Bought {r.deed_date:%b %Y} ({r.source})"] for r in cs]
+    b = [["B 1031", place(r.town, r.county), _e(clip(street_text(r), 30)) or "-", _e(short_kind(r.kind)),
+          _e(clip(r.brokerage, 38)) or "-", f"{money(r.list_price)} ask",
+          f"Last sale {r.last_sale_date.year} at {money(r.last_sale_price)}; ask {r.multiple:.1f}x"] for r in ex]
+    return b + a if exchange_first else a + b
+
+
+FEED_HEAD = ["Table", "Town (county)", "Property", "Kind", "A: buyer entity · B: listing brokerage", "Price",
+             "Public-record detail"]
 
 
 def render_feed(path: Path, cs: list[CostSegRow], ex: list[ExchangeRow], *, week_of: date, op: dict[str, str],
-                limits: dict[str, Any]) -> Path:
+                limits: dict[str, Any], scope: str = "", exchange_first: bool = False) -> Path:
     lo, hi = float(limits["min_price"]), float(limits["max_price"])
-    notes = [
-        f"<b>A. Cost-seg triggers</b> ({len(cs)}): business-entity purchases of 2+ unit residential or class 4A / 4C "
-        f"property for {money(lo)}-{money(hi)} recorded in the last {int(limits['lookback_months'])} months (deed "
-        "exports, recorded purchases, MOD-IV; MOD-IV lags the deed records). Trusts, estates, lenders and tax-exempt "
-        "owners are left out. Largest first.",
-        f"<b>B. 1031 triggers</b> ({len(ex)}): multi-family / class 4 properties listed for sale whose last recorded "
-        f"sale is {int(limits['min_hold_years'])}+ years old and whose ask is {float(limits['min_gain_multiple']):.1f}x "
-        "or more that sale. Last sale from MOD-IV: a later or non-arm's-length transfer changes the picture. No owner "
-        "names; addresses are the public listing addresses. Largest ask minus last sale first.",
-        BONUS_LINE,
-    ]
+    note_a = (f"<b>A. Cost-seg triggers</b> ({len(cs)}): business-entity purchases of 2+ unit residential or class 4A / "
+              f"4C property for {money(lo)}-{money(hi)} recorded in the last {int(limits['lookback_months'])} months "
+              "(deed exports, recorded purchases, MOD-IV; MOD-IV lags the deed records). Trusts, estates, lenders and "
+              "tax-exempt owners are left out. Largest first.")
+    note_b = (f"<b>B. 1031 triggers</b> ({len(ex)}): multi-family / class 4 properties listed for sale whose last "
+              f"recorded sale is {int(limits['min_hold_years'])}+ years old and whose ask is "
+              f"{float(limits['min_gain_multiple']):.1f}x or more that sale. Last sale from MOD-IV: a later or "
+              "non-arm's-length transfer changes the picture. No owner names; addresses are the public listing "
+              "addresses. Largest ask minus last sale first.")
+    notes = [note_b, note_a] if exchange_first else [note_a, note_b]
+    where = f" · {scope}" if scope else ""
     return render_table_pdf(
-        path, title="NJ Cost-Seg & 1031 Trigger Feed",
-        subtitle=(f"Week of {week_of:%B} {week_of.day}, {week_of.year} · Table A: {len(cs)} recent entity purchases · "
-                  f"Table B: {len(ex)} long-held multi-family listings · {ELIGIBILITY_LINE}"),
-        head=["Table", "Town (county)", "Property", "A: buyer entity · B: listing brokerage", "Price",
-              "Public-record detail"],
-        rows=feed_rows(cs, ex), notes=notes, box=f"<b>{ELIGIBILITY_LINE}</b> Research data only, not tax advice.",
-        footer=operator_footer(op), col_widths=[0.65, 1.45, 2.6, 2.35, 0.95, 2.1])
+        path, title="NJ Cost-Seg & 1031 Trigger Feed" + (f": {scope}" if scope and scope != "New Jersey" else ""),
+        subtitle=(f"Week of {week_of:%B} {week_of.day}, {week_of.year}{where} · Table A: {len(cs)} recent entity "
+                  f"purchases · Table B: {len(ex)} long-held multi-family listings · {ELIGIBILITY_LINE}"),
+        head=FEED_HEAD, rows=feed_rows(cs, ex, exchange_first),
+        notes=notes + [BONUS_LINE],
+        box=f"<b>{ELIGIBILITY_LINE}</b> Research data only, not tax advice. A dash (-) means not on record.",
+        footer=operator_footer(op), col_widths=[0.62, 1.45, 1.75, 1.0, 2.2, 0.95, 2.13])
 
 
-# -- the pitch ----------------------------------------------------------------------------------------------------
-def pitch_body(kind: str, n_cs: int, n_ex: int, price: float, first: str) -> str:
-    """Plain, truthful, flat price; never tax advice and never a promise of clients."""
-    if kind == "qualified_intermediary_1031":
-        what = (f"I compile a weekly New Jersey feed of long-held multi-family properties now listed for sale at 1.5x "
-                f"or more their last recorded sale. This week's feed is attached, with {n_ex} listings and their "
-                "brokerages.")
-    elif kind == "cost_segregation_firm":
-        what = (f"I compile a weekly New Jersey feed of business-entity purchases of multi-family and commercial "
-                f"property between $500K and $5M in the last 18 months. This week's feed is attached, with {n_cs} "
-                "recent purchases.")
+def fit_feed(out: Path, cs: list[CostSegRow], ex: list[ExchangeRow], *, exchange_first: bool = False, **kw: Any
+             ) -> tuple[Path, list[CostSegRow], list[ExchangeRow]]:
+    """One page, always, for the feed and its masked sample (whose subtitle is a line longer): drop a row from the end
+    of the longer table (the other table on a tie, so the lead table's first row, the one a pitch names, stays) until
+    both fit. The sample is rewritten with every try; a stale one from a longer try is removed first."""
+    sample = sample_path(out)
+    while True:
+        sample.unlink(missing_ok=True)
+        path = render_feed(out, cs, ex, exchange_first=exchange_first, **kw)
+        if (pdf_pages(path) <= 1 and (not sample.exists() or pdf_pages(sample) <= 1)) or len(cs) + len(ex) <= 1:
+            return path, cs, ex
+        lead, other = (ex, cs) if exchange_first else (cs, ex)
+        if len(lead) > len(other) or not other:
+            lead = lead[:-1]
+        else:
+            other = other[:-1]
+        cs, ex = (other, lead) if exchange_first else (lead, other)
+
+
+class FeedSet:
+    """The week's feeds: the statewide product plus one per pitched scope, each rendered once (the same rows in the
+    same order reuse the file already written)."""
+
+    def __init__(self, ctx: StreamContext, limits: dict[str, Any], week: str, monday: date) -> None:
+        self.ctx, self.limits, self.week, self.monday = ctx, limits, week, monday
+        self.cache: dict[tuple[Any, ...], tuple[Path, list[CostSegRow], list[ExchangeRow]]] = {}
+
+    @property
+    def rendered(self) -> int:
+        return len(self.cache)
+
+    def get(self, cs: list[CostSegRow], ex: list[ExchangeRow], *, exchange_first: bool = False, scope: str = "",
+            stem: str = "") -> tuple[Path, list[CostSegRow], list[ExchangeRow]]:
+        k = (tuple(map(id, cs)), tuple(map(id, ex)), exchange_first)
+        if k not in self.cache:
+            out = self.ctx.out_dir / f"{stem or f'{KEY}_feed_{self.week}'}.pdf"
+            if any(out == v[0] for v in self.cache.values()):      # another order of rows already took the name
+                out = out.with_name(f"{out.stem}_{len(self.cache)}.pdf")
+            self.cache[k] = fit_feed(out, cs, ex, exchange_first=exchange_first, week_of=self.monday,
+                                     op=self.ctx.operator or {}, limits=self.limits, scope=scope)
+        return self.cache[k]
+
+
+# -- the pitch: the 2-step funnel (2026-11-10) ---------------------------------------------------------------------
+def county_key(text: str | None) -> str:
+    return re.sub(r"\s+county$", "", (text or "").strip().lower())
+
+
+def spoken_price(v: float) -> str:
+    """A recorded price in words for Touch 1, which carries no "$": "1.2 million dollars", "650,000 dollars"."""
+    if v >= 1_000_000:
+        return f"{f'{v / 1_000_000:.2f}'.rstrip('0').rstrip('.')} million dollars"
+    return f"{v:,.0f} dollars"
+
+
+def lead_table(kind: str, cs: list[CostSegRow], ex: list[ExchangeRow]) -> str | None:
+    """Which table the pitch is about: a 1031 intermediary hears about long-held listings, a cost-seg firm about entity
+    purchases, a CPA about purchases first (listings when there are none). Only rows with a street can be named."""
+    has_cs, has_ex = any(r.street for r in cs), any(r.street for r in ex)
+    if kind == QI:
+        return "ex" if has_ex else None
+    if kind == "cost_segregation_firm":
+        return "cs" if has_cs else None
+    return "cs" if has_cs else "ex" if has_ex else None
+
+
+def choose_scope(t: FirmTarget, cs_all: list[CostSegRow], ex_all: list[ExchangeRow], min_rows: int
+                 ) -> tuple[str, str, list[CostSegRow], list[ExchangeRow], str] | None:
+    """The prospect's own county when its rows can carry a pitch, else New Jersey: (label, key, cs, ex, lead)."""
+    ck = county_key(t.county)
+    options: list[tuple[str, str, list[CostSegRow], list[ExchangeRow]]] = []
+    if ck not in STATEWIDE:
+        options.append((f"{ck.title()} County", ck, [r for r in cs_all if county_key(r.county) == ck],
+                        [r for r in ex_all if county_key(r.county) == ck]))
+    options.append(("New Jersey", "nj", cs_all, ex_all))
+    for label, key, cs, ex in options:
+        lead = lead_table(t.kind, cs, ex)
+        if lead and len(cs) + len(ex) >= min_rows:
+            return label, key, cs, ex, lead
+    return None
+
+
+def pitch_subject(lead: str, where: str, street: str, n: int) -> str:
+    one, many = ("an entity purchase", "entity purchases") if lead == "cs" else ("a long-held listing",
+                                                                                "long-held listings")
+    return f"{street} + {n - 1} more {many} in {where}" if n > 1 else f"{street}: {one} in {where}"
+
+
+def pitch_body(lead: str, where: str, n: int, row: CostSegRow | ExchangeRow, hold_years: int, first: str) -> str:
+    """Touch 1: two plain sentences, no attachment, no "$", no tax advice: how many rows we pulled where, one
+    public-record street (never an owner who is a person: buyers are business entities, listings name no owner),
+    and a yes/no question."""
+    street, town = street_text(row), f" in {row.town}" if row.town else ""
+    which = "including " if n > 1 else ""
+    if lead == "cs":
+        what = (f"{n} recent multi-family and commercial purchases by business entities" if n > 1
+                else "a recent multi-family or commercial purchase by a business entity")
+        line = (f"We pulled {what} in {where} from public deed and tax records, {which}{street}{town} (bought for "
+                f"{spoken_price(row.price)} in {row.deed_date:%B %Y}), that may fit cost-segregation or 1031 work. "
+                "Want the property and buyer-entity list?")
     else:
-        what = (f"I compile a weekly New Jersey feed of public-record triggers for cost segregation and 1031 work. "
-                f"This week's feed is attached, with {n_cs} recent entity purchases and {n_ex} long-held "
-                "multi-family listings.")
-    return (f"Hello,\n\n{what} Every row comes from recorded deeds, MOD-IV and public listings, and eligibility is for the "
-            f"owner's CPA to decide. It is a flat ${price:,.0f} a month with no other charge. Want me to add you to "
-            f"the weekly list?\n\n{first}").strip()
+        what = (f"{n} multi-family and commercial properties listed for sale" if n > 1
+                else "a multi-family or commercial property listed for sale")
+        line = (f"We pulled {what} in {where} whose last recorded sale was {hold_years} or more years ago, from public "
+                f"listings and tax records, {which}{street}{town} (last sold in {row.last_sale_date.year}), that may "
+                "fit 1031 work. Want the property and listing-brokerage list?")
+    return f"Hello,\n\n{line}\n\n{first}".strip()
 
 
-def _relevant(kind: str, n_cs: int, n_ex: int) -> int:
-    return n_ex if kind == "qualified_intermediary_1031" else n_cs if kind == "cost_segregation_firm" else n_cs + n_ex
+def followup_body(where: str, first: str) -> str:
+    """The second cold touch: one sentence, no attachment, in the first touch's thread."""
+    return f"Hello,\n\nShould I send the {where} list over?\n\n{first}".strip()
 
 
-def pitches(session: Session, ctx: StreamContext, path: Path | None, n_cs: int, n_ex: int) -> list[Outbound]:
-    if not ctx.send or path is None or n_cs + n_ex < int(_lim(ctx, "min_rows_to_pitch")):
+def sample_body(where: str, n_cs: int, n_ex: int, masked: bool, price: float) -> str:
+    """Touch 2, sent with the sample only after their yes: what is attached, that eligibility is the client's CPA's
+    call, the flat price and how to start."""
+    hidden = ("the property and the buyer entity or brokerage" if n_cs and n_ex
+              else "the property and buyer entity" if n_cs else "the property and listing brokerage")
+    rows = f"the first {SAMPLE_FULL_ROWS} rows in full, the rest with {hidden} hidden" if masked else "every row in full"
+    return (f"Here's this week's {where} list (attached): {rows}, all from public records, and the client's CPA "
+            f"decides eligibility. The full weekly feed is ${price:,.0f} a month flat, no other charge, with no "
+            "commission or per-deal fee. Reply \"start\" and I'll set it up.")
+
+
+def pitches(session: Session, ctx: StreamContext, feeds: FeedSet, cs_all: list[CostSegRow],
+            ex_all: list[ExchangeRow]) -> list[Outbound]:
+    """One cold touch per due target (the outbox's gates checked first). Touch 1 names the first row of its lead
+    table in the prospect's county (else New Jersey); the feed for that scope, with that row first, is the held
+    sample. A target touched before gets the one-sentence follow-up in that thread. Both are kind "pitch", so the
+    outbox's gap and max-touches rules hold for each. One key per target per ISO week."""
+    limits = {k: _lim(ctx, k) for k in DEFAULTS}
+    min_rows = int(limits["min_rows_to_pitch"])
+    if not ctx.send or len(cs_all) + len(ex_all) < min_rows:
         return []
-    iso = ctx.now.isocalendar()
+    first = (ctx.operator or {}).get("first", "")
     out: list[Outbound] = []
     targets = session.scalars(select(FirmTarget).where(
         FirmTarget.kind.in_(TARGET_KINDS), FirmTarget.stage.in_(("NEW", "CONTACTED")), FirmTarget.email.is_not(None))
         .order_by(FirmTarget.score.desc(), FirmTarget.id)).all()
-    subjects = {"qualified_intermediary_1031": "Weekly NJ 1031 trigger feed (long-held listings)",
-                "cost_segregation_firm": "Weekly NJ cost-seg trigger feed (entity purchases)",
-                "real_estate_cpa": "Weekly NJ cost-seg and 1031 trigger feed"}
     for t in targets:
-        if len(out) >= int(_lim(ctx, "pitches_per_run")):
+        if len(out) >= int(limits["pitches_per_run"]):
             break
-        if not _relevant(t.kind, n_cs, n_ex):
+        key = f"{KEY}:pitch:{t.id}:{feeds.week}"
+        scope = choose_scope(t, cs_all, ex_all, min_rows)
+        if scope is None or not pitch_due(session, t, key, ctx.now):
             continue
+        where, skey, cs, ex, lead = scope
+        earlier = earlier_pitch(session, t.id, KEY) if int(t.touches or 0) > 0 else None
+        lead_all: list[Any] = list(cs if lead == "cs" else ex)
+        named_ok = [r for r in lead_all if r.street]
+        named = next((r for r in named_ok if earlier is not None and names_street(earlier.body, street_text(r))),
+                     named_ok[0])
+        lead_rows = [named] + [r for r in lead_all if r is not named]
+        cs_in = lead_rows[: int(limits["rows_costseg"])] if lead == "cs" else cs[: int(limits["rows_costseg"])]
+        ex_in = lead_rows[: int(limits["rows_1031"])] if lead == "ex" else ex[: int(limits["rows_1031"])]
+        path, cs_shown, ex_shown = feeds.get(
+            cs_in, ex_in, exchange_first=lead == "ex", scope=where,
+            stem=f"{KEY}_feed_{feeds.week}_{slug(skey, 16)}_{lead}_{slug(street_text(named), 24)}")
+        n = len(cs_shown if lead == "cs" else ex_shown)
+        if not n:
+            continue
+        sample = sample_path(path)
+        if earlier is not None:
+            subject, body = thread_subject(earlier.subject), followup_body(where, first)
+        else:
+            subject = pitch_subject(lead, where, street_text(named), n)
+            body = pitch_body(lead, where, n, named, int(limits["min_hold_years"]), first)
         out.append(Outbound(
-            stream=KEY, key=f"{KEY}:pitch:{t.id}:{iso[0]}-W{iso[1]:02d}", to=t.email or "",
-            subject=subjects.get(t.kind, subjects["real_estate_cpa"]),
-            body=pitch_body(t.kind, n_cs, n_ex, float(_lim(ctx, "price_monthly")), (ctx.operator or {}).get("first", "")),
-            priority=PRIORITY_SPECIALTY, kind="pitch", attachments=[path], target_id=t.id))
+            stream=KEY, key=key, to=t.email or "", subject=subject, body=body, priority=PRIORITY_SPECIALTY,
+            kind="pitch", target_id=t.id, in_reply_to=earlier.message_id if earlier is not None else None,
+            sample_body=sample_body(where, len(cs_shown), len(ex_shown), sample.exists(),
+                                    float(limits["price_monthly"])),
+            sample_attachments=[sample if sample.exists() else path]))
     return out
 
 
@@ -484,18 +659,12 @@ class CostSegFeedStream(Stream):
         cs, ex = cs_all[: int(limits["rows_costseg"])], ex_all[: int(limits["rows_1031"])]
         res.processed = metrics["deeds_seen"] + metrics["purchases_seen"] + metrics["parcels_seen"] + metrics["listings_seen"]
         res.found = len(cs_all) + len(ex_all)
-        path: Path | None = None
+        iso = ctx.now.isocalendar()
+        feeds = FeedSet(ctx, limits, f"{iso[0]}-W{iso[1]:02d}", date.fromisocalendar(iso[0], iso[1], 1))
         if cs or ex:
-            iso = ctx.now.isocalendar()
-            week_of = date.fromisocalendar(iso[0], iso[1], 1)
-            out = ctx.out_dir / f"{KEY}_feed_{iso[0]}-W{iso[1]:02d}.pdf"
-            while True:                      # one page, always: drop a row from the longer table until it fits
-                path = render_feed(out, cs, ex, week_of=week_of, op=ctx.operator or {}, limits=limits)
-                if pdf_pages(path) <= 1 or len(cs) + len(ex) <= 1:
-                    break
-                cs, ex = (cs[:-1], ex) if len(cs) >= len(ex) else (cs, ex[:-1])
-            res.products = 1
-        res.outbound = pitches(session, ctx, path, len(cs), len(ex))
+            _, cs, ex = feeds.get(cs, ex)        # the week's statewide feed (the product)
+            res.outbound = pitches(session, ctx, feeds, cs_all, ex_all)
+        res.products = feeds.rendered
         res.metrics = {**metrics, "costseg_found": len(cs_all), "exchange_found": len(ex_all),
                        "feed_rows": len(cs) + len(ex), "pitches": len(res.outbound)}
         res.notes.append(f"{len(cs_all)} cost-seg and {len(ex_all)} 1031 triggers; feed rows {len(cs) + len(ex)}")

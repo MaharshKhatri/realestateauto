@@ -1216,6 +1216,11 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     "assessment / sale price", the range and "If the true value were V, the Chapter 123 assessment would be R x V" with V
     blank, the deadline (April 1; Monmouth January 15; May 1 in revaluation towns) and, at the top in body type, "Public-record
     data; not an appraisal, BPO or CMA; no opinion of value" (N.J.S.A. 45:14F). No value, savings or "over-assessed".
+    2-step pitch (2026-11-10): Touch 1 is two sentences, no attachment, no "$" ("We ran Chapter 123 assessment-to-sale
+    ratios across <town> and found N homes paying over 12,000 dollars a year in taxes where ... runs above the common level
+    range, including <street>. Want the comparable-sales packet for it?"); that property's packet (its own sample, nothing
+    masked) waits with the price and its deadline for their yes; the second touch is one sentence in the same thread.
+    Targets the outbox would skip (week key used, touches used up, inside the gap, a row queued) take no pitch slot.
     Pitched to tax-appeal attorneys: $100 a packet or $500/month.
   - **s7 graduated-fee cliff net sheets** (`s7_mansion_tax_cliff.py`, daily): dead zones solved on a $500 grid from the YAML
     tiers via quant_pricing (above $1M to $1,010,500; $2M to $2,021,000; $2.5M to $2,513,000; $3M to $3,016,000; $3.5M to
@@ -1231,6 +1236,11 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     $500K-$5M in 18 months (deed exports, cash-buyer purchases, MOD-IV); Table B listed multi-family / class 4 with a last
     recorded sale 8+ years ago and ask >= 1.5x it (implied growth > 12%/yr dropped as nominal deeds); no owner names; "may
     qualify; the client's CPA decides" (100% bonus only for <= 20-year components acquired after 2025-01-19; NJ decouples).
+    Table A rows now show the property's street. 2-step pitch (2026-11-10): Touch 1 names the first row in the prospect's
+    own county (else New Jersey), no "$" ("including 12 Elm St in Elizabeth (bought for 1.2 million dollars in March
+    2026)"; 1031 intermediaries hear about a long-held listing); the feed for that scope, named row first (Table B first
+    for intermediaries), is rendered and its one-page masked sample (rows 1-2 in full, property + entity / brokerage
+    hidden after) waits for their yes; the second touch is one sentence in the same thread.
     Pitched to cost-seg firms, 1031 intermediaries, real-estate CPAs, $500/month.
   - **s10 pre-MLS distress** (`s10_pre_mls_distress.py`, daily): lis pendens, tax certificates / delinquencies, estates and
     sheriff sales with a fresh adjournment (snapshot `s10_adjournments`) on unlisted properties; adjournments left = 5 -
