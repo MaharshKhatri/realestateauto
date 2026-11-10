@@ -18,8 +18,7 @@ from tests.test_gmail_autopilot import live  # noqa: F401 - pytest fixture
 
 TUE = datetime(2026, 11, 10, 10, 0)              # a Tuesday, inside business hours (naive Eastern)
 LIMITS = {"pitches_per_run": 4, "agents_top": 0, "price_trial": 500, "price_monthly": 1000}
-SAMPLE_LINE = ("$500 for the first 30 days, then $1,000 a month flat, no commission or per-deal fee; reply \"start\" "
-               "and I'll set it up")
+SAMPLE_LINE = ("$249 a month for one county or $499 for all nine, plus NJ sales tax")
 
 
 def _ctx(tmp_path, now=TUE, **limits) -> StreamContext:

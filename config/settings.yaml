@@ -406,7 +406,10 @@ research_firm:
   streams:
     s1: {enabled: true, warm_days: 21, buyers_per_deal: 3, buyers_per_run: 8, buyers_gap_days: 14, buyers_max: 2,
          min_live_offers: 2}
-    s2: {enabled: true, price_trial: 500, price_monthly: 1000, pitches_per_run: 4, agents_top: 300}
+    s2: {enabled: true, price_monthly: 249, price_county: 249, price_all: 499, price_desk: 1000, pitches_per_run: 4,
+         agents_top: 300, price_text: "$249 a month for one county, $499 for all nine or $1,000 for the full desk"}
+                                     # tiers from the 2026-11-10 pricing research; recurring revenue counts the lowest
+                                     # tier ($249) so it is never overstated
     s3: {enabled: true, price_monthly: 400, price_report: 150, pitches_per_run: 2, window_days: 60, min_equity: 75000,
          lookback_days: 730, min_surplus: 5000, max_rows_per_pdf: 12, min_confidence: 45, partial_debt_share: 0.25,
          statewide_attachments: 2, deed_window_days: 240}

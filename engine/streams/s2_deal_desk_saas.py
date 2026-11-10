@@ -367,15 +367,16 @@ def pitch_body(t: FirmTarget, f: TouchFacts, op: dict[str, str], follow: bool) -
 
 def sample_body(t: FirmTarget, rows: int, lim: dict[str, Any], op: dict[str, str]) -> str:
     """Touch 2, sent by the outbox in their thread only after their yes: what's attached and the flat price."""
-    trial = int(lim.get("price_trial") or dd.TRIAL_FEE)
-    monthly = int(lim.get("price_monthly") or dd.MONTHLY_FEE)
+    county = int(lim.get("price_county") or dd.COUNTY_FEE)
+    every = int(lim.get("price_all") or dd.ALL_FEE)
+    desk = int(lim.get("price_desk") or dd.DESK_FEE)
     agent = t.kind == "investor_agent"
     approve = "for your buyer clients to approve" if agent else "for you to approve"
     sheet = "1-page investor sheet" if agent else "1-page numbers sheet"
     text = (f"Here's the {sheet} (attached): the first {SAMPLE_FULL_ROWS} deals in full, the other "
-            f"{max(0, rows - SAMPLE_FULL_ROWS)} with the street hidden. The full sheet every week, plus offers drafted "
-            f"from your own inbox {approve}, is ${trial:,} for the first 30 days, then ${monthly:,} a month flat, no "
-            "commission or per-deal fee; reply \"start\" and I'll set it up.")
+            f"{max(0, rows - SAMPLE_FULL_ROWS)} with the street hidden. The full sheet every week is ${county:,} a month "
+            f"for one county or ${every:,} for all nine, plus NJ sales tax; with offers drafted from your own inbox "
+            f"{approve} it's ${desk:,} a month. No commission or per-deal fee; reply \"start\" and I'll set it up.")
     hello = greeting(t.name) if agent else "Hello,"
     return "\n".join([hello, "", text, "", op.get("first") or ""]).strip()
 

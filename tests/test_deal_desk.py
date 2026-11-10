@@ -71,7 +71,7 @@ def test_a_digest_lists_deals_in_the_buyers_towns_with_max_buy_and_the_agent_and
     pages = PdfReader(str(pdf)).pages
     text = pages[0].extract_text()
     assert len(pages) == 1
-    for must in ("Weekly Deal Digest for QUIET RIVER LLC", "$500 flat", "$1,000/month", "Zero commission",
+    for must in ("Weekly Deal Digest for QUIET RIVER LLC", "$249/month for one county", "$1,000/month", "Plus NJ sales tax", "Zero commission",
                  "not a licensed real estate broker", "your own inbox", "you are the buyer", "no more",
                  "1 Main St, Iselin"):
         assert must in text.replace("\n", " "), must

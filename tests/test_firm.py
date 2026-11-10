@@ -312,7 +312,7 @@ def test_s2_pitches_an_agent_a_digest_of_other_agents_deals_in_their_towns(live,
     ob = next(o for o in r.outbound if o.target_id == t.id)
     assert ob.key == f"s2:pitch:{t.id}:2026-W46" and ob.priority == PRIORITY_PITCH and ob.attachments == []
     # the 2-step funnel (2026-11-10): no price or attachment in Touch 1; the digest sample and the price wait for a yes
-    assert ob.body.startswith("Hi Pat,") and "$500" not in ob.body and "$500" in ob.sample_body
+    assert ob.body.startswith("Hi Pat,") and "$249" not in ob.body and "$249" in ob.sample_body
     assert "commission" in ob.sample_body and lint(ob.body) == [] and len(ob.body.split()) < 70
     from pypdf import PdfReader
     text = PdfReader(str(ob.sample_attachments[0])).pages[0].extract_text()

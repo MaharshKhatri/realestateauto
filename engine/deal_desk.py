@@ -28,7 +28,8 @@ from sqlalchemy.orm import Session
 from core.text import clean, is_entity, muni_base, postal_title
 from db.models import CashBuyer, Lead, Property, SignalType
 
-TRIAL_FEE, MONTHLY_FEE = 500, 1000
+TRIAL_FEE, MONTHLY_FEE = 500, 1000                 # legacy (the trial / desk price before the tiers)
+COUNTY_FEE, ALL_FEE, DESK_FEE = 249, 499, 1000    # 2026-11-10 research: one county / all nine / the full desk
 MIN_PRICE = 40_000                       # deed prices under this are package deeds / nominal transfers
 MAX_ROWS = 10
 MIN_ROWS = 3                             # fewer deals than this in a buyer's box: no digest this week
@@ -319,16 +320,18 @@ def build_digests(session: Session, profiles: list[BuyerProfile], today: date | 
 # -- the page -----------------------------------------------------------------------------------------------------
 def pitch_lines(prof: BuyerProfile, op: dict[str, str], audience: str = "buyer") -> list[str]:
     who = prof.entity
-    first = (f"<b>Want this running every day for your investor clients?</b> The AI Deal Desk finds deals like these "
-             "each morning, underwrites them, and drafts offers from <b>your own inbox</b> for your buyer clients to "
-             "approve. Your clients are the buyers; you keep your normal role and pay.") if audience == "agent" else (
+    first = (f"<b>Want this every week for your investor clients?</b> The sheet lists fixer listings, sheriff sales "
+             "and pre-foreclosure filings in your towns each week, and the desk can draft offers from <b>your own "
+             "inbox</b> for your buyer clients to approve. Your clients are the buyers; you keep your normal role and "
+             "pay.") if audience == "agent" else (
         f"<b>Want this running every day for {who}?</b> The AI Deal Desk finds deals like these each morning, "
         "underwrites them, and drafts your offers to listing agents from <b>your own inbox</b> with <b>your</b> proof "
         "of funds. You approve every offer and you are the buyer on every contract.")
     return [
         first,
-        f"<b>30-day trial: ${TRIAL_FEE:,} flat. Then ${MONTHLY_FEE:,}/month flat. Zero commission, zero per-deal fees "
-        "or splits.</b> Reply \"start\" to begin the trial.",
+        f"<b>The weekly sheet: ${COUNTY_FEE:,}/month for one county or ${ALL_FEE:,}/month for all nine. The full desk "
+        f"(offers drafted from your own inbox): ${DESK_FEE:,}/month. Plus NJ sales tax. Zero commission, zero per-deal "
+        "fees or splits.</b> Reply \"start\" to begin.",
         f"{op.get('name') or ''} provides software and research only: not a licensed real estate broker or agent, never "
         "negotiates, buys or sells on your behalf, and is paid the flat fee only, never on a deal. Figures are estimates "
         "from public records and listing data: verify before you offer.",
