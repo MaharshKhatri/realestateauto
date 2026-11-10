@@ -1341,6 +1341,28 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     with the owners about listing or to work with us on the investor side?"; Touch 2 = the sheet's masked sample + "$250
     a month per town (`agent_price_monthly`, 99 in settings), flat, no referral fee and nothing tied to a listing or sale
     (N.J.S.A. 45:15-3)"; follow-ups are the outbox's nudges; an agent already in another stream's sequence is skipped. Run log: agent_targets / agent_pitches / agent_sheets (counts).
+  - **s11 sheriff-sale bid sheets** (`s11_sheriff_bid_sheets.py`, daily, 2026-11-10): every active SHERIFF_SALE 1-21 days
+    out (not closed, stayed, on hold or unseen on CivilView for 14 days; never a bare-number "UNMATCHED" parcel), one PDF
+    per county in sale order: sheriff # / docket, address, MOD-IV facts, the plaintiff by name (a lender, association or
+    town, never a person: `plaintiff_name`, also used by s3), the notice's upset / judgment as printed, stated prior liens,
+    adjournments used / left per party (2 debtor, 2 lender, 1 agreed: N.J.S.A. 2A:17-36), the recorded-sales range for the
+    town and product (min-max of public-record sales, never "value") and the rehab tier; a surviving-lien checklist
+    (municipal liens and tax certificates, association 6-month priority, IRS 120-day redemption, senior mortgages, the
+    10-day objection window, deposit terms), "order a title search from a licensed title producer ... not a title search,
+    title insurance, legal advice or an appraisal" and the FRFPA line. Touch 1 names one sale 3+ days out; a one-page
+    masked sample; $199 a month per county or $39 a property, plus NJ sales tax. Targets: cash-buyer families that took
+    title by a sheriff's deed (`sheriff_families`: NU code 12 or a sheriff grantor) synced from prospects as
+    `sheriff_bidder` (s2 leaves those families to s11).
+  - **s12 town market reports** (`s12_town_market_reports.py`, daily, 2026-11-10): per town a one-page report built only from
+    the county deed exports we hold: arm's-length class 2 sales ($30K+) for the last 3 and 12 settled months (the 60 days
+    before the newest recorded deed are still filling in), count, median price, median $/sqft, company-buyer share, by
+    product; the pipeline as counts only (sheriff sales placed only when the address names the town, "at least N" when
+    some are unplaced); the MOD-IV implied tax rate with the Chapter 123 ratio; s7's dead-zone listing count where s7's
+    pass covers the town; a ready-to-send 4-sentence e-mail box. Any figure from fewer than 5 sales is suppressed; no
+    address, name or single sale (REC Bulletin 13-05 / N.J.S.A. 45:14F footer). Pitched to listing agents with 3+ live
+    listings in a reported town (kind `farm_agent`); $79 a month per town or $149 exclusive, plus NJ sales tax; s12
+    delivers each subscriber's own town monthly itself (never another town's or an exclusive agent's file). Supply grows
+    with the county deed exports the operator drops in (today: Elizabeth only).
   - **B2B targets** (`config/b2b_targets.yaml`, 585 firms, 539 with a published e-mail, each with the page it is printed
     on; +327 from research agents on 2026-11-10): 78 hard-money lenders + 8 mortgage brokers, 53 oil-tank firms, 51 HVAC, 47
     roofers, 33 rehab GCs, 31 dumpster firms, 44 builders / developers (seeded to s13), 34 1031 intermediaries, 15 cost-seg

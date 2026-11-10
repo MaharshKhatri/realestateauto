@@ -630,7 +630,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                     row = fo.upsert_target(s, kind=str(t.get("kind") or "other"), stream=str(t.get("stream") or "s2"),
                                            email=t.get("email"), org=t.get("org"), name=t.get("name"),
                                            phone=t.get("phone"), website=t.get("website"), town=t.get("town"),
-                                           county=t.get("county"), source=t.get("source"))
+                                           county=t.get("county"), source=t.get("source"),
+                                           data=t.get("data") if isinstance(t.get("data"), dict) else None)
                     if row is None:
                         raise ValueError("firm target needs an e-mail or a website / phone")
                     if t.get("stage"):

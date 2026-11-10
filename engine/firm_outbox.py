@@ -247,11 +247,12 @@ SEQUENCE_WORDS = {
     "s3": ("this week's county sheet", "the sheriff-sale case file"),
     "s4": ("this week's county list for your trade", "the weekly listing sheet"),
     "s5": ("the 1-page list", "the investor-company list"),
-    "s6": ("the comparable-sales packet", "the Chapter 123 sales packets"),
+    "s6": ("the comparable-sales packet", "the Chapter 123 packet"),
     "s7": ("the net sheet", "the net sheet"),
     "s9": ("this week's county list", "the purchases list"),
     "s10": ("this week's docket sheet for your town", "the docket sheet"),
     "s11": ("this week's county bid sheet", "the weekly bid sheet"),
+    "s12": ("this month's town report", "the monthly town report"),
 }
 PROFESSIONAL_KINDS = {"property_tax_appeal_attorney", "foreclosure_surplus_attorney", "real_estate_cpa",
                       "cost_segregation_firm", "qualified_intermediary_1031", "estate_attorney", "probate_attorney"}

@@ -433,3 +433,6 @@ research_firm:
     s11: {enabled: true, price_monthly: 199, price_property: 39, pitches_per_run: 3, window_days: 21,
           feature_lead_days: 3, min_rows_to_pitch: 3, sample_rows: 16, max_stale_days: 14, comp_months: 36,
           min_comp_sales: 3, sync_lookback_days: 1095, target_kinds: [sheriff_bidder, flipper]}
+    s12: {enabled: true, price_monthly: 79, price_exclusive: 149, pitches_per_run: 2, min_listings: 3,
+          listing_recent_days: 90, record_lag_days: 60, max_data_age_days: 150, min_months: 6, min_sales: 10,
+          pipeline_days: 90}
