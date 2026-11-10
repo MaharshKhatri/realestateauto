@@ -159,3 +159,15 @@ def test_no_attorney_cold_mail_on_a_friday_afternoon(live, quick):
 def test_every_price_says_plus_nj_sales_tax():
     assert fo.price_line("s4").endswith("plus NJ sales tax")
     assert "plus NJ sales tax" in fo.start_reply_text("s2", "https://pay.example/x")
+
+
+def test_a_copy_fix_reaches_mail_already_queued(live):
+    db = live
+    t = target(db)
+    row = fo.enqueue(db, Outbound(stream="s1", key="s1:buyers:x", to=t.email, subject="As-is houses",
+                                  body="I'm working on a few as-is houses and expect to have one under contract soon.",
+                                  priority=PRIORITY_PITCH, kind="buyer_note", target_id=t.id), TUE)
+    db.commit()
+    assert fo.rewrite_queued(db) == 1
+    assert "may have one under contract soon" in db.get(FirmOutbox, row.id).body
+    assert fo.rewrite_queued(db) == 0

@@ -320,6 +320,28 @@ def sent_24h(session: Session, now: datetime | None = None, priority: int | None
     return int(session.scalar(q) or 0)
 
 
+# Wording fixes applied to e-mails already waiting in the outbox (a stream's copy changed after it queued them):
+# (pattern, replacement). The outbox never sends the old sentence.
+COPY_FIXES: list[tuple[str, str]] = [
+    (r"and expect to have one under contract soon", "and may have one under contract soon"),
+]
+
+
+def rewrite_queued(session: Session) -> int:
+    """Apply COPY_FIXES to every queued / held message body. Returns the number of rows changed."""
+    n = 0
+    for row in session.scalars(select(FirmOutbox).where(FirmOutbox.status.in_(("queued", "held")))):
+        body = row.body or ""
+        for pat, rep in COPY_FIXES:
+            body = re.sub(pat, rep, body)
+        if body != row.body:
+            row.body = body
+            n += 1
+    if n:
+        session.flush()
+    return n
+
+
 def pitches_24h(session: Session, priority: int) -> int:
     """First touches sent in the last 24 hours at that priority (nudges have their own `caps.nudges`)."""
     return int(session.scalar(select(func.count(FirmOutbox.id)).where(

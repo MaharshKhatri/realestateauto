@@ -239,6 +239,7 @@ def tick(*, now: datetime | None = None, smtp_factory: Any = None, send: bool = 
                                      budget_seconds=budget_seconds)
     if send:
         with session_scope() as s:
+            fo.rewrite_queued(s)                             # copy fixes reach e-mails queued before them
             out["nudges_queued"] = fo.queue_nudges(s, now)   # the in-thread rest of each cold sequence
         out["outbox"] = fo.send_due(now=now, smtp_factory=smtp_factory)
     return out
