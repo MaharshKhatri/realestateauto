@@ -974,7 +974,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   purpose"):
   - **Every ~6 minutes, 7 AM-9 PM**: desk.yml runs only by dispatch, and its last step starts the next run
     (`CYCLE_SECONDS` 360; GITHUB_TOKEN may dispatch workflow_dispatch). It dispatches only when no desk run is queued,
-    so a note or approval dispatched meanwhile goes first and carries the chain. GitHub's own cron had fired twice in
+    so a note or approval dispatched meanwhile goes first and carries the chain (never counting itself: GitHub's run
+    list can still show a just-started run as queued, which stopped the chain on 2026-11-10 at 6:17 PM). GitHub's own cron had fired twice in
     a day and, sharing desk.yml's concurrency group, could cancel a queued note: the safety net is now
     `.github/workflows/kicker.yml` (every 20 min + the 5:17 AM refresh), which dispatches only when no desk run is
     running or queued.

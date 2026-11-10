@@ -106,6 +106,9 @@ jobs:
           CYCLE_SECONDS: "360"
           TASK: ${{ github.event.inputs.task || 'run' }}
         run: |
+          # This run never counts itself: GitHub's run list can still show a just-started run as queued (2026-11-10
+          # 6:17 PM: run 918 saw "a run is already queued", dispatched nothing, and the chain stopped).
+          NOT_ME="map(select(.databaseId != $GITHUB_RUN_ID)) | "
           # GitHub's API sometimes answers a dispatch with a 5xx (2026-11-06 7:38 PM: HTTP 502 broke the chain for the
           # evening). Retry with backoff; a run that got queued anyway counts as done, so nothing is dispatched twice.
           dispatch() {
@@ -114,8 +117,8 @@ jobs:
               sleep "$w"
               if gh workflow run "$wf" -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" "$@"; then return 0; fi
               sleep 10
-              q=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" --limit 10 --json status \
-                  --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length' \
+              q=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" --limit 10 --json status,databaseId \
+                  --jq "$NOT_ME"'[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length' \
                   2>/dev/null || echo 0)
               if [ "${q:-0}" != "0" ]; then echo "The dispatch errored but the run is queued."; return 0; fi
               echo "Dispatch failed; trying again."
@@ -125,8 +128,8 @@ jobs:
           hour=$((10#$(date +%H)))
           # Overnight: night.yml waits on GitHub's side and starts the 5:17 AM refresh; the refresh (or any run before
           # 7 AM) hands the morning start to night.yml again (wake 07:00). GitHub's cron can't be relied on here.
-          count_queued() { gh run list -R "$GITHUB_REPOSITORY" --workflow desk.yml --limit 20 --json status \
-                   --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length'; }
+          count_queued() { gh run list -R "$GITHUB_REPOSITORY" --workflow desk.yml --limit 20 --json status,databaseId \
+                   --jq "$NOT_ME"'[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length'; }
           if [ "$hour" -ge 21 ]; then
             # First the night's pricing run (new listings from the harvest, up to 70 minutes), then night.yml for
             # the 5:17 AM refresh. A queued note or approval is never replaced: it runs first and hands off itself.
