@@ -1091,6 +1091,8 @@ def firm_status_event(session: Session, now: datetime) -> Desired | None:
     lines.append(f"Recurring revenue (trials + paying): ${st['mrr']:,.0f}/month")
     for fr in fo_warm(session):
         lines.append(f"WARM: {fr}")
+    for rec in _daniels_open(session, now):
+        lines.append(_dl_summary(rec))
     lines.append("")
     summary = (f"📊 10-Stream Firm Status: {st['sent_24h']} B2B sent · {st['waiting']} waiting · {st['warm']} warm")
     s, e = _all_day(now.date())
@@ -1115,6 +1117,8 @@ def warm_event(session: Session, now: datetime) -> Desired | None:
     from db.models import FirmTarget
     from engine import firm_outbox as fo
     items: list[str] = []
+    for rec in _daniels_open(session, now):              # strict liability: listed every day until confirmed
+        items.append(_dl_summary(rec) + f" Tell Claude \"Daniel's Law {rec['id']} done\" once you've looked.")
     since = now - timedelta(days=7)
     for r in session.scalars(select(InboundReply).where(InboundReply.status.in_(("needs_approval", "auto_queued")),
                                                         InboundReply.created_at >= since)):
@@ -1137,6 +1141,38 @@ def warm_event(session: Session, now: datetime) -> Desired | None:
     return Desired(f"warm:{now:%Y%m%d}", "actions", None,
                    _body("actions", f"✅ {len(items)} ready to close", [f"{i}. {x}" for i, x in enumerate(items, 1)]
                          + ["", f"Updated {_when(now)}."], s, e, reminders=[10]), start)
+
+
+def _daniels_open(session: Session, now: datetime) -> list[dict[str, Any]]:
+    from engine import daniels_law as dl
+    return dl.open_requests(session, now.date())
+
+
+def _dl_summary(rec: dict[str, Any]) -> str:
+    from engine import daniels_law as dl
+    return dl.summary_line(rec)
+
+
+def daniels_law_events(session: Session, now: datetime) -> list[Desired]:
+    """⚖️ One event per open Daniel's Law request at 9:00 on its deadline (10 NJ business days after receipt): the
+    addresses were suppressed when the request was read; the event is the operator's check. Counts and the sender's
+    domain only (never the covered person's name or address)."""
+    out = []
+    for rec in _daniels_open(session, now):
+        due = date.fromisoformat(rec["deadline"])
+        start = datetime.combine(due, time(9, 0))
+        s, e = _timed(start, 30)
+        lines = [_dl_summary(rec), "",
+                 "Done automatically: every NJ address and phone in the request went on the Daniel's Law stop list, "
+                 "so no report, digest, letter or calendar line shows it again.",
+                 "Your check: open the request in Gmail and make sure nothing else is named (an address in a scanned "
+                 "attachment, a second property). Tell Claude any address it missed.",
+                 f"Then tell Claude \"Daniel's Law {rec['id']} done\" and this event goes away.",
+                 "Never reply with the person's details, and never ask them to prove anything first."]
+        out.append(Desired(f"daniels:{rec['id']}", "attorney_review", None,
+                           _body("attorney_review", f"⚖️ Daniel's Law deadline: request {rec['id']}", lines, s, e,
+                                 reminders=[60 * 24, 30]), start))
+    return out
 
 
 def desired_events(session: Session, lead_ids: set[int] | None = None, now: datetime | None = None
@@ -1164,6 +1200,10 @@ def desired_events(session: Session, lead_ids: set[int] | None = None, now: date
                                                             Lead.id.in_(on_calendar), Lead.id.in_(waiting)))))
         sale_ids = {lead.id for lead in priority_sale_leads(session, today)} if not firm_mode() else set()
         put([reconnect_event(session, now)])
+        try:
+            put(daniels_law_events(session, now))
+        except Exception:                                # noqa: BLE001 - never blocks the other deadlines
+            log.exception("calendar: Daniel's Law events skipped")
         if firm_mode():
             try:
                 put([firm_status_event(session, now), warm_event(session, now)])

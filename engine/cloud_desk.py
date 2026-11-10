@@ -552,6 +552,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     - "price": "firm" / "final" / "sent" with "{price}" in the reply: the desk's own locked number is written in and
       the LOI attached at it (`offer_math.note_price`); a house that may not get a number in writing (HOLD, no living
       area, old comps, retail, FRFPA, offered above today's final) is refused and nothing is sent;
+    - "daniels_law" + "done" (no "lead"): the operator looked at that Daniel's Law request; "suppress_address" /
+      "suppress_phone": a home address / phone the request named that the parser missed (source daniels_law);
     - "prospect" (no "lead"): a flipper's public business contacts / pitch stage for the Deal Desk pipeline
       ({"entity", "stage", "email", "website", "phone", "linkedin", "source", "notes", "next_touch", "fee"}).
     Counts only come back: the run log is public."""
@@ -569,6 +571,28 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("operator"), dict)]:
         try:
             set_operator(item["operator"])
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
+            errors.append(type(exc).__name__)
+        items = [i for i in items if i is not item]
+    for item in [i for i in items if isinstance(i, dict) and (i.get("daniels_law") or i.get("suppress_address")
+                                                                 or i.get("suppress_phone"))]:
+        # Daniel's Law (engine/daniels_law.py): {"daniels_law": "<id>", "done": true} after the operator looked at
+        # the request; {"suppress_address": "12 Main St, Edison NJ 08817"} / {"suppress_phone": "..."} for anything
+        # the parser missed (a scanned attachment), always with source daniels_law.
+        try:
+            from engine import compliance
+            from engine import daniels_law as dlaw
+            with session_scope() as s:
+                if item.get("suppress_address"):
+                    if compliance.suppress_address(s, str(item["suppress_address"]), source="daniels_law",
+                                                   notes=f"added from the chat {now:%Y-%m-%d}") is None:
+                        raise ValueError("unreadable address")
+                if item.get("suppress_phone"):
+                    compliance.add_internal(s, str(item["suppress_phone"]), source="daniels_law",
+                                            notes=f"added from the chat {now:%Y-%m-%d}")
+                if item.get("daniels_law") and item.get("done") and not dlaw.confirm(s, str(item["daniels_law"])):
+                    raise ValueError("no such Daniel's Law request")
             done += 1
         except Exception as exc:                   # noqa: BLE001 - reported by name only
             errors.append(type(exc).__name__)
@@ -895,6 +919,8 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             out.update(new=int(p.get("checked") or 0), replies=int(p.get("matched") or 0),
                        sent=int(r.get("sent_now", 0)) + int(p.get("sent") or 0),
                        waiting=sum(1 for x in r.get("rows", []) if x["status"] == "needs_approval"))
+            if p.get("daniels_law"):
+                out["daniels_law"] = int(p["daniels_law"])     # nondisclosure requests honored (counts only)
             if r.get("send_error") or not r.get("ok"):
                 out["gmail_error"] = True
             if gm.in_send_hours(now):

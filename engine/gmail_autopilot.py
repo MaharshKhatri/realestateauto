@@ -58,6 +58,7 @@ from agents.base import AgentContext, BaseAgent
 from db.database import session_scope
 from db.models import Contact, ContactType, InboundReply, Interaction, Lead, SwarmState
 from engine import agent_outreach as ao
+from engine import daniels_law as dl
 from engine import human_copy as hc
 
 log = logging.getLogger(__name__)
@@ -833,18 +834,41 @@ def poll_gmail_replies(*, now: datetime | None = None, smtp_factory: Any = None)
             fthread, femails = fo.known(s)
         since = now_eastern(now).date() - timedelta(days=int(_cfg().get("lookback_days", 14)))
         mails: list[Mail] = []
+        takedowns: list[tuple[Mail, str]] = []
         with Mailbox(user, pw) as mb:
             same = state.get("account") == user.lower() and state.get("uidvalidity") == mb.uidvalidity
             last = int(state.get("last_uid") or 0) if same else 0
             uids = mb.search(last, since)
             for uid, raw in sorted(mb.headers(uids).items()):
                 head = parse_headers(raw, uid, mb.uidvalidity)
-                if wanted(known, head) or _firm_target(known, fthread, femails, head):
-                    mails.append(parse_message(mb.message(uid), uid, mb.uidvalidity))
+                # A Daniel's Law nondisclosure request may come from anyone (engine/daniels_law.py): its body is read
+                # even when the sender is unknown; everything else unmatched is never downloaded.
+                takedown = (not head.bounce and not head.subject.startswith("[njw-")
+                            and dl.candidate(head.subject, head.from_email))
+                keep = wanted(known, head) or bool(_firm_target(known, fthread, femails, head))
+                if not (takedown or keep):
+                    continue
+                whole = mb.message(uid)
+                if takedown:
+                    text = dl.full_text(whole)
+                    if dl.confirmed(head.subject, text):
+                        takedowns.append((head, text))
+                if keep:
+                    mails.append(parse_message(whole, uid, mb.uidvalidity))
             uidvalidity = mb.uidvalidity
         counts = {"checked": len(uids), "matched": 0, "auto_queued": 0, "needs_approval": 0, "opted_out": 0,
                   "bounce": 0, "auto_reply": 0}
         failed: list[int] = []
+        own_phone = str((hc.operator() or {}).get("phone") or "")
+        for head, text in takedowns:
+            try:
+                with session_scope() as s:
+                    if dl.handle(s, message_id=head.message_id, from_email=head.from_email, subject=head.subject,
+                                 text=text, received=head.received_at, operator_phones=[own_phone]) is not None:
+                        counts["daniels_law"] = counts.get("daniels_law", 0) + 1
+            except Exception:                             # noqa: BLE001 - retried on the next check
+                log.exception("gmail autopilot: Daniel's Law request uid %s", head.uid)
+                failed.append(head.uid)
         for mail in mails:
             tid = None if mail.bounce else _firm_target(known, fthread, femails, mail)
             if tid is not None:
