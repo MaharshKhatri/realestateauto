@@ -350,8 +350,10 @@ def pitch_body(t: FirmTarget, f: TouchFacts, op: dict[str, str], follow: bool) -
     if follow:
         text = f"Should I send over this week's 1-page numbers sheet for {f.sheet_for}?"
     elif t.kind == "investor_agent":
-        text = (f"{agent_hook(t, f.near)} We just underwrote {f.street} ({f.price}) and {f.others} other {f.mix} "
-                f"{f.where} this week; want the 1-page numbers sheet?")
+        # an agent gets listing / sale facts only, never our numbers on a house (a value for an agent is a CMA:
+        # brokerage under REC Bulletin 13-05), so their sheet is the investor sheet without ARV or max buy
+        text = (f"{agent_hook(t, f.near)} I just pulled {f.street} ({f.price}) and {f.others} other {f.mix} "
+                f"{f.where} into this week's investor sheet; want the 1-page sheet?")
     else:
         # a company name only: a buyer family filed under a person ("SOINE, TRAVIS", 2026-11-09) is "you", never
         # named back to them
@@ -369,7 +371,8 @@ def sample_body(t: FirmTarget, rows: int, lim: dict[str, Any], op: dict[str, str
     monthly = int(lim.get("price_monthly") or dd.MONTHLY_FEE)
     agent = t.kind == "investor_agent"
     approve = "for your buyer clients to approve" if agent else "for you to approve"
-    text = (f"Here's the 1-page numbers sheet (attached): the first {SAMPLE_FULL_ROWS} deals in full, the other "
+    sheet = "1-page investor sheet" if agent else "1-page numbers sheet"
+    text = (f"Here's the {sheet} (attached): the first {SAMPLE_FULL_ROWS} deals in full, the other "
             f"{max(0, rows - SAMPLE_FULL_ROWS)} with the street hidden. The full sheet every week, plus offers drafted "
             f"from your own inbox {approve}, is ${trial:,} for the first 30 days, then ${monthly:,} a month flat, no "
             "commission or per-deal fee; reply \"start\" and I'll set it up.")

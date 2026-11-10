@@ -370,21 +370,30 @@ def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None, audience
         return Paragraph(_pdf_safe(t), st)
 
     k = lambda x: f"${x / 1000:,.0f}K" if x else "-"
-    head = ["#", "Property", "Type / price", "ARV", "Repairs", "Max buy*", "Room", "Listing agent / note"]
+    # An agent's sheet carries listing / public-record facts only: our ARV, repairs and max buy on a specific house
+    # given to a licensee would be a CMA (brokerage, REC Bulletin 13-05) and a value opinion (N.J.S.A. 45:14F). The
+    # buyer's own sheet keeps them as screening arithmetic for their own bid (45:14F-21(c)).
+    agent_sheet = audience == "agent"
+    head = (["#", "Property", "Type / price", "Listing agent / note"] if agent_sheet
+            else ["#", "Property", "Type / price", "ARV", "Repairs", "Max buy*", "Room", "Listing agent / note"])
     data = [[P(f"<b>{h}</b>") for h in head]]
     for i, r in enumerate(d.rows, 1):
         room = r.room
         hidden = mask_after is not None and i > mask_after
         street = mask_text(r.street) if hidden else r.street
         who = "(street and listing agent in the weekly digest)" if hidden else "<br/>".join(x for x in (r.agent, r.note) if x)
+        if agent_sheet:
+            data.append([P(str(i)), P(f"<b>{street}</b><br/>{r.town}"), P(f"{r.kind}<br/>{r.price_label}"), P(who)])
+            continue
         data.append([P(str(i)), P(f"<b>{street}</b><br/>{r.town}"), P(f"{r.kind}<br/>{r.price_label}"), P(k(r.arv)),
                      P(k(r.repairs)), P(f"<b>{k(r.max_buy)}</b>"),
                      P(("+" if room >= 0 else "-") + k(abs(room)) if room is not None else "-"),
                      P(who)])
     if len(d.rows) == 0:
-        data.append([P("-"), P("No match in your towns this week."), *[P("") for _ in range(6)]])
-    t = Table(data, colWidths=[0.3 * inch, 1.5 * inch, 1.45 * inch, 0.55 * inch, 0.6 * inch, 0.65 * inch,
-                               0.6 * inch, 4.25 * inch], repeatRows=1)
+        data.append([P("-"), P("No match in your towns this week."), *[P("") for _ in range(len(head) - 2)]])
+    widths = ([0.3 * inch, 2.4 * inch, 2.2 * inch, 5.0 * inch] if agent_sheet else
+              [0.3 * inch, 1.5 * inch, 1.45 * inch, 0.55 * inch, 0.6 * inch, 0.65 * inch, 0.6 * inch, 4.25 * inch])
+    t = Table(data, colWidths=widths, repeatRows=1)
     t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#9ca3af")),
                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -397,9 +406,12 @@ def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None, audience
                + ("Towns you list in: " if audience == "agent" else "Your buy box from recorded deeds: ")
                + d.profile.box_line(), body),
              Spacer(1, 5), t, Spacer(1, 4),
-             P("*Max buy: the most a rehabber can pay and still clear 15% net ROI and $45,000 after repairs + 10% "
-               "contingency, 1.5% closing, 6 months of taxes, insurance, utilities and 11% + 2 pt money, a 5% "
-               "commission and the NJ realty transfer fee on the resale. Room = max buy minus the ask or upset.", small),
+             P("Public listing and public-record facts only; not a CMA, BPO or appraisal and no opinion of value."
+               if agent_sheet else
+               "*Max buy: screening arithmetic for your own bid, not an appraisal: the most a rehabber can pay and "
+               "still clear 15% net ROI and $45,000 after repairs + 10% contingency, 1.5% closing, 6 months of taxes, "
+               "insurance, utilities and 11% + 2 pt money, a 5% commission and the NJ realty transfer fee on the "
+               "resale. Room = max buy minus the ask or upset.", small),
              Spacer(1, 6),
              P(" ".join(pitch_lines(d.profile, op, audience)[:2]), box),
              Spacer(1, 3), P(pitch_lines(d.profile, op, audience)[2], small),

@@ -104,7 +104,7 @@ def test_agent_touch1_is_two_plain_sentences_with_one_street_and_no_attachment(l
     named = [ld for ld in others if _has_street(ob.body, _street(ld))]
     assert len(named) == 1 and not _has_street(ob.body, _street(own))          # never the agent's own listing
     assert re.findall(r"\$[\d,]+[KkMm]?", ob.body) == ["$450,000"] and "$450,000 ask" in ob.body   # the public ask only
-    assert "and 3 other fixer listings in Essex County this week; want the 1-page numbers sheet?" in ob.body
+    assert "and 3 other fixer listings in Essex County into this week's investor sheet; want the 1-page sheet?" in ob.body
     low = ob.body.lower()
     for word in ("commission", "a month", "trial", "attached", "http", "free", "ad:"):
         assert word not in low

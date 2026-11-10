@@ -76,6 +76,14 @@ def test_a_digest_lists_deals_in_the_buyers_towns_with_max_buy_and_the_agent_and
                  "1 Main St, Iselin"):
         assert must in text.replace("\n", " "), must
     assert "QUINN Q SAMPLE" not in text                                     # never a defendant / owner name
+    assert "Max buy" in text and "screening arithmetic for your own bid" in text.replace("\n", " ")
+    # an agent's copy: listing and public-record facts only (a value for a licensee is a CMA, Bulletin 13-05)
+    agent_pdf = dd.render_pdf(d, tmp_path / "agent.pdf", {"name": "Sam Operator", "postal": "1 Main St, Iselin, NJ 08830"},
+                              audience="agent")
+    atext = PdfReader(str(agent_pdf)).pages[0].extract_text().replace("\n", " ")
+    for gone in ("ARV", "Max buy", "Repairs", "Room", "$420K"):
+        assert gone not in atext, gone
+    assert "not a CMA, BPO or appraisal" in atext and "pat@brokerage.example" in atext
 
 
 def test_a_suppressed_address_never_reaches_a_digest(db):
