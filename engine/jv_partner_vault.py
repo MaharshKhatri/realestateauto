@@ -169,8 +169,12 @@ def best_partner(session: Session, lead: Lead, *, need_pof: bool = False, price:
 
 
 POF_ON_FILE = "Yes, it comes with the written offer."
-POF_NOT_YET = ("Not a letter today. I'm lining up the funding with a partner investor. I can send the written offer "
-               "now, and the seller's attorney reviews everything before it's binding.")
+# 2026-11-10 (operator: never volunteer weakness, never lie): with no verified partner letter on file, the answer states
+# the process, which is true: proof of funds comes with the signed contract (ours or the assignee's, which the offer
+# already discloses), and the seller's attorney confirms it during attorney review before anything binds. It never
+# claims a fund, group or partner that doesn't exist (Consumer Fraud Act).
+POF_NOT_YET = ("I'm buying as a principal: proof of funds comes with the signed contract, from me or the investor I may "
+               "assign it to, and the seller's attorney confirms it during attorney review, before anything is binding.")
 
 
 def pof_on_file(session: Session) -> bool:

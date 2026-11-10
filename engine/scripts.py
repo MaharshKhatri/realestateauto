@@ -28,6 +28,11 @@ from core.dates import long_date
 from core.text import format_phone, is_entity, postal_title, split_person_name
 from db.models import CashBuyer, Contact, ContactType, Lead, SignalType
 
+
+def _pof_not_yet() -> str:
+    from engine.jv_partner_vault import POF_NOT_YET     # (local: the vault imports this module)
+    return POF_NOT_YET
+
 TWO_PARTY_CONSENT_STATES = {"CA", "CT", "FL", "IL", "MD", "MA", "MI", "MT", "NV", "NH", "PA", "WA", "OR"}
 HELP_RESOURCES = [
     "HUD-approved housing counseling (free): 1-800-569-4287 · hud.gov/counseling",
@@ -233,9 +238,7 @@ def objection_matrix(f: dict[str, Any], playbook: str) -> list[Objection]:
             Objection("no_assign", "We don't do assignable contracts",
                       "Understood, thanks for telling me. I'd rather be upfront about how I buy: I may assign to a "
                       "partner investor. If anything changes, I'd still be glad to make an offer."),
-            Objection("proof", "Send proof of funds first",
-                      "Not a letter today. I'm lining up the funding with a partner investor. I can send the written "
-                      "offer now, and the seller's attorney reviews everything before it's binding."),
+            Objection("proof", "Send proof of funds first", _pof_not_yet()),
             Objection("other_offers_agent", "We have other offers",
                       "Great — is the seller still taking offers? What would make ours stand out: price, close date, "
                       "or no contingencies?"),

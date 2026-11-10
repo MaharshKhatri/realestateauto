@@ -1172,7 +1172,8 @@ def approvable(session: Session) -> tuple[list[InboundReply], list[tuple[Inbound
 # a priced hold / counter only when the agent's number was stated plainly ("wants 355k", "we are at 470"), never one
 # read out of a signature. Accepts, unclassified questions and anything else stay for a call.
 SAFE_NO_PRICE = ("CONFIRM THE FACTS FIRST", "NUMBERS ON HOLD", "LISTING EXPIRED", "OFF THE TABLE", "TOO FAR APART",
-                 "NOT NOW", "CALL REQUEST: ANSWERED IN WRITING", "NO PROOF OF FUNDS YET")
+                 "NOT NOW", "CALL REQUEST: ANSWERED IN WRITING", "NO PROOF OF FUNDS YET",
+                 "PROOF OF FUNDS AT CONTRACT")
 # A priced answer goes out by itself only when the agent stated their number plainly AND the valuation passes every
 # certainty check (engine/offer_math.py): a number we send is final, so it never rests on old comps or a guessed size.
 SAFE_PRICED = ("BACKUP AT", "HOLD FIRM AT", "HOLD AT", "COUNTER AT", "BEST AND FINAL AT")

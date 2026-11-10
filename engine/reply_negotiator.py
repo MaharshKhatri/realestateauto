@@ -951,15 +951,21 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         # 2026-11-09: no verified capital partner, so no letter is coming. The old draft promised one ("I'm getting the
         # proof of funds letter together now"): untrue (Consumer Fraud Act). The honest answer goes out by itself and
         # asks for the facts a number needs, so the thread keeps moving in writing.
-        an.headline = "NO PROOF OF FUNDS YET: FACTS FIRST"
-        sentences = ["That's fair.",
-                     "I don't have a proof-of-funds letter to send today, so I won't ask you for a showing until I do.",
+        # 2026-11-10: and no volunteered weakness either ("I don't have a proof-of-funds letter today" read as "can't
+        # close"). The process is stated, which is true: proof of funds comes with the signed contract (ours or the
+        # disclosed assignee's) and the seller's attorney confirms it during attorney review.
+        an.headline = "PROOF OF FUNDS AT CONTRACT: FACTS FIRST"
+        sentences = ["Fair question.",
+                     "I'm buying as a principal: proof of funds comes with the signed contract, from me or the investor "
+                     "I may assign it to, and the seller's attorney confirms it during attorney review.",
                      f"Could you confirm the square footage and the main condition items on {st} (roof, heating, kitchen, "
-                     "baths, any oil tank) so I can tell you quickly whether I'm in the right range?"]
+                     "baths, any oil tank) so I can put a number in writing?"]
         an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
-        an.sms_text = f"Hi {first}, it's {me}. No proof-of-funds letter today; could you send the sqft and condition on {st}?" + sms_tail
-        an.actions = ["Answered in writing: no proof of funds is claimed. When a capital partner's letter is on file "
-                      "(the Vault), the offer can say so."] + an.actions
+        an.sms_text = (f"Hi {first}, it's {me}. Proof of funds comes with the signed contract; could you send the sqft "
+                       f"and condition on {st}?" + sms_tail)
+        an.actions = ["Answered in writing: proof of funds at contract (ours or the assignee's), confirmed in attorney "
+                      "review; no fund or partner is claimed. When a capital partner's letter is on file (the Vault), "
+                      "the offer can say so."] + an.actions
         an.followup_at = _followup(now, 3)
         return an
     if "POF_REQUEST" in intents and "AVAILABLE" not in intents:
@@ -969,7 +975,8 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         price = float(last_offer) if last_offer else None
         sentences = ["Happy to.",
                      ("Proof of funds from my capital partner is attached." if have and p.get("pof_share_ok") else
-                      "I'm getting the proof of funds letter together now and will send it as soon as it's in hand."),
+                      "Proof of funds comes with the signed contract, and the seller's attorney confirms it during "
+                      "attorney review."),
                      (f"The offer stands at {hc.money(price)} cash, as-is, with a quick close." if price else
                       "The written offer can go over with it the same day.")]
         if price:

@@ -243,10 +243,15 @@ def test_pof_request_with_and_without_a_partner(db, operator):
     db.flush()
     db.refresh(lead)
     a = rn.analyze(db, lead, "Can you send proof of funds?")
-    # 2026-11-09: no verified partner = no letter is promised (the old draft said one was coming); facts first instead
-    assert a.headline == "NO PROOF OF FUNDS YET: FACTS FIRST" and a.partner["partner"] is None
+    # 2026-11-09: no verified partner = no letter is promised (the old draft said one was coming); facts first instead.
+    # 2026-11-10: and no volunteered weakness: the true process (POF at contract, confirmed in attorney review), never
+    # a fund, group or partner that doesn't exist
+    assert a.headline == "PROOF OF FUNDS AT CONTRACT: FACTS FIRST" and a.partner["partner"] is None
     assert any("Casey Match" in x and "#/partners" in x for x in a.actions)
-    assert "don't have a proof-of-funds letter" in a.reply_text and "together" not in a.reply_text and a.style == []
+    assert "comes with the signed contract" in a.reply_text and "attorney review" in a.reply_text
+    for never in ("don't have", "no proof", "together", "partner provides", "investment group", "our fund"):
+        assert never not in a.reply_text.lower()
+    assert a.style == []
     p = JVPartner(entity_name="RIVER HOMES LLC", contact_name="Sam Rivera", status="ACTIVE_PARTNER", pof_verified=True,
                   pof_share_ok=True, pof_document_path="/x/pof.pdf", target_counties=["Essex"], min_price=100000,
                   max_price=900000, max_rehab="HEAVY", velocity_score=10)
