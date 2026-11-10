@@ -155,7 +155,7 @@ def test_the_note_goes_only_to_buyer_targets_in_the_live_offer_counties_and_name
         sents = _sentences(ob.body)
         assert len(sents) == 2 and hc.word_count(_text(ob.body)) <= 60 and hc.lint(ob.body) == [], sents
         assert sents[0] == ("I'm working on a couple of as-is houses in Essex and Union counties in the $300K-$600K "
-                            "range and expect to have one under contract soon.")
+                            "range and may have one under contract soon.")
         assert re.findall(r"\$[\d,.]+[KM]?", ob.body) == ["$300K", "$600K"]                # the band, nothing else
         for street in streets:
             assert street.title() not in ob.body and street.upper() not in ob.body.upper()
