@@ -4067,3 +4067,438 @@ targets:
   county: Hudson
   source: https://www.cardellawaste.com/rent-a-dumpster/
   note: Roll-off dumpster rental, C&D transfer stations (Tonnelle Ave, Westside Ave); Northern NJ
+- kind: foreclosure_surplus_attorney
+  org: Taylor and Keyser LLC
+  email: rkeyser@taylorandkeyser.com
+  phone: (609) 803-2180
+  website: https://taylorandkeyser.com
+  town: Haddonfield
+  county: Camden
+  source: https://taylorandkeyser.com/contact/
+  note: tax lien and mortgage foreclosures for investors, South Jersey
+- kind: foreclosure_surplus_attorney
+  org: Stern, Lavinthal & Frankenberg, LLC
+  email: info@sternlav.com
+  phone: (973) 797-1100
+  website: https://www.sternlav.com
+  town: Roseland
+  county: Essex
+  source: https://www.sternlav.com/
+  note: plaintiff mortgage foreclosure and evictions, statewide
+- kind: foreclosure_surplus_attorney
+  org: ShapiroCroland (Shapiro, Croland, Reiser, Apfel & Di Iorio, LLP)
+  email: info@shapirocroland.com
+  phone: (201) 488-3900
+  website: https://shapirocroland.com
+  town: Hackensack
+  county: Bergen
+  source: https://shapirocroland.com/
+  note: foreclosure practice (lenders and borrowers; residential, commercial and tax lien foreclosure), bankruptcy/creditors
+    rights; statewide from Hackensack
+- kind: foreclosure_surplus_attorney
+  org: Ofeck & Heinze, LLP
+  email: ron@ofeckheinze.com
+  phone: (201) 488-9900
+  website: https://www.ofeckheinze.com
+  town: Hackensack
+  county: Bergen
+  source: https://www.ofeckheinze.com/contact-us/
+  note: real estate litigation incl. foreclosure defense and collections, North Jersey
+- kind: foreclosure_surplus_attorney
+  org: Law Offices of Ronald DeSimone
+  email: rds@desimonelaw.com
+  phone: 856-667-7600
+  website: https://www.desimonelaw.com
+  town: Turnersville
+  county: Gloucester
+  source: https://www.desimonelaw.com/contacts/
+  note: foreclosure litigation and Chapter 13/7 bankruptcy, South Jersey
+- kind: foreclosure_surplus_attorney
+  org: Straffi & Straffi, LLC
+  email: infodocuments@straffilaw.com
+  phone: (732) 341-3800
+  website: https://straffilaw.com
+  town: Toms River
+  county: Ocean
+  source: https://straffilaw.com/foreclosure-defense/
+  note: foreclosure defense and Chapter 7/13 bankruptcy, Ocean & Monmouth
+- kind: foreclosure_surplus_attorney
+  org: Law Offices of Kirsten B. Ennis, LLC
+  email: kirsten@ennislegal.com
+  phone: 877-226-5877
+  website: https://ennislegal.com
+  town: Somerville
+  county: Somerset
+  source: https://ennislegal.com/foreclosure-defense/
+  note: foreclosure defense and consumer bankruptcy, Central Jersey
+- kind: foreclosure_surplus_attorney
+  org: Mark S. Cherry, Attorney at Law, PC
+  email: mc@markcherrylaw.com
+  phone: (856) 667-1234
+  website: https://markcherrylaw.com
+  town: Cherry Hill
+  county: Camden
+  source: https://markcherrylaw.com/contact-us
+  note: foreclosure prevention and bankruptcy, South Jersey
+- kind: foreclosure_surplus_attorney
+  org: Mandelbaum Barrett PC
+  email: info@mblawfirm.com
+  phone: 973-736-4600
+  website: https://mblawfirm.com
+  town: Roseland
+  county: Essex
+  source: https://mblawfirm.com/contact/
+  note: bankruptcy & creditors' rights incl. commercial and residential mortgage foreclosures
+- kind: foreclosure_surplus_attorney
+  org: Kasen & Kasen, P.C.
+  email: info@kasenlaw.com
+  phone: (856) 424-4144
+  website: https://kasenlaw.com
+  town: Cherry Hill
+  county: Camden
+  source: https://kasenlaw.com/personal-bankruptcy/
+  note: bankruptcy, foreclosure defense, deed in lieu, short sale (office town per 856-424 Cherry Hill line; site prints no
+    street address)
+- kind: foreclosure_surplus_attorney
+  org: Bathgate, Wegener & Wolf, P.C.
+  email: mrica@bathweg.com
+  phone: 732 363 0666
+  website: https://bathweg.com
+  town: Lakewood
+  county: Ocean
+  source: https://bathweg.com/attorneys/michael-j-rica/
+  note: commercial & residential foreclosures (formerly bank-side, now negotiation/defense), Ocean/Monmouth
+- kind: foreclosure_surplus_attorney
+  org: Capehart Scatchard, P.A.
+  email: afox@capehart.com
+  phone: 856-234-6800
+  website: https://www.capehart.com
+  town: Mount Laurel
+  county: Burlington
+  source: https://www.capehart.com/attorney/alan-p-fox/
+  note: banking & finance / creditors' rights incl. mortgage foreclosure, South Jersey
+- kind: foreclosure_surplus_attorney
+  org: Davison, Eastman, Muñoz, Paone, P.A.
+  email: info@respondlaw.com
+  phone: (732) 462-7170
+  website: https://www.respondlaw.com
+  town: Freehold
+  county: Monmouth
+  source: https://www.respondlaw.com/bankruptcy-lawyers/
+  note: bankruptcy & foreclosures practice, HOA/community association law; Freehold & Toms River
+- kind: foreclosure_surplus_attorney
+  org: Gorski & Knowlton P.C.
+  email: office@gorskiknowlton.com
+  phone: 609-964-4000
+  website: https://www.gorskiknowlton.com
+  town: Hamilton
+  county: Mercer
+  source: https://www.gorskiknowlton.com/
+  note: foreclosure, bankruptcy, collection and insolvency law, Mercer County
+- kind: foreclosure_surplus_attorney
+  org: Law Office of Daniel L. Reinganum
+  email: daniel@reinganumlaw.com
+  phone: 856-548-5440
+  website: https://reinganumlaw.com
+  town: Haddon Heights
+  county: Camden
+  source: https://reinganumlaw.com/
+  note: consumer bankruptcy; Chapter 13 to stop foreclosure, South Jersey
+- kind: foreclosure_surplus_attorney
+  org: Law Offices of Lee M. Perlman
+  email: lperlman@newjerseybankruptcy.com
+  phone: 856-751-4224
+  website: https://www.newjerseybankruptcy.com
+  town: Cherry Hill
+  county: Camden
+  source: https://www.newjerseybankruptcy.com/bankruptcy-faqs/
+  note: bankruptcy, loan modification and foreclosure defense, South Jersey
+- kind: foreclosure_surplus_attorney
+  org: Law Offices of Robert Manchel (Manchel New Jersey Bankruptcy Law)
+  email: manchellaw@yahoo.com
+  phone: (732) 462-1099
+  website: https://bankruptcylawyer-nj.com
+  town: Freehold
+  county: Monmouth
+  source: https://bankruptcylawyer-nj.com/contact-the-law-offices-of-robert-manchel/
+  note: bankruptcy to avoid foreclosure, loan modification, foreclosure mediation; offices Freehold, Marlton, Princeton, East
+    Brunswick, Toms River
+- kind: foreclosure_surplus_attorney
+  org: The Law Office of Joseph I. Windman
+  email: jwindman@aol.com
+  phone: 732-780-4222
+  website: https://windmanlaw.com
+  town: Freehold
+  county: Monmouth
+  source: https://windmanlaw.com/foreclosure/
+  note: foreclosure and bankruptcy, real estate; Monmouth County
+- kind: foreclosure_surplus_attorney
+  org: Law Offices of Jeffrey S. Walters LLC
+  email: jeff@mountlaurelattorney.com
+  phone: 856.552.1045
+  website: https://www.mountlaurelattorney.com
+  town: Marlton
+  county: Burlington
+  source: https://www.mountlaurelattorney.com/foreclosure-defense
+  note: foreclosure defense, bankruptcy and real estate, Burlington/Camden
+- kind: foreclosure_surplus_attorney
+  org: Trenk Isabel Siddiqi & Shahdanian P.C.
+  email: info@tisslaw.com
+  phone: 973-533-1000
+  website: https://tisslaw.com
+  town: Livingston
+  county: Essex
+  source: https://tisslaw.com/offices/
+  note: bankruptcy/restructuring incl. foreclosure, debt-instrument litigation and tax sale foreclosures
+- kind: foreclosure_surplus_attorney
+  org: Rabinowitz, Lubetkin & Tully, LLC
+  email: jlubetkin@rltlawfirm.com
+  phone: (973) 597-9100
+  website: https://rltlawfirm.com
+  town: Livingston
+  county: Essex
+  source: https://rltlawfirm.com/lawyer/jay-l-lubetkin/
+  note: bankruptcy and creditors' rights incl. foreclosures; Chapter 13 to stop foreclosure
+- kind: foreclosure_surplus_attorney
+  org: Cosner Law Group
+  email: cosner@cosnerlaw.com
+  phone: (732) 937-8000
+  website: https://cosnerlaw.com
+  town: East Brunswick
+  county: Middlesex
+  source: https://cosnerlaw.com/contact-us/
+  note: bankruptcy (automatic stay against foreclosure), real estate; counsel of record on a Middlesex sheriff sale
+- kind: foreclosure_surplus_attorney
+  org: Gibbons P.C. (Frost Brown Todd Gibbons) - Banking & Financial Disputes
+  email: jliss@fbtgibbons.com
+  phone: 973.596.4569
+  website: https://fbtgibbons.com
+  town: Newark
+  county: Essex
+  source: https://fbtgibbons.com/practices/business-and-commercial-litigation/banking-and-financial-disputes/
+  note: lender-side banking disputes incl. workouts and foreclosures (partner, Newark)
+- kind: foreclosure_surplus_attorney
+  org: Riker Danzig LLP - Banking, Title Insurance & Real Estate Litigation
+  email: modonnell@riker.com
+  phone: (973) 538-0800
+  website: https://riker.com
+  town: Morristown
+  county: Morris
+  source: https://riker.com/blog/banking-title-insurance-and-real-estate-litigation/new-jersey-court-holds-surplus-proceeds-from-foreclosure-sale-should-be-used-to-pay-judgment-lien-against-one-spouse/
+  note: title/lender-side foreclosure litigation; writes on foreclosure surplus proceeds disputes
+- kind: foreclosure_surplus_attorney
+  org: Vastola, Fackelman & Sullivan
+  email: vmarsh@vfesqs.com
+  phone: 732-560-0888
+  website: https://www.vastolaandsullivan.com
+  town: Middlesex
+  county: Middlesex
+  source: https://www.vastolaandsullivan.com/
+  note: commercial foreclosures, real estate and commercial litigation; counsel of record on a Passaic sheriff sale
+- kind: foreclosure_surplus_attorney
+  org: Hueston McNulty, P.C.
+  email: smcnulty@huestonmcnulty.com
+  phone: 973-377-0200
+  website: https://huestonmcnulty.com
+  town: Florham Park
+  county: Morris
+  source: https://huestonmcnulty.com/contact-hml/
+  note: community association collection counsel (60+ NJ associations); counsel of record on an Essex sheriff sale
+- kind: foreclosure_surplus_attorney
+  org: Bruce W. Radowitz, Esq., P.A.
+  email: bwrlaw@yahoo.com
+  phone: 908-687-2333
+  website: https://www.bruceradowitzlaw.com
+  town: Union
+  county: Union
+  source: https://www.bruceradowitzlaw.com/attorney/bruce-w-radowitz/
+  note: foreclosure defense, loan modification and bankruptcy; Union/Essex/Hudson
+- kind: foreclosure_surplus_attorney
+  org: Simon Law Group, LLC
+  email: info@simonattorneys.com
+  phone: (908) 788-6000
+  website: https://www.simonattorneys.com
+  town: Somerville
+  county: Somerset
+  source: https://www.simonattorneys.com/foreclosure
+  note: foreclosure defense, sheriff sale defense, loan modifications; Somerville, Morristown, Flemington offices
+- kind: foreclosure_surplus_attorney
+  org: Law Office of MaryBeth Schroeder
+  email: marybeth@schroedermb-law.com
+  phone: (732) 228-7400
+  website: https://www.mbschroeder.com
+  town: Toms River
+  county: Ocean
+  source: https://www.mbschroeder.com/contact
+  note: consumer bankruptcy for homeowners facing foreclosure, Ocean/Monmouth
+- kind: foreclosure_surplus_attorney
+  org: Fazzio Law Offices (New Jersey Foreclosure Defense Attorneys)
+  email: contactus@fazziolaw.com
+  phone: (201) 529-8024
+  website: https://njforeclosuredefenseattorneys.com
+  town: Hackensack
+  county: Bergen
+  source: https://njforeclosuredefenseattorneys.com/contact/
+  note: foreclosure defense, loan modification, short sale and sheriff sale matters, statewide
+- kind: foreclosure_surplus_attorney
+  org: Lewis Legal LLC
+  email: erin@elewislegal.com
+  phone: 908-271-6931
+  website: https://www.elewislegal.com
+  town: Cranford
+  county: Union
+  source: https://www.elewislegal.com/
+  note: foreclosure defense alongside real estate and estate matters; offices Cranford, Parsippany, Totowa, Paramus, Newark
+- kind: foreclosure_surplus_attorney
+  org: Riviere Advocacy Group (Law Offices of Paul J. Riviere)
+  email: priviere@lawofficespjr.com
+  phone: (732) 646-5529
+  website: https://www.lawofficespjr.com
+  town: Jackson
+  county: Ocean
+  source: https://www.lawofficespjr.com/surplus-funds/
+  note: sheriff-sale surplus funds claims, bankruptcy; Ocean/Monmouth
+- kind: foreclosure_surplus_attorney
+  org: Law Offices of James C. Zimmermann
+  email: jim@jzlawyer.com
+  phone: 973-764-1633
+  website: https://www.jzlawyer.com
+  town: Wayne
+  county: Passaic
+  source: https://www.jzlawyer.com/
+  note: foreclosure defense, deed in lieu and bankruptcy; offices Wayne, Vernon, Pompton Lakes, Hackensack, Nutley
+- kind: foreclosure_surplus_attorney
+  org: Pellegrino & Feldstein, LLC
+  email: contact@taxlienlawyer.net
+  phone: 973-586-2300
+  website: https://taxlienlawyer.net
+  town: Denville
+  county: Morris
+  source: https://taxlienlawyer.net/
+  note: tax sale certificate foreclosures for investors and lienholders statewide; plaintiff counsel on NJ sheriff sales
+- kind: foreclosure_surplus_attorney
+  org: Law Office of Mike Assad
+  email: mike@mikeassad.law
+  phone: (609) 808-3300
+  website: https://mikeassad.law
+  town: Cherry Hill
+  county: Camden
+  source: https://mikeassad.law/
+  note: foreclosure defense and Chapter 7/13 bankruptcy (stop sheriff sales); Cherry Hill & Egg Harbor Twp
+- kind: foreclosure_surplus_attorney
+  org: Law Offices of Andy Winchell, P.C.
+  email: andy@winchlaw.com
+  phone: 973-620-7303
+  website: https://www.winchlaw.com
+  town: Bedminster
+  county: Somerset
+  source: https://www.winchlaw.com/foreclosure-defense
+  note: foreclosure defense and foreclosure litigation, loan modification, bankruptcy; Somerset/Union/Hunterdon/Middlesex/Morris
+- kind: foreclosure_surplus_attorney
+  org: Giaimo & Associates
+  email: tom@giaimoandassociates.com
+  phone: 732-747-8585
+  website: https://www.njcondolawyers.com
+  town: Rumson
+  county: Monmouth
+  source: https://www.njcondolawyers.com/contact_us
+  note: 'community association counsel: collections, bankruptcy and lien foreclosures'
+- kind: foreclosure_surplus_attorney
+  org: Griffin Alexander, P.C.
+  email: attorneys@lawgapc.com
+  phone: 973-366-1188
+  website: https://www.lawgapc.com
+  town: Parsippany
+  county: Morris
+  source: https://www.lawgapc.com/practices/collections/
+  note: community association collections incl. liens and foreclosure complaints; Parsippany, East Brunswick, Mount Laurel
+- kind: foreclosure_surplus_attorney
+  org: Becker & Poliakoff - New Jersey Community Association Group
+  email: tbucca@beckerlawyers.com
+  phone: 973.898.6502
+  website: https://beckerlawyers.com
+  town: Morristown
+  county: Morris
+  source: https://beckerlawyers.com/professionals/tana-bucca/
+  note: 'association collections: foreclosure complaints, mortgage foreclosure actions, surplus funds recovery, receiverships'
+- kind: foreclosure_surplus_attorney
+  org: Kessler Law
+  email: dkessler@kesslerlaw.com
+  phone: (973) 773-1200
+  website: https://www.kesslerlaw.com
+  town: Livingston
+  county: Essex
+  source: https://www.kesslerlaw.com/contact/
+  note: mortgage foreclosures for lenders and private/hard-money lenders, sheriff's sales (incl. motions to vacate for bidders)
+- kind: foreclosure_surplus_attorney
+  org: Whelan & Whelan
+  email: zwhelanlaw@gmail.com
+  phone: 732-214-0300
+  website: https://www.whelan-law.com
+  town: Watchung
+  county: Somerset
+  source: https://www.whelan-law.com/
+  note: civil litigation and bankruptcy; publishes on setting aside NJ sheriff's sales for bidders
+- kind: foreclosure_surplus_attorney
+  org: Low & Low, LLC
+  email: info@lowbankruptcy.com
+  phone: (201) 343-4040
+  website: https://www.lowbankruptcy.com
+  town: Hackensack
+  county: Bergen
+  source: http://www.lowbankruptcy.com/stop-sheriffs-sale-in-nj/
+  note: bankruptcy to stop sheriff's sales; offices Hackensack, Jersey City, West New York, Elizabeth
+- kind: foreclosure_surplus_attorney
+  org: Song Law Firm, LLC
+  email: mail@songlawfirm.com
+  phone: 201-461-0031
+  website: https://songlawfirm.com
+  town: Fort Lee
+  county: Bergen
+  source: https://songlawfirm.com/practice-areas/finance-law/
+  note: 'finance law: NJ Chancery foreclosure and lender liability / wrongful foreclosure matters'
+- kind: foreclosure_surplus_attorney
+  org: Lucid Law Bankruptcy Attorneys (Law Office of Karina Lucid)
+  email: klucid@karinalucidlaw.com
+  phone: (908) 350-4505
+  website: https://www.karinalucidlaw.com
+  town: Bridgewater
+  county: Somerset
+  source: https://www.karinalucidlaw.com/stop-foreclosure/
+  note: stop foreclosure / consumer bankruptcy, Spanish-speaking; Somerset, Union, Middlesex
+- kind: foreclosure_surplus_attorney
+  org: Cabanillas & Associates
+  email: leads@cabanillaslaw.com
+  phone: 800-523-4762
+  website: https://www.cabanillaslaw.com
+  town: Newark
+  county: Essex
+  source: https://www.cabanillaslaw.com/en/contact
+  note: foreclosure defense and loan modification (Spanish-speaking); NJ offices Newark, Union City, Roselle Park, New Brunswick
+- kind: foreclosure_surplus_attorney
+  org: Cohn Lifland Pearlman Herrmann & Knopf LLP
+  email: md@njlawfirm.com
+  phone: (201) 845-9600
+  website: https://www.njlawfirm.com
+  town: Saddle Brook
+  county: Bergen
+  source: https://www.njlawfirm.com/attorneys/mercedes-diego
+  note: foreclosure matters (initiation, receivers, modification negotiations), bankruptcy; bilingual partner
+- kind: foreclosure_surplus_attorney
+  org: Law Offices of Jonathan Goldsmith Cohen
+  email: jgc@imclawgroup.com
+  phone: 732-741-9500
+  website: https://goldsmithcohen.com
+  town: Tinton Falls
+  county: Monmouth
+  source: https://goldsmithcohen.com/covid-19/post-covid-nj-foreclosures-sheriff-sales-how-to-save-your-home/
+  note: foreclosure defense, sheriff sales, loan modification and bankruptcy; Monmouth County
+- kind: foreclosure_surplus_attorney
+  org: The Lombardi Law Firm (Law Office of Steven P. Lombardi)
+  email: steven@lombardilawfirm.com
+  phone: (973) 921-2860
+  website: https://www.njbankruptcyatty.com
+  town: Red Bank
+  county: Monmouth
+  source: https://www.njbankruptcyatty.com/contact-lombardi-lawfirm/
+  note: consumer bankruptcy for homeowners facing foreclosure, North/Central Jersey

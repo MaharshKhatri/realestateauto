@@ -1338,10 +1338,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     with the owners about listing or to work with us on the investor side?"; Touch 2 = the sheet's masked sample + "$250
     a month per town (`agent_price_monthly`, 99 in settings), flat, no referral fee and nothing tied to a listing or sale
     (N.J.S.A. 45:15-3)"; follow-ups are the outbox's nudges; an agent already in another stream's sequence is skipped. Run log: agent_targets / agent_pitches / agent_sheets (counts).
-  - **B2B targets** (`config/b2b_targets.yaml`, 448 firms, 402 with a published e-mail, each with the page it is printed
+  - **B2B targets** (`config/b2b_targets.yaml`, 496 firms, 450 with a published e-mail, each with the page it is printed
     on; +327 from research agents on 2026-11-10): 78 hard-money lenders + 8 mortgage brokers, 53 oil-tank firms, 51 HVAC, 47
     roofers, 33 rehab GCs, 31 dumpster firms, 44 builders / developers (seeded to s13), 34 1031 intermediaries, 15 cost-seg
-    firms, 17 CPAs, 15 tax-appeal and 7 surplus attorneys, 8 investor brokerages, 7 transaction coordinators (unseeded: no
+    firms, 17 CPAs, 15 tax-appeal and 55 surplus attorneys (owner-side, defense and tax-lien firms; lender-side foreclosure firms left out: they never buy owner-side surplus research), 8 investor brokerages, 7 transaction coordinators (unseeded: no
     product for them). Measured on the Nov 2 snapshot (forced run, 43 s): s1 101 convertible
     of 1,449 listed; s2 4 digests; s3 257 rows / 8 PDFs; s4 97 triggers / 11 PDFs; s5 22 entities; s6 19 packets of 1,795
     high-tax parcels; s7 0 in a dead zone; s9 119 triggers; s10 123 rows.

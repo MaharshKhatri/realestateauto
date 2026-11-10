@@ -604,16 +604,21 @@ def pitch_subject(town: str, street: str, n: int) -> str:
             else f"Chapter 123 ratios: {street}, {town}")
 
 
-def pitch_body(town: str, street: str, n: int, min_taxes: float, first: str) -> str:
-    """Touch 1: two plain sentences, no attachment, no price, no value and no verdict: what we ran, the true count in
-    one town (the tax screen is a public-record filter, written out in words), one public-record street and a yes/no
-    question. Never "over-assessed", "savings" or "sold for less"."""
-    homes = "one home" if n == 1 else f"{n} homes"
-    which = f"at {street}" if n == 1 else f"including {street}"
-    return (f"Hello,\n\nWe ran Chapter 123 assessment-to-sale ratios across {town} and found {homes} paying over "
-            f"{taxes_floor(min_taxes)} dollars a year in taxes where the assessment divided by recent sale prices of "
-            f"similar homes runs above the common level range, {which}. Want the comparable-sales packet for it?"
-            f"\n\n{first}").strip()
+def pitch_body(town: str, street: str, n: int, min_taxes: float, first: str, *, comps: int = 0,
+               ratio: Ratio | None = None, deadline: date | None = None) -> str:
+    """Touch 1: two plain sentences of public-record facts only (the playbook's tax-appeal opener, 2026-11-10): the
+    street, how many similar recorded sales the packet holds, the town's Chapter 123 ratio, and a yes/no question with
+    the filing deadline. No screen result, no "above the range", no value, no "over-assessed", no savings, no "$"."""
+    sales = f"{comps} similar recorded sales" if comps > 1 else "similar recorded sales"
+    more = "" if n <= 1 else f", one of {n} homes there paying over {taxes_floor(min_taxes)} dollars a year in taxes,"
+    if ratio is not None:
+        r = f"{ratio.printed:.2f}%".replace(".00%", "%")
+        fact = (f"{town}'s {'official' if ratio.official else 'estimated'} Chapter 123 ratio is {r}")
+    else:
+        fact = f"{town}'s Chapter 123 ratio is in the packet"
+    when = f" before the {deadline:%B} {deadline.day} deadline" if deadline else ""
+    return (f"Hello,\n\n{street} in {town}{more} has {sales} nearby on record, and {fact}. Want the one-page "
+            f"comparable-sales packet for it{when}?\n\n{first}").strip()
 
 
 def followup_body(street: str, first: str) -> str:
@@ -703,7 +708,8 @@ def pitches(session: Session, ctx: StreamContext, packets: list[tuple[Case, Path
             case, path = mine[0]
             n = max(per_town.get((_county_key(case.county), case.mun_code or _town_key(case.town)), 0), 1)
             subject = pitch_subject(town_label(case), street_label(case), n)
-            body = pitch_body(town_label(case), street_label(case), n, float(_lim(ctx, "min_taxes")), first)
+            body = pitch_body(town_label(case), street_label(case), n, float(_lim(ctx, "min_taxes")), first,
+                              comps=len(case.comps), ratio=case.ratio, deadline=case.deadline)
         out.append(Outbound(
             stream=KEY, key=key, to=t.email or "", subject=subject, body=body, priority=PRIORITY_SPECIALTY,
             kind="pitch", target_id=t.id, in_reply_to=earlier.message_id if earlier is not None else None,
