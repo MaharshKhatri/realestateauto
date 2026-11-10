@@ -129,15 +129,46 @@ def test_a_block_code_pauses_cold_mail_for_a_week_but_replies_still_go(live, qui
     assert cold_guard.paused(db, TUE_ET + timedelta(days=8)) is None
 
 
-def test_three_bounces_in_two_days_pause_cold_mail_and_agent_openers(live, quick):
+def test_bounces_pause_cold_mail_only_at_five_and_over_eight_percent(live, quick):
+    """Operator 2026-11-10: dead domains are skipped before sending, so only 5+ bounces AND > 8% of the window's cold
+    sends pause cold mail; a reset starts the count over (the addresses stay bounced)."""
     db = live
     from engine import agent_outreach as ao
     for i in range(3):
         ao.record_bounce(db, f"gone{i}@firm.example")
     db.commit()
-    why = cold_guard.paused(db)
-    assert why and "3 bounces" in why
-    assert cold_guard.paused(db, datetime.now(TZ) + timedelta(hours=49)) is None
+    assert cold_guard.paused(db) is None                         # 3 bounces: no longer a pause
+    for i in range(3, 5):
+        ao.record_bounce(db, f"gone{i}@firm.example")
+    db.commit()
+    why = cold_guard.paused(db)                                  # 5 bounces, 0 cold sends: over 8%
+    assert why and "5 bounces" in why
+    for i in range(60):                                          # 5 of 60 sends = 8.3%: still over
+        db.add(FirmOutbox(key=f"c{i}", stream="s4", priority=3, kind="pitch", to_email=f"x{i}@firm.example",
+                          subject="s", body="b", status="sent", sent_at=utcnow()))
+    db.commit()
+    assert cold_guard.paused(db)
+    for i in range(60, 70):                                      # 5 of 70 = 7.1%: under 8%, cold mail goes
+        db.add(FirmOutbox(key=f"c{i}", stream="s4", priority=3, kind="pitch", to_email=f"x{i}@firm.example",
+                          subject="s", body="b", status="sent", sent_at=utcnow()))
+    db.commit()
+    assert cold_guard.paused(db) is None
+    assert cold_guard.paused(db, datetime.now(TZ) + timedelta(days=8)) is None
+
+
+def test_a_reset_restarts_the_bounce_count(live, quick):
+    db = live
+    from engine import agent_outreach as ao
+    for i in range(5):
+        ao.record_bounce(db, f"gone{i}@firm.example")
+    db.commit()
+    assert cold_guard.paused(db)
+    cold_guard.reset(db)
+    db.commit()
+    assert cold_guard.paused(db) is None and "gone0@firm.example" in ao.bounced_emails(db)
+    assert cold_guard.note_error(db, "421 4.7.28 unusual rate", TUE_ET) == "4.7.28"
+    db.commit()
+    assert "paused until" in cold_guard.paused(db, TUE_ET)       # a Gmail block code is never cleared by a reset
 
 
 # -- timing and price ------------------------------------------------------------------------------------------------
@@ -173,24 +204,43 @@ def test_a_copy_fix_reaches_mail_already_queued(live):
     assert fo.rewrite_queued(db) == 0
 
 
-def test_a_domain_that_does_not_exist_is_never_mailed_cold(live, quick, monkeypatch):
+def _fake_dns(monkeypatch, table):
+    """table: (domain, rtype) -> status; anything missing is ("ok")."""
+    monkeypatch.setattr(cold_guard, "_DOMAIN_CACHE", {})
+    monkeypatch.setattr(cold_guard, "_PROBE", {})
+
+    def q(domain, rtype):
+        st = table.get((domain, rtype), "ok")
+        return (st, ["mx.example.net"] if st == "ok" and rtype == "MX" else [domain] if st == "ok" else [])
+    monkeypatch.setattr(cold_guard, "_query", q)
+
+
+def test_mx_check_decides_which_domains_are_dead(monkeypatch):
+    _fake_dns(monkeypatch, {("gone-firm.com", "MX"): "nxdomain",
+                            ("site-only.com", "MX"): "noanswer",                        # no MX, but an A record: fine
+                            ("no-mail.com", "MX"): "noanswer", ("no-mail.com", "A"): "noanswer",
+                            ("no-mail.com", "AAAA"): "noanswer",
+                            ("slow-dns.com", "MX"): "error"})
+    assert cold_guard.dead_domain("a@gone-firm.com") == "the domain doesn't exist"
+    assert cold_guard.dead_domain("a@site-only.com") is None
+    assert cold_guard.dead_domain("a@no-mail.com") == "the domain has no mail server (no MX or A record)"
+    assert cold_guard.dead_domain("a@slow-dns.com") is None                       # can't tell: send
+    assert cold_guard.dead_domain("a@firm.example") is None                       # reserved: never looked up
+
+
+def test_a_resolver_that_cant_answer_mx_falls_back_to_a_records(monkeypatch):
+    """Some resolvers (a test proxy) answer A but never MX: then only an A-record NXDOMAIN counts."""
+    _fake_dns(monkeypatch, {("gmail.com", "MX"): "noanswer", ("x.com", "MX"): "noanswer", ("x.com", "A"): "noanswer",
+                            ("x.com", "AAAA"): "noanswer", ("gone.com", "MX"): "noanswer", ("gone.com", "A"): "nxdomain"})
+    assert cold_guard.dead_domain("a@x.com") is None
+    assert cold_guard.dead_domain("a@gone.com") == "the domain doesn't exist"
+
+
+def test_a_domain_that_does_not_exist_is_never_mailed(live, quick, monkeypatch):
     """2026-11-10: "the domain atbnj.com couldn't be found" was the third bounce in 48 hours and paused all cold mail.
-    A cold e-mail to a domain DNS says doesn't exist is never sent and never counts as a bounce."""
-    import socket
-
-    from core import mail
+    An e-mail to a domain DNS says can't take mail is never sent and never counts as a bounce."""
     from engine import agent_outreach as ao
-
-    def fake(host, *a, **k):
-        if host == "gone-firm.com":
-            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
-        if host == "gmail.com":
-            return [("ok",)]
-        raise socket.gaierror(socket.EAI_AGAIN, "Temporary failure in name resolution")
-    monkeypatch.setattr(socket, "getaddrinfo", fake)
-    monkeypatch.setattr(mail, "_DOMAIN_CACHE", {})
-    assert mail.domain_missing("a@gone-firm.com")
-    assert not mail.domain_missing("a@slow-dns.com") and not mail.domain_missing("a@firm.example")
+    _fake_dns(monkeypatch, {("gone-firm.com", "MX"): "nxdomain"})
     db = live
     t = target(db, email="info@gone-firm.com", org="Gone LLC")
     fo.enqueue(db, pitch(t, key="g1"), TUE)
@@ -200,6 +250,21 @@ def test_a_domain_that_does_not_exist_is_never_mailed_cold(live, quick, monkeypa
     assert FakeSMTP.sent == []
     db.expire_all()
     row = db.query(FirmOutbox).filter_by(key="g1").one()
-    assert row.status == "skipped" and "domain" in row.reason
+    assert row.status == "skipped" and "doesn't exist" in row.reason
     assert "info@gone-firm.com" in ao.bounced_emails(db)
     assert cold_guard.bounces_since(db, utcnow() - timedelta(days=1)) == []      # never sent: no bounce pause
+
+
+def test_a_sealed_note_resets_the_bounce_pause(live, quick):
+    from engine import agent_outreach as ao
+    from engine import cloud_desk
+    db = live
+    for i in range(5):
+        ao.record_bounce(db, f"gone{i}@firm.example")
+    db.commit()
+    assert cold_guard.paused(db)
+    key = "k" * 32
+    out = cloud_desk.apply_note(cloud_desk.seal_note([{"cold_guard": "reset"}], cloud_desk.public_hex(key)), key)
+    assert out["note_done"] == 1 and not out.get("note_errors"), out
+    db.expire_all()
+    assert cold_guard.paused(db) is None

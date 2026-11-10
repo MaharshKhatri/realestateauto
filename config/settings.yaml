@@ -385,8 +385,9 @@ research_firm:
                                      # that is ~45 cold first touches a day.
   ramp: [20, 30]                     # first touches a day by week since the first B2B pitch (2026-11-09): 20 this week,
                                      # 30 from week 2 (engine/cold_guard.py); [] = the caps from day 1
-  bounce_pause_count: 3              # 3+ bounces in 48 h pause every cold e-mail until they age out
-  bounce_pause_rate: 0.02            # or > 2% of the last 7 days' cold sends (50+ sent)
+  bounce_pause_count: 5              # operator 2026-11-10: pause cold mail only when 5+ bounces ...
+  bounce_pause_rate: 0.08            # ... AND > 8% of the window's cold sends (dead domains are skipped first, never sent)
+  bounce_window_days: 7
   block_pause_days: 7                # Gmail 5.7.1 unsolicited / 4.7.28 / 5.7.28 / 5.4.5: no cold mail for 7 days
   ad_line: "A business solicitation from {who}."   # the cold footer line (CAN-SPAM 7704(a)(5)(A)(i), the statute's own
                                      # word); never "Ad:" in the subject; dropped after a yes (affirmative consent)

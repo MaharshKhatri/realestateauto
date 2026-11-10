@@ -173,8 +173,9 @@ engine/
   daniels_law.py              ← Daniel's Law takedown inbox: nondisclosure requests from any sender (body + text / CSV /
                                 PDF attachments) → every NJ address / phone suppressed (source daniels_law), our parcels
                                 at that street too, recorded with a 10-business-day deadline, never answered by itself
-  cold_guard.py               ← cold-mail safety for the one personal Gmail: weekly first-touch ramp, bounce pauses
-                                (3 in 48 h / > 2% in 7 days), Gmail block codes → 7-day pause, quiet-inbox check
+  cold_guard.py               ← cold-mail safety for the one personal Gmail: weekly first-touch ramp, MX / A check on
+                                every recipient domain, bounce pause (5+ AND > 8% in 7 days, resettable), Gmail block
+                                codes → 7-day pause, quiet-inbox check
   firm_outbox.py / swarm_firm.py / streams/ ← the research firm (see "The 10-stream research firm")
   clipboard_skiptrace.py      ← Fast Skip-Trace Mode: queue (exempt estates → vacant sheriff → lis pendens → absentee),
                                 parse pasted people-search pages (never fetched), rank, DNC scrub, save, READY flip
@@ -1211,11 +1212,14 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     - **Volume** (`engine/cold_guard.py`): `ramp` [20, 30] first touches a day by week since the first B2B pitch
       (2026-11-09), never above p2 + p3; one cold send every 8-15 minutes at random (`cold_gap_minutes`); no attorney /
       CPA / cost-seg / 1031 cold mail after 6 PM or on a Friday afternoon (`professional_last_hour`).
-    - **Stop rules**: 3+ bounces in 48 h, or > 2% of the last 7 days' cold sends (50+), pause every cold e-mail (B2B,
-      nudges, listing-agent openers) until it clears; Gmail `550 5.7.1 ... unsolicited`, `421 4.7.28`, `550 5.7.28` or
-      `550 5.4.5` on a send or in a bounce pauses cold mail 7 days (`cold_pause`). Replies always go. A cold e-mail (B2B or
-      listing agent) to a domain DNS says doesn't exist is never sent (`core.mail.domain_missing`, NXDOMAIN only, checked
-      against gmail.com; the address is kept off every list but never counts as a bounce). 0 B2B replies to
+    - **Stop rules** (operator 2026-11-10): every e-mail's domain is checked in DNS before it goes
+      (`cold_guard.dead_domain`, dnspython: an MX record, else an A / AAAA record; NXDOMAIN, null MX or neither = dead,
+      kept off every list, never counted as a bounce; any DNS error or a resolver that can't answer MX for gmail.com =
+      "can't tell", send). Only 5+ bounces AND > 8% of the window's cold sends inside 7 days (`bounce_pause_count`,
+      `bounce_pause_rate`, `bounce_window_days`) pause every cold e-mail (B2B, nudges, listing-agent openers) until it
+      drops; a sealed note `{"cold_guard": "reset"}` restarts the count (2026-11-10: the operator cleared the 3-bounce
+      pause). Gmail `550 5.7.1 ... unsolicited`, `421 4.7.28`, `550 5.7.28` or `550 5.4.5` on a send or in a bounce still
+      pauses cold mail 7 days (`cold_pause`), and a reset never clears it. Replies always go. 0 B2B replies to
       25+ first touches in 5 business days = "probably the spam folder: seed test" in the status.
     - **Copy**: every price "plus NJ sales tax" (N.J.S.A. 54:32B-3(b)(12); the operator registers NJ-REG before the
       first invoice); never "worth", "ARV", "equity", "over-assessed", "savings" in an e-mail; never pay tied to a deal,

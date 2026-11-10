@@ -552,6 +552,7 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     - "price": "firm" / "final" / "sent" with "{price}" in the reply: the desk's own locked number is written in and
       the LOI attached at it (`offer_math.note_price`); a house that may not get a number in writing (HOLD, no living
       area, old comps, retail, FRFPA, offered above today's final) is refused and nothing is sent;
+    - "cold_guard": "reset" (no "lead"): start the bounce count over (engine/cold_guard.reset);
     - "daniels_law" + "done" (no "lead"): the operator looked at that Daniel's Law request; "suppress_address" /
       "suppress_phone": a home address / phone the request named that the parser missed (source daniels_law);
     - "prospect" (no "lead"): a flipper's public business contacts / pitch stage for the Deal Desk pipeline
@@ -571,6 +572,17 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("operator"), dict)]:
         try:
             set_operator(item["operator"])
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
+            errors.append(type(exc).__name__)
+        items = [i for i in items if i is not item]
+    for item in [i for i in items if isinstance(i, dict) and i.get("cold_guard") == "reset"]:
+        # {"cold_guard": "reset"}: the operator restarts the bounce count (engine/cold_guard.reset); bounced addresses
+        # stay off every list, a Gmail block-code pause stays.
+        try:
+            from engine import cold_guard
+            with session_scope() as s:
+                cold_guard.reset(s, now)
             done += 1
         except Exception as exc:                   # noqa: BLE001 - reported by name only
             errors.append(type(exc).__name__)

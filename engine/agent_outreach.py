@@ -644,11 +644,12 @@ def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = Non
         # 2026-11-04: a 48-hour nudge went to an address that had bounced ("inbox full") that morning; every repeat
         # bounce counts against the sender's reputation (bounce rate 3.8% in the first week).
         raise RuntimeError(f"{packet.agent_email} bounced before: not sent (call the agent or find a new e-mail)")
-    if not (engaged or in_reply_to) and _cfg().get("check_recipient_domain", True):
-        from core.mail import domain_missing
-        if domain_missing(packet.agent_email):
+    if _cfg().get("check_recipient_domain", True):
+        from engine.cold_guard import dead_domain
+        dead = dead_domain(packet.agent_email)
+        if dead:                              # it could only bounce, and bounces count against the account
             record_bounce(session, packet.agent_email, sent=False)
-            raise RuntimeError(f"the domain of {packet.agent_email} doesn't exist: not sent (find the agent's current e-mail)")
+            raise RuntimeError(f"{packet.agent_email}: {dead}; not sent (find the agent's current e-mail)")
     message_id = new_message_id()
     msg = EmailMessage()
     msg["From"] = os.environ["SMTP_USER"]

@@ -25,32 +25,10 @@ class GmailSendError(RuntimeError):
         self.fatal = fatal
 
 
-_RESERVED_TLDS = {"test", "example", "invalid", "localhost", "local"}
-_DOMAIN_CACHE: dict[str, bool] = {}
-
-
 def domain_missing(addr: str | None) -> bool:
-    """True only when DNS says the recipient's domain does not exist (NXDOMAIN): a cold e-mail there can only bounce
-    (2026-11-10: "the domain atbnj.com couldn't be found" was the third bounce in 48 hours and paused all cold mail),
-    and every bounce counts against the one Gmail account. A temporary DNS failure, a domain with mail records but no
-    website (EAI_NODATA), a resolver that can't find gmail.com either, and the reserved test domains are never
-    "missing". One lookup per domain per process."""
-    domain = (addr or "").rpartition("@")[2].strip().lower().rstrip(".")
-    if not domain or "." not in domain or domain.rsplit(".", 1)[-1] in _RESERVED_TLDS:
-        return False
-    if domain not in _DOMAIN_CACHE:
-        _DOMAIN_CACHE[domain] = _nxdomain(domain) and not _nxdomain("gmail.com")
-    return _DOMAIN_CACHE[domain]
-
-
-def _nxdomain(domain: str) -> bool:
-    try:
-        socket.getaddrinfo(domain, None)
-        return False
-    except socket.gaierror as exc:
-        return exc.errno == socket.EAI_NONAME
-    except OSError:
-        return False
+    """True when DNS says e-mail to this address can't be delivered (`engine.cold_guard.dead_domain`)."""
+    from engine.cold_guard import dead_domain
+    return dead_domain(addr) is not None
 
 
 def is_fatal(exc: BaseException) -> bool:

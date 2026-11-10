@@ -31,6 +31,7 @@ dependencies = [
   "google-auth-httplib2>=0.2",
   "homeharvest>=0.8",                  # MLS listings + recent sold comps (the cloud desk's harvest and firm-up need it)
   "pypdf>=4.0",                        # research packets: one-page checks (engine/streams) and their tests
+  "dnspython>=2.6",                    # MX / A check on every recipient domain before a send (engine/cold_guard.py)
 ]
 
 [project.optional-dependencies]

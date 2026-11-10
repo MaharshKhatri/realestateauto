@@ -777,17 +777,11 @@ def test_the_ask_first_note_answers_a_showing_question(db):
 
 
 def test_a_cold_opener_to_a_domain_that_does_not_exist_is_not_sent(live, monkeypatch):
-    import socket
-
-    from core import mail
     from engine import agent_outreach as ao
-
-    def fake(host, *a, **k):
-        if host == "gone-broker.com":
-            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
-        return [("ok",)]
-    monkeypatch.setattr(socket, "getaddrinfo", fake)
-    monkeypatch.setattr(mail, "_DOMAIN_CACHE", {})
+    from engine import cold_guard
+    monkeypatch.setattr(cold_guard, "_DOMAIN_CACHE", {})
+    monkeypatch.setattr(cold_guard, "_PROBE", {})
+    monkeypatch.setattr(cold_guard, "_query", lambda d, t: ("nxdomain", []) if d == "gone-broker.com" else ("ok", ["mx"]))
     db = live
     lead = listed(db)
     agent = ao.agent_contact(lead)
