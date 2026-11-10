@@ -1,12 +1,13 @@
 """Stream 3: NJ sheriff-sale surplus research for foreclosure-surplus attorneys (flat-fee research, never a finder)."""
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, time, timedelta
 
 import pytest
 from pypdf import PdfReader
 
-from db.models import DeedTransfer, FirmOutbox, FirmTarget, SignalType
+from db.models import DeedTransfer, FirmOutbox, FirmTarget, SignalType, utcnow
 from engine.streams import s3_surplus_overages as s3
 from engine.streams.base import StreamContext
 from tests.factories import make_lead
@@ -215,10 +216,20 @@ def test_a_suppressed_address_never_reaches_the_dossier(db, tmp_path):
     assert postal_title(p.street_address) not in text
 
 
-# -- pitches ------------------------------------------------------------------------------------------------------
-def test_pitches_go_to_matching_attorneys_with_stable_keys_and_plain_copy(db, tmp_path):
+# -- pitches: the 2-step funnel (Touch 1 plain, the masked sample on a yes) ----------------------------------------
+def _head(body: str) -> str:
+    """The text above the sign-off, without the greeting line and the operator's first name."""
+    lines = [ln.strip() for ln in body.strip().splitlines() if ln.strip()]
+    return " ".join(ln for ln in lines if not re.fullmatch(r"(Hello|Hi \S+),", ln) and ln != OP["first"])
+
+
+def _sentences(body: str) -> list[str]:
+    return [x for x in re.split(r"(?<=[.?!])\s+", _head(body)) if x]
+
+
+def test_touch1_is_two_plain_sentences_with_one_case_and_no_attachment(db, tmp_path):
     from engine import human_copy as hc
-    make_lead(db, sheriff_days=20, upset=150_000)
+    lead = make_lead(db, sheriff_days=20, upset=150_000)
     essex = _target(db, "intake@essexlaw.example", "Essex County", score=5)
     _target(db, "office@unionlaw.example", "Union")                     # no Union report this week
     statewide = _target(db, "desk@statewide.example", None, score=1)
@@ -229,18 +240,34 @@ def test_pitches_go_to_matching_attorneys_with_stable_keys_and_plain_copy(db, tm
     res = s3.STREAM.run(db, _ctx(tmp_path, pitches_per_run=5))
     tag = s3.week_tag(_ctx(tmp_path).now)
     assert [o.key for o in res.outbound] == [f"s3:pitch:{essex.id}:{tag}", f"s3:pitch:{statewide.id}:{tag}"]
-    assert res.metrics["targets_matched"] == 3 and res.metrics["pitches"] == 2
+    assert res.metrics["targets_matched"] == 3 and res.metrics["pitches"] == 2 and res.metrics["followups"] == 0
+    from core.text import postal_title
+    street = postal_title(lead.property.street_address)
+    sheriff = _sheriff(lead).source_ref.split(":", 1)[1]
+    report = tmp_path / f"s3_surplus_essex_{tag}.pdf"
     for o in res.outbound:
         assert o.stream == "s3" and o.kind == "pitch" and o.commercial and o.priority == 3
-        assert o.attachments and all(p.exists() for p in o.attachments)
-        assert "Essex County" in o.subject and not o.subject.lower().startswith("re:")
+        assert o.attachments == [] and o.in_reply_to is None             # Touch 1: never an attachment
+        assert o.subject == f"{street}, Essex County" and not o.subject.lower().startswith("re:")
+        assert o.body.startswith("Hello,\n\n") and o.body.rstrip().endswith("\nSam")
+        assert len(_sentences(o.body)) == 2, _sentences(o.body)
+        assert hc.word_count(_head(o.body)) <= 60
+        assert f"including {street} (sheriff # {sheriff})" in o.body
+        assert "1 upcoming Essex County sheriff sale," in o.body       # the true count, and only what the rows are
+        assert o.body.rstrip().splitlines()[-3].endswith("e-mailed it over?")
         assert hc.lint(o.body) == [], hc.lint(o.body)
-        assert hc.word_count(o.body) < 110 and "—" not in o.body
-        assert o.body.rstrip().endswith("\nSam")
         low = o.body.lower()
-        for bad in ("referral", "client", "opportunity", "guarantee", "excited"):
+        for bad in ("$", "quinn", "referral", "client", "opportunity", "guarantee", "excited", "free", "http",
+                    "attached", "a month"):
             assert bad not in low, bad
-        assert "$400 a month" in o.body and "$150" in o.body and "eCourts" in o.body
+        assert "!" not in o.subject and "free" not in o.subject.lower()
+        # Touch 2 waits: a 1-row report has nothing to mask, so the report itself is the sample
+        assert o.sample_attachments == [report] and report.exists()
+        for must in ("$400 a month flat", "$150 for one county report",
+                     "never a percentage of any recovery or tied to a case", 'Reply "start" and I\'ll set it up.',
+                     "eCourts"):
+            assert must in o.sample_body, must
+        assert hc.lint(o.sample_body) == []
     # the same week proposes the same keys; a key already in the outbox is not proposed again
     again = s3.STREAM.run(db, _ctx(tmp_path, pitches_per_run=5))
     assert [o.key for o in again.outbound] == [o.key for o in res.outbound]
@@ -251,6 +278,96 @@ def test_pitches_go_to_matching_attorneys_with_stable_keys_and_plain_copy(db, tm
     # at most pitches_per_run, and nothing at all on a dry run
     assert len(s3.STREAM.run(db, _ctx(tmp_path, pitches_per_run=1)).outbound) == 1
     assert s3.STREAM.run(db, _ctx(tmp_path, send=False)).outbound == []
+
+
+def test_the_sample_shows_two_cases_in_full_and_hides_street_and_docket_on_the_rest(db, tmp_path):
+    from core.text import postal_title
+    from engine import firm_outbox as fo
+    from engine.streams.base import sample_path
+    leads = [make_lead(db, sheriff_days=10 + i, upset=150_000 + 10_000 * i) for i in range(5)]
+    t = _target(db, "intake@essexlaw.example", "Essex")
+    db.commit()
+    db.expire_all()
+    res = s3.STREAM.run(db, _ctx(tmp_path))
+    [o] = res.outbound
+    report = tmp_path / f"s3_surplus_essex_{s3.week_tag(_ctx(tmp_path).now)}.pdf"
+    assert o.sample_attachments == [sample_path(report)] and sample_path(report).exists()
+    assert res.metrics["samples"] == 1
+    assert "5 upcoming Essex County sheriff sales" in o.body
+    assert "the first 2 cases in full, the rest with the street and docket hidden" in o.sample_body
+    rows, _ = s3.collect(db, TODAY, {**s3.DEFAULTS})
+    assert f"including {rows[0].street} (sheriff # {rows[0].sheriff_no})" in o.body   # the first row: shown in full
+    assert o.subject == f"{rows[0].street} + 4 more in Essex County"
+    full, sample = _text(report), _text(sample_path(report))
+    for r in rows[:2]:
+        assert r.street in sample and f"Sh. #{r.sheriff_no}" in sample
+    for r in rows[2:]:
+        assert r.street in full and r.street not in sample                       # rows 3+: street hidden
+        assert r.docket in full and r.docket not in sample                       # ... and the docket
+        assert f"Sh. #{r.sheriff_no}" in full and f"Sh. #{r.sheriff_no}" not in sample
+    assert "Sample: 2 of 5 rows in full" in sample and "QUINN" not in sample
+    assert {postal_title(x.property.street_address) for x in leads} == {r.street for r in rows}
+    # through the outbox: the cold row carries no file; the masked sample waits for a yes
+    row = fo.enqueue(db, o)
+    held = db.query(FirmOutbox).filter_by(key=f"{o.key}:sample").one()
+    assert row.status == "queued" and row.attachments_json == []
+    assert held.status == "held" and [a["name"] for a in held.attachments_json] == [sample_path(report).name]
+    assert held.body == o.sample_body and held.target_id == t.id
+
+
+def test_the_second_touch_is_one_sentence_in_the_first_touchs_thread(db, tmp_path):
+    from engine import human_copy as hc
+    make_lead(db, sheriff_days=20, upset=150_000)
+    now = _ctx(tmp_path).now
+    t = _target(db, "intake@essexlaw.example", "Essex", stage="CONTACTED", touches=1)
+    t.last_contact_at = now - timedelta(days=8)
+    db.add(FirmOutbox(key="s3:pitch:x:old", stream="s3", kind="pitch", target_id=t.id, to_email=t.email,
+                      subject="12 Old St + 3 more in Essex County", body="x", status="sent",
+                      message_id="<touch1@example.test>", sent_at=utcnow() - timedelta(days=8)))
+    soon = _target(db, "desk@essexlaw.example", "Essex", stage="CONTACTED", touches=1)
+    soon.last_contact_at = now - timedelta(days=2)                      # inside the 6-day pitch gap: not this run
+    db.commit()
+    db.expire_all()
+    res = s3.STREAM.run(db, _ctx(tmp_path))
+    [o] = res.outbound
+    assert o.target_id == t.id and o.kind == "followup" and res.metrics["followups"] == 1
+    assert o.in_reply_to == "<touch1@example.test>" and o.subject == "Re: 12 Old St + 3 more in Essex County"
+    assert o.attachments == [] and o.sample_attachments and o.sample_body
+    assert _sentences(o.body) == ["Should I send this week's Essex County sheet over?"]
+    assert hc.lint(o.body) == []
+    # never more than max_touches cold touches
+    t = db.get(FirmTarget, t.id)
+    t.touches = 2
+    db.commit()
+    assert [x.target_id for x in s3.STREAM.run(db, _ctx(tmp_path)).outbound] == []
+
+
+def test_a_statewide_attorney_hears_about_the_two_largest_counties_in_plain_grammar(db, tmp_path):
+    from engine import human_copy as hc
+    from engine.streams.base import sample_path
+    for i in range(3):
+        make_lead(db, sheriff_days=10 + i, upset=150_000)
+    for i in range(4):
+        make_lead(db, sheriff_days=12 + i, upset=150_000, county="Union", municipality="ELIZABETH CITY",
+                  mun_code="2004", city="Elizabeth", zip_code="07201")
+    make_lead(db, sheriff_days=14, upset=150_000, county="Hudson", municipality="JERSEY CITY", mun_code="0906",
+              city="Jersey City", zip_code="07304")
+    _target(db, "desk@statewide.example", "statewide")
+    db.commit()
+    db.expire_all()
+    res = s3.STREAM.run(db, _ctx(tmp_path))
+    [o] = res.outbound
+    tag = s3.week_tag(_ctx(tmp_path).now)
+    assert "for 7 upcoming sheriff sales in Union and Essex counties, including " in o.body
+    assert o.subject.endswith(" + 6 more in Union and Essex counties") and len(_sentences(o.body)) == 2
+    assert hc.word_count(_head(o.body)) <= 60 and hc.lint(o.body) == [] and o.attachments == []
+    assert o.sample_attachments == [sample_path(tmp_path / f"s3_surplus_union_{tag}.pdf"),
+                                    sample_path(tmp_path / f"s3_surplus_essex_{tag}.pdf")]
+    assert o.sample_body.startswith("Here are this week's sheets for Union and Essex counties, attached: the first 2 "
+                                    "cases of each in full")
+    assert s3.followup_body([s3.CountyReport("Union", tmp_path / "u.pdf", []),
+                             s3.CountyReport("Essex", tmp_path / "e.pdf", [])], "Sam") == (
+        "Hello,\n\nShould I send this week's sheets for Union and Essex counties over?\n\nSam")
 
 
 def test_an_empty_database_runs_clean(db, tmp_path):

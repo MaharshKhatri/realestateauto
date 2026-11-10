@@ -27,6 +27,13 @@ v. Zanolini, App. Div. 2010, voided one): research is sold to attorneys for a mo
 owners are never contacted, nothing is legal advice. The attorney verifies every docket on eCourts and decides whom,
 if anyone, to contact; the price never depends on a case, a claim or a contact (N.J.S.A. 45:15-3; NJ RPC 7.2(c);
 Joint Opinion 741 (2021): a per-lead price far above the data's value can look like a disguised referral fee).
+
+The 2-step funnel (2026-11-10): Touch 1 to an attorney is two plain sentences with no attachment, no link and no
+price: the true count of sales in their county's dossier and one case from it (the first row, so the sample shows it
+in full: street + sheriff #, never a defendant), then "Would the case breakdown be useful for your practice if I
+e-mailed it over?". The county PDF's masked sample (base.sample_path: 2 rows in full, the street and docket / sheriff
+# hidden on the rest) and the flat price wait as the held Touch 2, released in their thread on a yes. A second cold
+touch, a week or more later, is one sentence in the same thread ("Should I send this week's Essex County sheet over?").
 """
 from __future__ import annotations
 
@@ -42,8 +49,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from core.text import clean, is_lender, muni_base, postal_title
 from db.models import DeedTransfer, DistressSignal, FirmOutbox, FirmTarget, Property, SignalType, Valuation
-from engine.streams.base import (PRIORITY_SPECIALTY, Outbound, Stream, StreamContext, StreamResult, address_ok,
-                                 entity_like, kmoney, operator_footer, render_table_pdf, slug, week_of)
+from engine.streams.base import (PRIORITY_SPECIALTY, SAMPLE_FULL_ROWS, Outbound, Stream, StreamContext, StreamResult,
+                                 address_ok, entity_like, kmoney, operator_footer, render_table_pdf, sample_path, slug)
 
 TARGET_KIND = "foreclosure_surplus_attorney"
 STATUTORY_ADJOURNMENTS = 5          # N.J.S.A. 2A:17-36 as amended by P.L.2019, c.71: 2 debtor, 2 lender, 1 agreed
@@ -325,7 +332,8 @@ class SurplusRow:
             date_cell = (f"{when}" + (f" ({days}d)" if days is not None else "")
                          + f" · {self.adjournments}<br/>{self.status[:30]}")
             est = f"<b>~{kmoney(self.amount)} equity</b><br/>from {SHORT_BASIS.get(self.value.basis, '-')}"
-        return [str(i), f"{self.docket or '-'}<br/>Sh. #{self.sheriff_no or '-'}", date_cell,
+        # docket and sheriff # on one line, so a sample's masked rows hide both (a visible sheriff # names the case)
+        return [str(i), f"{self.docket or '-'} · Sh. #{self.sheriff_no or '-'}", date_cell,
                 f"<b>{self.street}</b><br/>{self.town}", self.plaintiff, kmoney(self.payoff),
                 kmoney(self.prior_liens) if self.prior_liens else "-", self.value.cell(), est]
 
@@ -514,6 +522,8 @@ def render_county(path: Path, county: str, rows: list[SurplusRow], ctx: StreamCo
         render_table_pdf(path, title=f"NJ Sheriff-Sale Surplus Research: {county} County", subtitle=sub, head=HEAD,
                          rows=cells, notes=notes, box=box, footer=operator_footer(ctx.operator), col_widths=WIDTHS)
         if len(kept) <= 1 or page_count(path) <= 1:
+            if len(kept) <= SAMPLE_FULL_ROWS:
+                sample_path(path).unlink(missing_ok=True)   # 1-2 rows: no masked sample, never a stale longer one
             return path, len(kept)
         kept = kept[:-1]                                 # one page, always: the lowest-ranked row goes first
 
@@ -527,20 +537,29 @@ def _norm_county(c: str | None) -> str:
     return re.sub(r"(?i)\s+county$", "", clean(c)).lower()
 
 
-def pitch_body(where: str, n_watch: int, n_sold: int, lim: dict[str, Any], first: str) -> str:
-    """3-5 plain sentences, the flat prices, the operator's first name (the outbox adds signature and opt-out)."""
-    sold = f", plus {n_sold} sale{'s' if n_sold != 1 else ''} already made to a third party" if n_sold else ""
-    lines = [
-        f"Attached is this week's sheriff-sale surplus research for {where}: {n_watch} upcoming "
-        f"sale{'s' if n_watch != 1 else ''} where public value data sits at least "
-        f"{kmoney(float(lim['min_equity']))} above the upset and known liens{sold}.",
-        "Each row shows the docket, sheriff number, plaintiff, upset, liens and the formula behind the estimate, all "
-        "from public records.",
-        "Your office verifies every case on eCourts and decides whom, if anyone, to contact.",
-        f"It is a flat ${float(lim['price_monthly']):,.0f} a month for weekly reports, or "
-        f"${float(lim['price_report']):,.0f} for one county report, and the price never depends on any case or contact.",
-    ]
-    return "Hello,\n\n" + " ".join(lines) + (f"\n\n{first}" if first else "")
+@dataclass
+class CountyReport:
+    """One county's dossier this week: the full PDF, what Touch 2 attaches (the masked sample when one was written,
+    else the 1-2 row report itself) and the rows on the page."""
+    county: str
+    path: Path
+    rows: list[SurplusRow]
+
+    @property
+    def masked(self) -> bool:
+        return sample_path(self.path).exists()
+
+    @property
+    def sample(self) -> Path:
+        return sample_path(self.path) if self.masked else self.path
+
+    @property
+    def watch(self) -> int:
+        return sum(1 for r in self.rows if r.kind == "watch")
+
+    @property
+    def sold(self) -> int:
+        return sum(1 for r in self.rows if r.kind == "sold")
 
 
 def _where(counties: list[str]) -> str:
@@ -549,20 +568,83 @@ def _where(counties: list[str]) -> str:
     return ", ".join(counties[:-1]) + f" and {counties[-1]} counties"
 
 
-def pitches(session: Session, ctx: StreamContext, lim: dict[str, Any], pdfs: dict[str, tuple[Path, int, int]]
+def case_ref(row: SurplusRow) -> str:
+    """"12 Test St (sheriff # 26-1234)": the street and the public case number, never a defendant."""
+    ref = f" (sheriff # {row.sheriff_no})" if row.sheriff_no else f" (docket {row.docket})" if row.docket else ""
+    return f"{row.street}{ref}"
+
+
+def touch1(reports: list[CountyReport], first: str) -> tuple[str, str]:
+    """(subject, body) of the cold first touch: two plain sentences, a true count and one case, no attachment, no
+    link, no price. "upcoming" / "recent" say only what the rows are (watchlist sales / sales already made). The
+    street is the first row of the first report: it passed `address_ok` in `collect` and the sample shows it in full."""
+    counties = [r.county for r in reports]
+    n = sum(len(r.rows) for r in reports)
+    watch, sold = sum(r.watch for r in reports), sum(r.sold for r in reports)
+    when = "upcoming and recent" if watch and sold else "upcoming" if watch else "recent"
+    sales = "sheriff sale" if n == 1 else "sheriff sales"
+    what = (f"{n} {when} {counties[0]} County {sales}" if len(counties) == 1
+            else f"{n} {when} {sales} in {_where(counties)}")
+    row = reports[0].rows[0]
+    body = (f"Hello,\n\nThis week we compiled the upset-vs-equity file for {what}, including {case_ref(row)}. Would "
+            "the case breakdown be useful for your practice if I e-mailed it over?" + (f"\n\n{first}" if first else ""))
+    subject = f"{row.street} + {n - 1} more in {_where(counties)}" if n > 1 else f"{row.street}, {_where(counties)}"
+    return subject, body
+
+
+def _sheets(reports: list[CountyReport]) -> str:
+    """"this week's Essex County sheet" / "this week's sheets for Essex and Union counties"."""
+    where = _where([r.county for r in reports])
+    return f"this week's {where} sheet" if len(reports) == 1 else f"this week's sheets for {where}"
+
+
+def followup_body(reports: list[CountyReport], first: str) -> str:
+    """The second cold touch: one sentence in the first touch's thread, no attachment."""
+    return f"Hello,\n\nShould I send {_sheets(reports)} over?" + (f"\n\n{first}" if first else "")
+
+
+def sample_body(reports: list[CountyReport], lim: dict[str, Any]) -> str:
+    """Touch 2, sent only after their yes: what is attached, the flat prices, never a percentage or per-case pay."""
+    here = f"Here's {_sheets(reports)}, attached" if len(reports) == 1 else f"Here are {_sheets(reports)}, attached"
+    lines = [
+        (f"{here}: the first {SAMPLE_FULL_ROWS} cases{' of each' if len(reports) > 1 else ''} in full, the rest "
+         "with the street and docket hidden." if any(r.masked for r in reports) else f"{here}."),
+        "Your office verifies every case on eCourts and decides whom, if anyone, to contact.",
+        f"The weekly report is ${float(lim['price_monthly']):,.0f} a month flat, or "
+        f"${float(lim['price_report']):,.0f} for one county report, never a percentage of any recovery or tied to "
+        "a case.",
+        'Reply "start" and I\'ll set it up.',
+    ]
+    return " ".join(lines)
+
+
+def last_touch(session: Session, target_id: int) -> FirmOutbox | None:
+    """Our newest s3 cold touch to this target that actually went out (the follow-up threads onto it)."""
+    return session.scalar(select(FirmOutbox).where(FirmOutbox.target_id == target_id, FirmOutbox.stream == "s3",
+                                                   FirmOutbox.kind.in_(("pitch", "followup")),
+                                                   FirmOutbox.status == "sent", FirmOutbox.message_id.is_not(None))
+                          .order_by(FirmOutbox.sent_at.desc(), FirmOutbox.id.desc()).limit(1))
+
+
+def pitches(session: Session, ctx: StreamContext, lim: dict[str, Any], reports: dict[str, CountyReport]
             ) -> tuple[list[Outbound], int]:
     """At most `pitches_per_run` e-mails to surplus attorneys (NEW / CONTACTED) whose county has a report; statewide
-    targets get the largest reports. One key per target per ISO week, so a re-run never proposes twice."""
+    targets get the largest reports. One key per target per ISO week, so a re-run never proposes twice. A target our
+    first touch reached gets the one-sentence follow-up in that thread; nobody gets more than `max_touches`, and
+    nobody is proposed inside the pitch gap (the week's key stays free for a later run)."""
     from engine.firm_outbox import cfg as firm_cfg
-    if not pdfs or not ctx.send:
+    if not reports or not ctx.send:
         return [], 0
     tag = week_tag(ctx.now)
-    max_touches = int(firm_cfg().get("max_touches", 2))
-    by_size = sorted(pdfs, key=lambda c: (-(pdfs[c][1] + pdfs[c][2]), c))
+    st = firm_cfg()
+    max_touches = int(st.get("max_touches", 2))
+    gap = timedelta(days=float(st.get("pitch_gap_days", 6)))
+    by_size = sorted(reports, key=lambda c: (-len(reports[c].rows), c))
     targets = list(session.scalars(select(FirmTarget).where(FirmTarget.kind == TARGET_KIND,
                                                             FirmTarget.stage.in_(("NEW", "CONTACTED")),
                                                             FirmTarget.email.is_not(None))
                                    .order_by(FirmTarget.score.desc(), FirmTarget.id)))
+    first = (ctx.operator or {}).get("first", "")
     out: list[Outbound] = []
     matched = 0
     for t in targets:
@@ -570,22 +652,28 @@ def pitches(session: Session, ctx: StreamContext, lim: dict[str, Any], pdfs: dic
         if county in STATEWIDE:
             chosen = by_size[:max(1, int(lim["statewide_attachments"]))]
         else:
-            chosen = [c for c in pdfs if c.lower() == county]
+            chosen = [c for c in reports if c.lower() == county]
         if not chosen:
             continue
         matched += 1
         if len(out) >= int(lim["pitches_per_run"]) or int(t.touches or 0) >= max_touches:
             continue
+        if t.last_contact_at and t.last_contact_at > ctx.now - gap:
+            continue
         key = f"s3:pitch:{t.id}:{tag}"
         if session.scalar(select(FirmOutbox.id).where(FirmOutbox.key == key)):
             continue
-        where = _where(chosen)
+        mine = [reports[c] for c in chosen]
+        subject, body = touch1(mine, first)
+        kind, in_reply_to = "pitch", None
+        prev = last_touch(session, t.id) if int(t.touches or 0) > 0 else None
+        if prev is not None:
+            kind, in_reply_to, body = "followup", prev.message_id, followup_body(mine, first)
+            subject = "Re: " + re.sub(r"(?i)^\s*re:\s*", "", prev.subject or subject)
         out.append(Outbound(
-            stream="s3", key=key, to=t.email, priority=PRIORITY_SPECIALTY, kind="pitch", target_id=t.id,
-            subject=f"NJ sheriff-sale surplus research, {where}, week of {week_of(ctx.now)}",
-            body=pitch_body(where, sum(pdfs[c][1] for c in chosen), sum(pdfs[c][2] for c in chosen), lim,
-                            (ctx.operator or {}).get("first", "")),
-            attachments=[pdfs[c][0] for c in chosen]))
+            stream="s3", key=key, to=t.email, priority=PRIORITY_SPECIALTY, kind=kind, target_id=t.id,
+            subject=subject, body=body, in_reply_to=in_reply_to, attachments=[],
+            sample_body=sample_body(mine, lim), sample_attachments=[r.sample for r in mine]))
     return out, matched
 
 
@@ -604,7 +692,7 @@ class SurplusResearchStream(Stream):
         by_county: dict[str, list[SurplusRow]] = {}
         for r in rows:
             by_county.setdefault(r.county, []).append(r)
-        pdfs: dict[str, tuple[Path, int, int]] = {}
+        pdfs: dict[str, CountyReport] = {}
         shown_total = 0
         for county in sorted(by_county):
             shown = by_county[county][:int(lim["max_rows_per_pdf"])]
@@ -612,7 +700,7 @@ class SurplusResearchStream(Stream):
             _, n = render_county(path, county, shown, ctx, lim)
             shown = shown[:n]
             shown_total += len(shown)
-            pdfs[county] = (path, sum(1 for r in shown if r.kind == "watch"), sum(1 for r in shown if r.kind == "sold"))
+            pdfs[county] = CountyReport(county=county, path=path, rows=shown)
         res.products = len(pdfs)
         res.outbound, matched = pitches(session, ctx, lim, pdfs)
         res.metrics.update(stats)
@@ -620,7 +708,9 @@ class SurplusResearchStream(Stream):
                             "surplus_priced": sum(1 for r in rows if r.kind == "sold" and r.sale_price),
                             "watchlist": sum(1 for r in rows if r.kind == "watch"), "rows_shown": shown_total,
                             "counties": len(pdfs), "pdfs": len(pdfs), "targets_matched": matched,
-                            "pitches": len(res.outbound)})
+                            "pitches": len(res.outbound),
+                            "followups": sum(1 for o in res.outbound if o.kind == "followup"),
+                            "samples": sum(1 for r in pdfs.values() if r.masked)})
         if stats["sold_without_price"]:
             res.notes.append(f"{stats['sold_without_price']} third-party sales carry no bid on record: the dossier "
                              "points to the sheriff's deed / OPRA")
