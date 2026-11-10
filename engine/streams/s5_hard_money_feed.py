@@ -483,7 +483,7 @@ class BorrowerFeedStream(Stream):
                     break
                 # a lender we already wrote to gets the one-sentence follow-up in that thread; the key stays one per
                 # target per week, so max_touches holds
-                prior = last_thread(session, self.key, t.id) if int(t.touches or 0) > 0 else None
+                prior = None    # Touch 1 only: the outbox sends the in-thread nudges (firm_outbox.queue_nudges)
                 if prior is not None:
                     res.outbound.append(Outbound(
                         stream=self.key, key=key_for(t), to=t.email or "", priority=PRIORITY_SPECIALTY,

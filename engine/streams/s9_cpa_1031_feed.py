@@ -612,7 +612,7 @@ def pitches(session: Session, ctx: StreamContext, feeds: FeedSet, cs_all: list[C
         if scope is None or not pitch_due(session, t, key, ctx.now):
             continue
         where, skey, cs, ex, lead = scope
-        earlier = earlier_pitch(session, t.id, KEY) if int(t.touches or 0) > 0 else None
+        earlier = None    # Touch 1 only: the outbox sends the in-thread nudges (firm_outbox.queue_nudges)
         lead_all: list[Any] = list(cs if lead == "cs" else ex)
         named_ok = [r for r in lead_all if r.street]
         named = next((r for r in named_ok if earlier is not None and names_street(earlier.body, street_text(r))),

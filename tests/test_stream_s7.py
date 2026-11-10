@@ -254,13 +254,13 @@ def test_an_agent_another_stream_pitched_this_week_waits_without_using_up_the_li
     res = s7.STREAM.run(db, ctx(tmp_path))
     assert res.outbound == [] and res.metrics["skipped_target"] == 1
     assert db.scalar(select(FirmOutbox.id).where(FirmOutbox.key.like(f"s7:sheet:{lead.id}:%"))) is None
-    t.last_contact_at = NOW - timedelta(days=8)                           # past the 6-day pitch gap
+    t.last_contact_at = NOW - timedelta(days=8)                           # past the gap, still in s2's sequence
+    db.flush()
+    assert s7.STREAM.run(db, ctx(tmp_path)).outbound == []               # one person, one sequence at a time
+    t.touches, t.last_contact_at = 0, NOW - timedelta(days=8)            # only an s1 buy-box note so far: no touch
     db.flush()
     [ob] = s7.STREAM.run(db, ctx(tmp_path)).outbound
-    assert ob.target_id == t.id and db.get(FirmTarget, t.id).stream == "s2"   # one agent, one cold-touch budget
-    t.touches = 2                                                         # cold touches used up
-    db.flush()
-    assert s7.STREAM.run(db, ctx(tmp_path)).outbound == []
+    assert ob.target_id == t.id and db.get(FirmTarget, t.id).stream == "s2"   # their row and stream stay
 
 
 def test_cap_per_run_and_one_sheet_per_agent(db, tmp_path):

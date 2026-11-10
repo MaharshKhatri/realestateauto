@@ -282,7 +282,7 @@ def test_touch1_prefers_a_house_bought_this_year_over_an_old_one_in_the_lenders_
     assert s5.pick_named(db, person, date.today()) is None                # a person's trust is never named
 
 
-def test_second_touch_is_one_sentence_in_the_first_touchs_thread(db, tmp_path):
+def test_touch1_holds_the_sample_and_the_stream_never_sends_a_second_touch(db, tmp_path):
     from db.models import FirmOutbox, FirmTarget, utcnow
     from engine import firm_outbox as fo
     _families(db)
@@ -300,20 +300,7 @@ def test_second_touch_is_one_sentence_in_the_first_touchs_thread(db, tmp_path):
     db.flush()
     week2 = StreamContext(now=now + timedelta(days=7), out_dir=tmp_path / "w2", operator=OP, send=True,
                           limits={"min_rows": 1})
-    res = s5.STREAM.run(db, week2)
-    [f] = res.outbound
-    y, w, _ = week2.now.isocalendar()
-    assert f.kind == "followup" and f.key == f"s5:pitch:{t.id}:{y}-W{w}" and res.metrics["followups"] == 1
-    assert f.in_reply_to == "<t1@desk.example>" and f.subject == "Re: " + ob.subject and f.attachments == []
-    assert _sentences(f.body) == ["Should I send this week's 1-page list over?"]
-    assert f.sample_attachments[0].exists() and "$750 a month flat" in f.sample_body
-    r2 = fo.enqueue(db, f)
-    r2.status, r2.message_id, r2.sent_at = "sent", "<t2@desk.example>", utcnow()
-    t.touches, t.last_contact_at = 2, week2.now
-    db.flush()
-    week3 = StreamContext(now=now + timedelta(days=14), out_dir=tmp_path / "w3", operator=OP, send=True,
-                          limits={"min_rows": 1})
-    assert s5.STREAM.run(db, week3).outbound == []                      # two cold touches used: nothing more
+    assert s5.STREAM.run(db, week2).outbound == []    # in a sequence: the outbox nudges in-thread
 
 
 def test_keys_stable_no_resend_cap_and_dry_run(db, tmp_path):

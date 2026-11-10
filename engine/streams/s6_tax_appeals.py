@@ -652,7 +652,8 @@ def pitch_due(session: Session, t: FirmTarget, key: str, now: datetime) -> bool:
     c = cfg()
     if session.scalar(select(FirmOutbox.id).where(FirmOutbox.key == key)):
         return False
-    if int(t.touches or 0) >= int(c.get("max_touches", 2)):
+    from engine.firm_outbox import pitch_ok
+    if not pitch_ok(t, now):                      # Touch 1 only: a target in a sequence gets the outbox's nudges
         return False
     if t.last_contact_at and t.last_contact_at > now - timedelta(days=float(c.get("pitch_gap_days", 6))):
         return False
@@ -693,7 +694,7 @@ def pitches(session: Session, ctx: StreamContext, packets: list[tuple[Case, Path
         key = f"{KEY}:pitch:{t.id}:{iso[0]}-W{iso[1]:02d}"
         if not mine or not pitch_due(session, t, key, ctx.now):
             continue
-        earlier = earlier_pitch(session, t.id, KEY) if int(t.touches or 0) > 0 else None
+        earlier = None    # Touch 1 only: the outbox sends the in-thread nudges (firm_outbox.queue_nudges)
         if earlier is not None:
             # the follow-up names the packet the first touch named while it is still in this week's set
             case, path = next(((c, p) for c, p in mine if names_street(earlier.body, street_label(c))), mine[0])

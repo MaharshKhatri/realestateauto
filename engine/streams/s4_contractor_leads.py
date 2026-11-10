@@ -797,7 +797,7 @@ class ContractorTriggerStream(Stream):
             n, county = max(options)
             # a target we already wrote to gets the one-sentence follow-up in that thread (about the same county when
             # it still has rows of their trade); the key stays one per target per week, so max_touches holds
-            prior = last_thread(session, self.key, t.id) if int(t.touches or 0) > 0 else None
+            prior = None    # Touch 1 only: the outbox sends the in-thread nudges (firm_outbox.queue_nudges)
             if prior is not None:
                 county = next((c for _, c in options if prior[1].rstrip().endswith(f"{c} County")), county)
             if (county, t.kind) not in samples:

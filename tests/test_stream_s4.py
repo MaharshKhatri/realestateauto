@@ -400,7 +400,7 @@ def test_pitch_matches_trade_county_and_caps(db, tmp_path):
     assert f"{roof_st} in Newark came up needing roof work" in roofer.body
 
 
-def test_second_touch_is_one_sentence_in_the_first_touchs_thread(db, tmp_path):
+def test_touch1_holds_the_sample_and_the_stream_never_sends_a_second_touch(db, tmp_path):
     from db.models import FirmOutbox, FirmTarget, utcnow
     from engine import firm_outbox as fo
     _desk(db)
@@ -419,19 +419,7 @@ def test_second_touch_is_one_sentence_in_the_first_touchs_thread(db, tmp_path):
     t.touches, t.stage, t.last_contact_at = 1, "CONTACTED", now
     db.flush()
     week2 = StreamContext(now=now + timedelta(days=7), out_dir=tmp_path / "w2", operator=OP, send=True, limits={})
-    res = s4.STREAM.run(db, week2)
-    [f] = res.outbound
-    y, w, _ = week2.now.isocalendar()
-    assert f.kind == "followup" and f.key == f"s4:pitch:{t.id}:{y}-W{w}" and res.metrics["followups"] == 1
-    assert f.in_reply_to == "<t1@desk.example>" and f.subject == "Re: " + ob.subject and f.attachments == []
-    assert _sentences(f.body) == ["Should I send this week's Essex County oil tank list over?"]
-    assert f.sample_attachments[0].exists() and "$500 a month per county" in f.sample_body
-    r2 = fo.enqueue(db, f)
-    r2.status, r2.message_id, r2.sent_at = "sent", "<t2@desk.example>", utcnow()
-    t.touches, t.last_contact_at = 2, week2.now
-    db.flush()
-    week3 = StreamContext(now=now + timedelta(days=14), out_dir=tmp_path / "w3", operator=OP, send=True, limits={})
-    assert s4.STREAM.run(db, week3).outbound == []                      # two cold touches used: nothing more
+    assert s4.STREAM.run(db, week2).outbound == []    # in a sequence: the outbox nudges in-thread
 
 
 def test_keys_stable_no_resend_and_dry_run(db, tmp_path):

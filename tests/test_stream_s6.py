@@ -350,26 +350,15 @@ def test_monmouth_sample_states_the_january_15_deadline(db, tmp_path):
     assert "January 15, 2027 filing deadline" in ob.sample_body and "April 1" not in ob.sample_body
 
 
-def test_second_touch_is_one_sentence_in_the_first_ones_thread(db, tmp_path):
-    a = _subject(db, taxes=20_000)
+def test_a_target_in_a_sequence_gets_no_second_touch_from_the_stream(db, tmp_path):
+    """2026-11-10 (the B2B playbook): Touch 1 only; the outbox's queue_nudges sends the nudge in-thread."""
+    _subject(db, taxes=20_000)
     b = _subject(db, taxes=14_000)
     t = _target(db)
-    earlier = _sent_pitch(db, t, f"Hello,\n\nWe ran ... including {street_of(b)}. Want the packet for it?\n\nAlex",
-                          subject=f"Chapter 123 ratios: {street_of(b)} + 1 more in Newark")
+    _sent_pitch(db, t, f"Hello,\n\nWe ran ... including {street_of(b)}. Want the packet for it?\n\nAlex",
+                subject=f"Chapter 123 ratios: {street_of(b)} + 1 more in Newark")
     res = s6.STREAM.run(db, _ctx(tmp_path))
-    (ob,) = res.outbound
-    assert ob.key == f"s6:pitch:{t.id}:2026-W46" and ob.kind == "pitch" and ob.attachments == []
-    assert ob.in_reply_to == earlier.message_id and ob.subject == f"Re: {earlier.subject}"
-    # the packet the first touch named, while it is still in this week's set (not this week's top one)
-    assert sentences(ob.body) == [f"Should I send the comparable-sales packet for {street_of(b)} over?"]
-    assert street_of(a) not in ob.body and "$" not in ob.body
-    assert ob.sample_attachments[0].name.endswith(f"_B{b.block}_L{b.lot}.pdf") and street_of(b) in ob.sample_body
-    # an earlier touch naming a property no longer in the set: this week's top packet
-    t2 = _target(db, email="two@law-example.com")
-    _sent_pitch(db, t2, "Hello,\n\nWe ran ... including 999 Gone Rd. Want the packet for it?\n\nAlex")
-    res = s6.STREAM.run(db, _ctx(tmp_path / "2"))
-    second = next(o for o in res.outbound if o.target_id == t2.id)
-    assert street_of(a) in second.body and len(sentences(second.body)) == 1
+    assert [o for o in res.outbound if o.target_id == t.id] == []
 
 
 def test_targets_the_outbox_would_skip_never_take_a_pitch_slot(db, tmp_path):

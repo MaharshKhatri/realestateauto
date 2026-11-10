@@ -359,21 +359,15 @@ def test_a_1031_intermediary_hears_about_long_held_listings_in_its_county_first(
     assert res.products == 3                                                   # statewide + Hudson + New Jersey (B first)
 
 
-def test_second_touch_is_one_sentence_in_the_first_ones_thread(db, tmp_path):
+def test_a_target_in_a_sequence_gets_no_second_touch_from_the_stream(db, tmp_path):
+    """2026-11-10 (the B2B playbook): Touch 1 only; the outbox's queue_nudges sends the nudge in-thread."""
     deeds = [_deed(db, f"BLOCK {i} HOLDINGS LLC", price=1_000_000 + 100_000 * i) for i in range(4)]
-    named = postal_title(deeds[1].property_location)                          # named last week, not this week's top
+    named = postal_title(deeds[1].property_location)
     t = _target(db, "cost_segregation_firm")
-    earlier = _sent_pitch(db, t, f"Hello,\n\nWe pulled 4 ... including {named} in Elizabeth (...).\n\nAlex",
-                          subject=f"{named} + 3 more entity purchases in Union County")
+    _sent_pitch(db, t, f"Hello,\n\nWe pulled 4 ... including {named} in Elizabeth (...).\n\nAlex",
+                subject=f"{named} + 3 more entity purchases in Union County")
     res = s9.STREAM.run(db, _ctx(tmp_path))
-    (o,) = res.outbound
-    assert o.key == f"s9:pitch:{t.id}:2026-W46" and o.kind == "pitch" and o.attachments == []
-    assert o.in_reply_to == earlier.message_id and o.subject == f"Re: {earlier.subject}"
-    assert sentences(o.body) == ["Should I send the Union County list over?"] and "$" not in o.body
-    # the sample keeps last week's named purchase in row 1, in full
-    _, text = _pdf_text(o.sample_attachments[0])
-    assert text.index(named) < text.index(postal_title(deeds[3].property_location))
-    assert "BLOCK 1 HOLDINGS LLC" in text
+    assert [o for o in res.outbound if o.target_id == t.id] == []
 
 
 def test_targets_the_outbox_would_skip_never_take_a_pitch_slot(db, tmp_path):
