@@ -1363,6 +1363,17 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     listings in a reported town (kind `farm_agent`); $79 a month per town or $149 exclusive, plus NJ sales tax; s12
     delivers each subscriber's own town monthly itself (never another town's or an exclusive agent's file). Supply grows
     with the county deed exports the operator drops in (today: Elizabeth only).
+  - **s13 builder teardown digest** (`s13_builder_teardowns.py`, daily, 2026-11-10): live listings in the target counties
+    whose own words read as a teardown or a lot (negation-aware: listings that address builders, teardown / knock down,
+    build your dream home, value is in the land, subdivide, buildable, two lots; "oversized lot" / zoning only when not
+    retail; a bare "builder" never counts) or whose MOD-IV land share (`assessed_land` / land + improvements) is 60%+ on a
+    house built 1960 or earlier; condo / non-residential / new construction / wrong-parcel rows left out. One sheet per
+    county with 3+ rows plus an all-county sheet (street, lot, land share, built, living area, list price, days listed,
+    the listing's own words, the brokerage; "not an appraisal, BPO or CMA; no opinion of value"; zoning and demolition
+    approvals are the buyer's). Pitched to `builder_developer` targets: "<street> in <town> is listed as \"builder's
+    opportunity\" on a 0.31-acre lot, one of N teardown and lot listings I found in <county> this week"; the sheet's first
+    page is the held sample; $249 a month for one county or $499 for all nine, plus NJ sales tax. Supply follows the
+    harvested ZIPs (mostly urban today; suburban builder towns need their ZIPs in `stale_listings.zips`).
   - **B2B targets** (`config/b2b_targets.yaml`, 585 firms, 539 with a published e-mail, each with the page it is printed
     on; +327 from research agents on 2026-11-10): 78 hard-money lenders + 8 mortgage brokers, 53 oil-tank firms, 51 HVAC, 47
     roofers, 33 rehab GCs, 31 dumpster firms, 44 builders / developers (seeded to s13), 34 1031 intermediaries, 15 cost-seg

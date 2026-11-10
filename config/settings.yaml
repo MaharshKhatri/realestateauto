@@ -436,3 +436,6 @@ research_firm:
     s12: {enabled: true, price_monthly: 79, price_exclusive: 149, pitches_per_run: 2, min_listings: 3,
           listing_recent_days: 90, record_lag_days: 60, max_data_age_days: 150, min_months: 6, min_sales: 10,
           pipeline_days: 90}
+    s13: {enabled: true, price_monthly: 249, price_all: 499, pitches_per_run: 2, report_rows: 40, all_rows: 400,
+          min_rows: 3, min_land_share: 0.6, max_year_built: 1960, max_listing_age_days: 30,
+          price_text: "$249 a month for one county or $499 for all nine"}

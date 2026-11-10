@@ -253,6 +253,7 @@ SEQUENCE_WORDS = {
     "s10": ("this week's docket sheet for your town", "the docket sheet"),
     "s11": ("this week's county bid sheet", "the weekly bid sheet"),
     "s12": ("this month's town report", "the monthly town report"),
+    "s13": ("this week's teardown sheet", "the teardown sheet"),
 }
 PROFESSIONAL_KINDS = {"property_tax_appeal_attorney", "foreclosure_surplus_attorney", "real_estate_cpa",
                       "cost_segregation_firm", "qualified_intermediary_1031", "estate_attorney", "probate_attorney"}

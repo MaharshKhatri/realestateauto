@@ -48,6 +48,7 @@ STREAMS: dict[str, tuple[str, str]] = {
     "s10": ("engine.streams.s10_pre_mls_distress", "Pre-MLS distress"),
     "s11": ("engine.streams.s11_sheriff_bid_sheets", "Sheriff-sale bid sheets"),
     "s12": ("engine.streams.s12_town_market_reports", "Town market reports"),
+    "s13": ("engine.streams.s13_builder_teardowns", "Builder teardown digest"),
 }
 STATE_KEY = "firm_last_run"
 TARGETS_FILE = ROOT / "config" / "b2b_targets.yaml"
