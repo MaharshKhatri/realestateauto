@@ -99,9 +99,10 @@ def test_settings_block_holds_the_zips_and_the_code_list_is_only_a_fallback():
     cfg = sl.stale_cfg()
     zips = [str(z) for z in cfg["zips"]]
     assert cfg["min_days_on_market"] == 60 and cfg["max_list_price"] == 900000
-    assert len(zips) == len(set(zips)) == 104 and all(sl.ZIP_RE.match(z) for z in zips)
+    assert len(zips) == len(set(zips)) == 117 and all(sl.ZIP_RE.match(z) for z in zips)
     assert set(sl.DEFAULT_ZIPS) <= set(zips)
     assert {"08081", "07470", "08854", "07205", "07003", "07666", "07087", "07748"} <= set(zips)
+    assert {"08873", "08823", "07801", "07960"} <= set(zips)          # Somerset + Morris (2026-11-10)
 
 
 def test_harvest_zips_merge_auto_expansion_towns_from_our_own_parcels(db):

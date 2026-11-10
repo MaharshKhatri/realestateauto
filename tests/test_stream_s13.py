@@ -297,7 +297,7 @@ def test_rows_pdf_facts_and_privacy(db, tmp_path):
         assert street not in text, street
     assert '"Tear down or renovate"' in text and "(tax-record match: no listing words)" in text
     assert "0.52 ac (22,650 sq ft)" in text and "88%" in text and "Sample Realty LLC" in text
-    assert "$249/month for one county or $499/month for all nine, flat plus NJ sales tax" in text
+    assert "$249/month for one county or $499/month for all eleven, flat plus NJ sales tax" in text
     for secret in ("QUINN", "Pat Agent", "555-0100", "9735550100"):
         assert secret not in text, secret
     assert "Week of" in text and "no referral fees" in text and "no more" in text
@@ -430,8 +430,8 @@ def test_pitches_county_sheet_first_else_all_county_with_a_neighbor_street(db, t
     assert "all_counties" in ocean.sample_attachments[0].name
     assert _sentences(ocean.body)[0].startswith(
         'The listing for 60 Sample St in Long Branch says "calling all builders"')
-    assert "one of 5 teardown and lot listings I found in the nine counties I cover" in ocean.body
-    assert ocean.sample_body.startswith("Attached is this week's sheet for all nine counties")
+    assert "one of 5 teardown and lot listings I found in the eleven counties I cover" in ocean.body
+    assert ocean.sample_body.startswith("Attached is this week's sheet for all eleven counties")
     lead = _flat(ocean.sample_attachments[0])
     assert "60 Sample St" in lead and "Long Branch (Monmouth)" in lead
     for p in (tmp_path / "out").glob("*.pdf"):                    # the lead-first copy never reaches a subscriber
@@ -452,7 +452,7 @@ def test_pitch_cap_keys_and_the_outbox_holds_the_sample(db, tmp_path):
     held = db.query(FirmOutbox).filter_by(key=f"{ob.key}:sample").one()
     assert row.status == "queued" and row.attachments_json == []
     assert held.status == "held" and held.attachments_json[0]["name"].endswith(".sample.pdf")
-    assert "$499 plus NJ sales tax for all nine" in held.body
+    assert "$499 plus NJ sales tax for all eleven" in held.body
     again = s13.STREAM.run(db, _ctx(tmp_path))
     assert t["union"].id not in [o.target_id for o in again.outbound]   # this week's key is used / mail queued
 
@@ -497,7 +497,7 @@ def test_sheets_keep_every_row_and_samples_are_one_first_page(db, tmp_path):
         path = out / f"s13_teardowns_{scope}_{NOW:%Y-%m-%d}.pdf"
         assert page_count(path) >= 2 and len(re.findall(r"\b\d+ Sample St\b", _flat(path))) == 34
     union, shore = res.outbound
-    for ob, sheet in ((union, "the Union County sheet"), (shore, "this week's sheet for all nine counties")):
+    for ob, sheet in ((union, "the Union County sheet"), (shore, "this week's sheet for all eleven counties")):
         [teaser] = ob.sample_attachments
         assert page_count(teaser) == 1 and teaser.parent.parent.name == "leads"
         shown = len(re.findall(r"\b\d+ Sample St\b|\d•+ S•+ St\b", _flat(teaser)))
@@ -507,7 +507,7 @@ def test_sheets_keep_every_row_and_samples_are_one_first_page(db, tmp_path):
         lead = re.search(r"\b(\d+ Sample St)\b", ob.body).group(1)
         assert _flat(teaser).split("Listing brokerage", 1)[1].lstrip().startswith(lead)
     assert "one of 34 teardown and lot listings I found in Union County" in union.body
-    assert "one of 34 teardown and lot listings I found in the nine counties I cover" in shore.body
+    assert "one of 34 teardown and lot listings I found in the eleven counties I cover" in shore.body
 
 
 def test_empty_database(db, tmp_path):

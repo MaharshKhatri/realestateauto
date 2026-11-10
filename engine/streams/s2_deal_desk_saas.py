@@ -433,7 +433,7 @@ def sample_body(t: FirmTarget, rows: int, lim: dict[str, Any], op: dict[str, str
     sheet = "1-page investor sheet" if agent else "1-page numbers sheet"
     text = (f"Here's the {sheet} (attached): the first {SAMPLE_FULL_ROWS} deals in full, the other "
             f"{max(0, rows - SAMPLE_FULL_ROWS)} with the street hidden. The full sheet every week is ${county:,} a month "
-            f"for one county or ${every:,} for all nine, plus NJ sales tax; with offers drafted from your own inbox "
+            f"for one county or ${every:,} for all eleven, plus NJ sales tax; with offers drafted from your own inbox "
             f"{approve} it's ${desk:,} a month. No commission or per-deal fee; reply \"start\" and I'll set it up.")
     hello = greeting(t.name) if agent else "Hello,"
     return "\n".join([hello, "", text, "", op.get("first") or ""]).strip()

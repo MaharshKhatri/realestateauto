@@ -34,7 +34,8 @@ from db.models import CashBuyer, ContactType, Interaction, Occupancy, Property, 
 from db.repository import ensure_lead, upsert_contact, upsert_property, upsert_signal
 
 SOURCE = "inbound_web"
-COUNTIES = ("Middlesex", "Union", "Essex", "Hudson", "Passaic", "Bergen", "Camden", "Mercer", "Monmouth")
+COUNTIES = ("Middlesex", "Union", "Essex", "Hudson", "Passaic", "Bergen", "Camden", "Mercer", "Monmouth",
+            "Somerset", "Morris")
 SITUATIONS = {
     "behind_on_payments": "behind on payments / foreclosure", "inherited": "inherited / estate",
     "tenant": "tired landlord / tenant issues", "repairs": "needs repairs", "vacant": "vacant",

@@ -285,3 +285,64 @@ ratios:
   "2019": {name: "UNION TWP", county: Union, avg: 8.03, lower: 6.83, upper: 9.23, avg_2026: 8.89}
   "2020": {name: "WESTFIELD TOWN", county: Union, avg: 67.10, lower: 57.04, upper: 77.17, avg_2026: 72.48}
   "2021": {name: "WINFIELD TWP", county: Union, avg: 100.10, lower: 85.09, upper: 115.12, avg_2026: 100.10}
+  # Morris and Somerset (added 2026-11-10 with the two new target counties; same 2027 certification, no 2026 column)
+  "1401": {name: "BOONTON TOWN", county: Morris, avg: 58.15, lower: 49.43, upper: 66.87}
+  "1402": {name: "BOONTON TWP", county: Morris, avg: 64.08, lower: 54.47, upper: 73.69}
+  "1403": {name: "BUTLER BORO", county: Morris, avg: 88.80, lower: 75.48, upper: 102.12}
+  "1404": {name: "CHATHAM BORO", county: Morris, avg: 77.07, lower: 65.51, upper: 88.63}
+  "1405": {name: "CHATHAM TWP", county: Morris, avg: 61.27, lower: 52.08, upper: 70.46}
+  "1406": {name: "CHESTER BORO", county: Morris, avg: 83.53, lower: 71.00, upper: 96.06}
+  "1407": {name: "CHESTER TWP", county: Morris, avg: 69.73, lower: 59.27, upper: 80.19}
+  "1408": {name: "DENVILLE TWP", county: Morris, avg: 61.04, lower: 51.88, upper: 70.20}
+  "1409": {name: "DOVER TOWN", county: Morris, avg: 56.91, lower: 48.37, upper: 65.45}
+  "1410": {name: "EAST HANOVER TWP", county: Morris, avg: 49.22, lower: 41.84, upper: 56.60}
+  "1411": {name: "FLORHAM PARK BORO", county: Morris, avg: 63.55, lower: 54.02, upper: 73.08}
+  "1412": {name: "HANOVER TWP", county: Morris, avg: 60.00, lower: 51.00, upper: 69.00}
+  "1413": {name: "HARDING TWP", county: Morris, avg: 69.68, lower: 59.23, upper: 80.13}
+  "1414": {name: "JEFFERSON TWP", county: Morris, avg: 63.43, lower: 53.92, upper: 72.94}
+  "1415": {name: "KINNELON BORO", county: Morris, avg: 69.22, lower: 58.84, upper: 79.60}
+  "1416": {name: "LINCOLN PARK BORO", county: Morris, avg: 84.75, lower: 72.04, upper: 97.46}
+  "1417": {name: "MADISON BORO", county: Morris, avg: 57.23, lower: 48.65, upper: 65.81}
+  "1418": {name: "MENDHAM BORO", county: Morris, avg: 64.76, lower: 55.05, upper: 74.47}
+  "1419": {name: "MENDHAM TWP", county: Morris, avg: 94.22, lower: 80.09, upper: 108.35}
+  "1420": {name: "MINE HILL TWP", county: Morris, avg: 60.27, lower: 51.23, upper: 69.31}
+  "1421": {name: "MONTVILLE TWP", county: Morris, avg: 63.69, lower: 54.14, upper: 73.24}
+  "1422": {name: "MORRIS TWP", county: Morris, avg: 70.24, lower: 59.70, upper: 80.78}
+  "1423": {name: "MORRIS PLAINS BORO", county: Morris, avg: 61.27, lower: 52.08, upper: 70.46}
+  "1424": {name: "MORRISTOWN TOWN", county: Morris, avg: 81.45, lower: 69.23, upper: 93.67}
+  "1425": {name: "MOUNTAIN LAKES BORO", county: Morris, avg: 90.37, lower: 76.81, upper: 103.93}
+  "1426": {name: "MOUNT ARLINGTON BORO", county: Morris, avg: 75.42, lower: 64.11, upper: 86.73}
+  "1427": {name: "MOUNT OLIVE TWP", county: Morris, avg: 59.27, lower: 50.38, upper: 68.16}
+  "1428": {name: "NETCONG BORO", county: Morris, avg: 64.70, lower: 55.00, upper: 74.41}
+  "1429": {name: "PARSIPPANY TR HLS TWP", county: Morris, avg: 62.98, lower: 53.53, upper: 72.43}
+  "1430": {name: "LONG HILL TWP", county: Morris, avg: 86.35, lower: 73.40, upper: 99.30}
+  "1431": {name: "PEQUANNOCK TWP", county: Morris, avg: 86.22, lower: 73.29, upper: 99.15}
+  "1432": {name: "RANDOLPH TWP", county: Morris, avg: 65.33, lower: 55.53, upper: 75.13}
+  "1433": {name: "RIVERDALE BORO", county: Morris, avg: 94.42, lower: 80.26, upper: 108.58}
+  "1434": {name: "ROCKAWAY BORO", county: Morris, avg: 61.06, lower: 51.90, upper: 70.22}
+  "1435": {name: "ROCKAWAY TWP", county: Morris, avg: 88.51, lower: 75.23, upper: 101.79}
+  "1436": {name: "ROXBURY TWP", county: Morris, avg: 60.78, lower: 51.66, upper: 69.90}
+  "1437": {name: "VICTORY GARDENS BORO", county: Morris, avg: 105.32, lower: 89.52, upper: 121.12}
+  "1438": {name: "WASHINGTON TWP", county: Morris, avg: 65.05, lower: 55.29, upper: 74.81}
+  "1439": {name: "WHARTON BORO", county: Morris, avg: 92.51, lower: 78.63, upper: 106.39}
+  "1801": {name: "BEDMINSTER TWP", county: Somerset, avg: 97.67, lower: 83.02, upper: 112.32}
+  "1802": {name: "BERNARDS TWP", county: Somerset, avg: 95.27, lower: 80.98, upper: 109.56}
+  "1803": {name: "BERNARDSVILLE BORO", county: Somerset, avg: 100.34, lower: 85.29, upper: 115.39}
+  "1804": {name: "BOUND BROOK BORO", county: Somerset, avg: 90.71, lower: 77.10, upper: 104.32}
+  "1805": {name: "BRANCHBURG TWP", county: Somerset, avg: 92.28, lower: 78.44, upper: 106.12}
+  "1806": {name: "BRIDGEWATER TWP", county: Somerset, avg: 85.90, lower: 73.02, upper: 98.79}
+  "1807": {name: "FAR HILLS BORO", county: Somerset, avg: 102.80, lower: 87.38, upper: 118.22}
+  "1808": {name: "FRANKLIN TWP", county: Somerset, avg: 93.75, lower: 79.69, upper: 107.81}
+  "1809": {name: "GREEN BROOK TWP", county: Somerset, avg: 95.74, lower: 81.38, upper: 110.10}
+  "1810": {name: "HILLSBOROUGH TWP", county: Somerset, avg: 90.80, lower: 77.18, upper: 104.42}
+  "1811": {name: "MANVILLE BORO", county: Somerset, avg: 98.16, lower: 83.44, upper: 112.88}
+  "1812": {name: "MILLSTONE BORO", county: Somerset, avg: 83.59, lower: 71.05, upper: 96.13}
+  "1813": {name: "MONTGOMERY TWP", county: Somerset, avg: 52.81, lower: 44.89, upper: 60.73}
+  "1814": {name: "NORTH PLAINFIELD BORO", county: Somerset, avg: 50.05, lower: 42.54, upper: 57.56}
+  "1815": {name: "PEAPACK GLADSTONE BORO", county: Somerset, avg: 116.00, lower: 98.60, upper: 133.40}
+  "1816": {name: "RARITAN BORO", county: Somerset, avg: 59.92, lower: 50.93, upper: 68.91}
+  "1817": {name: "ROCKY HILL BORO", county: Somerset, avg: 95.05, lower: 80.79, upper: 109.31}
+  "1818": {name: "SOMERVILLE BORO", county: Somerset, avg: 54.58, lower: 46.39, upper: 62.77}
+  "1819": {name: "SO BOUND BROOK BORO", county: Somerset, avg: 57.93, lower: 49.24, upper: 66.62}
+  "1820": {name: "WARREN TWP", county: Somerset, avg: 99.24, lower: 84.35, upper: 114.13}
+  "1821": {name: "WATCHUNG BORO", county: Somerset, avg: 96.02, lower: 81.62, upper: 110.42}

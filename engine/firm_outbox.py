@@ -602,7 +602,7 @@ def price_line(stream: str | None) -> str:
     trial, monthly = sc.get("price_trial"), sc.get("price_monthly")
     tax = " plus NJ sales tax" if cfg().get("sales_tax_line", True) else ""
     if sc.get("price_text"):
-        return f"{sc['price_text']}{tax}"           # a tiered product (s2: one county / all nine / the full desk)
+        return f"{sc['price_text']}{tax}"           # a tiered product (s2: one county / all eleven / the full desk)
     if trial and monthly:
         return f"${float(trial):,.0f} for the first 30 days, then ${float(monthly):,.0f} a month{tax}"
     if monthly:

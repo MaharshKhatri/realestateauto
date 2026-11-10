@@ -12,8 +12,10 @@ the data harvesting, distress detection, owner lookup, comps, ARV/MAO underwriti
 outreach drafting and disposition prep. The operator spends their time on the phone and e-mail with
 listing agents, sellers and buyers, negotiating and closing.
 
-Target counties (priority order): **Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden, Mercer, Monmouth**
-(Mercer and Monmouth added in Phase 5: Trenton, Hamilton, Ewing; Asbury Park, Neptune, Long Branch, Freehold).
+Target counties (priority order): **Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden, Mercer, Monmouth, Somerset,
+Morris** (Mercer and Monmouth added in Phase 5: Trenton, Hamilton, Ewing; Asbury Park, Neptune, Long Branch, Freehold;
+Somerset and Morris added 2026-11-10 after an agent offered a Franklin Twp listing: 13 harvest ZIPs, 8 focus towns, the
+60 towns' 2027 Chapter 123 ratios for s6; Morris sheriff sales are on CivilView, Somerset's are a manual check).
 Target outcome: assignment fees of $15K–$40K per deal.
 
 ## 100% Virtual / No-Car Operation Protocol (operator update 2026-10-27)

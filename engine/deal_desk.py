@@ -29,7 +29,7 @@ from core.text import clean, is_entity, muni_base, postal_title
 from db.models import CashBuyer, Lead, Property, SignalType
 
 TRIAL_FEE, MONTHLY_FEE = 500, 1000                 # legacy (the trial / desk price before the tiers)
-COUNTY_FEE, ALL_FEE, DESK_FEE = 249, 499, 1000    # 2026-11-10 research: one county / all nine / the full desk
+COUNTY_FEE, ALL_FEE, DESK_FEE = 249, 499, 1000    # 2026-11-10 research: one county / all eleven / the full desk
 MIN_PRICE = 40_000                       # deed prices under this are package deeds / nominal transfers
 MAX_ROWS = 10
 MIN_ROWS = 3                             # fewer deals than this in a buyer's box: no digest this week
@@ -330,7 +330,7 @@ def pitch_lines(prof: BuyerProfile, op: dict[str, str], audience: str = "buyer")
         "of funds. You approve every offer and you are the buyer on every contract.")
     return [
         first,
-        f"<b>The weekly sheet: ${COUNTY_FEE:,}/month for one county or ${ALL_FEE:,}/month for all nine. The full desk "
+        f"<b>The weekly sheet: ${COUNTY_FEE:,}/month for one county or ${ALL_FEE:,}/month for all eleven. The full desk "
         f"(offers drafted from your own inbox): ${DESK_FEE:,}/month. Plus NJ sales tax. Zero commission, zero per-deal "
         "fees or splits.</b> Reply \"start\" to begin.",
         f"{op.get('name') or ''} provides software and research only: not a licensed real estate broker or agent, never "

@@ -45,6 +45,8 @@ NJ_COUNTY_IDS: dict[str, int] = {
 
 # Counties whose sheriff does not use CivilView (checked 2026-10-28).
 NOT_ON_CIVILVIEW = {
+    "Somerset": "not on CivilView's NJ county list (checked 2026-11-10: Morris is, Somerset isn't), so Somerset sheriff "
+                "sales are a manual check; its pre-foreclosures still arrive through lis pendens imports.",
     "Mercer": "sheriff sales aren't on CivilView and mercercounty.org refuses automated access (Akamai 403), so they are "
               "manual: the list is linked from the Sheriff's Foreclosure Sale page (updated Mon/Wed/Thu; sales every "
               "other Wednesday at the Civil Courthouse, 175 S Broad St, Trenton). Mercer pre-foreclosures still arrive "

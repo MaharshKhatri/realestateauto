@@ -154,7 +154,7 @@ crm:
 
 markets:
   # Priority order. Names match CivilView / NJGIN county names.
-  counties: [Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden, Mercer, Monmouth]
+  counties: [Middlesex, Union, Essex, Hudson, Passaic, Bergen, Camden, Mercer, Monmouth, Somerset, Morris]
   # Focus municipalities for absentee/high-equity harvesting (NJGIN MUN_NAME values).
   # The self-improvement agent proposes additions in logs/swarm_intelligence.md.
   focus_municipalities:
@@ -183,6 +183,15 @@ markets:
     - {county: MONMOUTH, name: NEPTUNE TWP}
     - {county: MONMOUTH, name: LONG BRANCH CITY}
     - {county: MONMOUTH, name: FREEHOLD BORO}
+    # Somerset and Morris (added 2026-11-10: Franklin Twp borders New Brunswick; older stock in the boroughs)
+    - {county: SOMERSET, name: FRANKLIN TWP}
+    - {county: SOMERSET, name: NORTH PLAINFIELD BORO}
+    - {county: SOMERSET, name: BOUND BROOK BORO}
+    - {county: SOMERSET, name: MANVILLE BORO}
+    - {county: MORRIS, name: DOVER TOWN}
+    - {county: MORRIS, name: MORRISTOWN TOWN}
+    - {county: MORRIS, name: PARSIPPANY TR HLS TWP}
+    - {county: MORRIS, name: ROCKAWAY TWP}
   arv_sweet_spot: {min: 150000, max: 650000}
 
 stale_listings:
@@ -231,7 +240,12 @@ stale_listings:
     # Hudson: Union City, West New York
      "07087", "07093",
     # Monmouth: Middletown, Howell, Keansburg
-     "07748", "07731", "07734"]
+     "07748", "07731", "07734",
+    # Added 2026-11-10 with Somerset and Morris counties.
+    # Somerset: Franklin Twp (Somerset, Franklin Park), Bound Brook, Manville, Somerville, Bridgewater
+     "08873", "08823", "08805", "08835", "08876", "08807",
+    # Morris: Dover, Morristown, Parsippany, Rockaway, Wharton, Boonton, Butler
+     "07801", "07960", "07054", "07866", "07885", "07005", "07405"]
 
 underwrite:
   new_listing_cap: 300               # value_new_listings: listing leads with no valuation, valued per run
@@ -409,7 +423,7 @@ research_firm:
     s1: {enabled: true, warm_days: 21, buyers_per_deal: 3, buyers_per_run: 8, buyers_gap_days: 14, buyers_max: 2,
          min_live_offers: 2}
     s2: {enabled: true, price_monthly: 249, price_county: 249, price_all: 499, price_desk: 1000, pitches_per_run: 4,
-         agents_top: 300, price_text: "$249 a month for one county, $499 for all nine or $1,000 for the full desk"}
+         agents_top: 300, price_text: "$249 a month for one county, $499 for all eleven or $1,000 for the full desk"}
                                      # tiers from the 2026-11-10 pricing research; recurring revenue counts the lowest
                                      # tier ($249) so it is never overstated
     s3: {enabled: true, price_monthly: 400, price_report: 150, pitches_per_run: 2, window_days: 60, min_equity: 75000,
@@ -439,4 +453,4 @@ research_firm:
           pipeline_days: 90}
     s13: {enabled: true, price_monthly: 249, price_all: 499, pitches_per_run: 2, report_rows: 40, all_rows: 400,
           min_rows: 3, min_land_share: 0.6, max_year_built: 1960, max_listing_age_days: 30,
-          price_text: "$249 a month for one county or $499 for all nine"}
+          price_text: "$249 a month for one county or $499 for all eleven"}
