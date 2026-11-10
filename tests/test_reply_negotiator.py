@@ -404,6 +404,18 @@ def test_back_on_the_market_is_available_not_under_contract():
     assert "UNDER_CONTRACT" in rn.parse_reply("It is now under contract again").intents
 
 
+def test_back_on_the_market_alone_is_available():
+    # 2026-11-10, 263 Stiles St: no contract word at all, so the reply sat as an unclassified question
+    text = ("Hi Maharsh,\n\nThanks for checking in. The property at 263 Stiles St is currently back on\nthe market. "
+            "Last buyer fell thru\n\nBest,")
+    assert rn.parse_reply(text).intents == {"AVAILABLE"}
+    assert rn.parse_reply("Our buyer fell through last week").intents == {"AVAILABLE"}
+    for text in ("It's under contract. If it comes back on the market I'll let you know.",
+                 "We are in attorney review. I'll reach out if the deal falls through."):
+        intents = rn.parse_reply(text).intents
+        assert "UNDER_CONTRACT" in intents and "AVAILABLE" not in intents
+
+
 def test_multiple_offers_get_no_written_number_until_ours_is_firm(db, operator, monkeypatch):
     """2026-11-06, 4 Richard Ter: "We do have a few offers" was drafted as a written best and final ($372,600) on a house
     with no living area on record and an ask-first reach. Facts (or the seller's number) first, never a guess in writing."""

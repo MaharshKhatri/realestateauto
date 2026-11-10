@@ -141,6 +141,9 @@ PHRASES: dict[str, list[str]] = {
                   # typos: "It is still aviilable" (2026-11-06, 492 Booth Ct), "availble", "avaliable"
                   r"\b(?:still|is|it'?s) av(?!oid)[a-z]{2,6}ble\b",
                   r"still (on the market|active|listed|for sale)", r"no offers (yet|so far)", r"haven'?t (had|gotten|received) any offers",
+                  # "currently back on the market. Last buyer fell thru" (2026-11-10, 263 Stiles St) with no contract word
+                  r"\bback\s+on\s+(?:the\s+)?market\b", r"\bback\s+(?:to\s+)?active\b",
+                  r"\b(?:buyer|deal|contract|offer)s? (?:fell|has fallen|fallen) (?:through|thru|apart)\b",
                   r"not (yet )?under contract", r"no accepted offer", r"what'?s your (offer|number|price)", r"how much",
                   r"what number", r"send (me )?(your|the|an) (offer|numbers?|details)", r"make an offer", r"submit (an|your) offer",
                   r"open to offers", r"bring (me |us )?an offer"],
@@ -336,6 +339,10 @@ def parse_reply(text: str) -> ParsedReply:
                           if not _AVAIL_NOT_HOUSE.search(scrubbed[max(0, x.start() - 40):x.start()])), None)
             if not m:
                 continue
+            if intent == "AVAILABLE" and re.search(r"back|fell|fallen", m.group(0), re.I) and re.search(
+                    r"\b(?:if|when|should|in case|once|unless)\b[^.!?\n]*$",
+                    re.split(r"[.;!?\n]", scrubbed[max(0, m.start() - 80):m.start()])[-1], re.I):
+                continue                                   # "if it comes back on the market": it is under contract now
             if intent == "UNDER_CONTRACT" and _HYPOTHETICAL.search(
                     re.split(r"[.;!?\n]", scrubbed[max(0, m.start() - 80):m.start()])[-1]):
                 # "The Seller doesn't have the ability to take her house off the market by going into contract if ..."
