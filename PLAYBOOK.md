@@ -145,6 +145,31 @@ no contact details but yours. Import what comes in with `python manage.py inboun
 
 ---
 
+## Part 1¼ — the research firm: three things only you can do (to get paid)
+
+The desk now sells flat-fee research to investors, agents, attorneys, contractors, lenders and CPAs by e-mail. It
+writes the first note, the follow-up, the free sample on a "yes" and the weekly reports for paying clients by itself.
+It cannot do these three things, and the first payment waits on them:
+
+1. **A payment link.** Make a free Stripe account, then a Payment Link per price (for example "$249/month, one
+   county"; "$499/month, all nine"; "$1,000/month, full desk"; "$199/month contractor sheet"; "$400/month lender
+   feed"; "$400/month surplus report"; "$100 tax-appeal packet"). Tell Claude in the chat: "payment link for s2 is
+   https://...". The desk then sends it by itself when a prospect replies "start". Turn on the customer portal so
+   clients can cancel themselves, and the terms checkbox ("business use only; research data, not advice, not an
+   appraisal").
+2. **NJ sales tax registration.** Information services are taxable in NJ (6.625%). File the free NJ-REG online
+   (business registration, then sales tax) about 15 business days before the first invoice. Every price the desk
+   quotes already says "plus NJ sales tax"; Stripe Tax can add it at checkout.
+3. **A P.O. box** for the postal address in every e-mail (CAN-SPAM needs a real address; a USPS box is valid and
+   keeps your home address off thousands of e-mails). Tell Claude the new address and the desk changes it everywhere.
+
+What to expect: roughly 1 paying client per 200-700 cold e-mails. At 20-30 first touches a day, the first "yes"
+usually comes in week 1-2 and the first payment in weeks 2-6. A reply from a prospect shows as a ✅ warm action on
+your calendar; Claude answers questions for you and tells you when someone is ready to pay.
+
+If anyone ever writes "Daniel's Law" or asks you not to share a home address or phone: the desk removes it from every
+report by itself and puts a ⚖️ deadline on your calendar. Don't reply to them; tell Claude.
+
 ## Part 1½ — Phase 0: lock in your three funding partners (before the first offer)
 
 You have no capital and no car, so the people who sign and fund the contracts are rehabbers who already buy in your towns.
