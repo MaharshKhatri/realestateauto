@@ -250,7 +250,7 @@ def test_followup_and_sample_copy():
         assert len(_sentences(body)) == 1 and hc.lint(body) == [] and "$" not in body
     sb = s4.sample_body("Union", 500, True)
     assert sb == ("Here's this week's Union County sheet, attached: 2 rows in full, the rest with the street hidden. "
-                  "The full sheet every week is $500 a month per county, flat, no commission or per-job fee. "
+                  "The full sheet every week is $500 a month per county plus NJ sales tax, flat, no commission or per-job fee. "
                   "Reply \"start\" and I'll set it up.")
     assert hc.lint(sb) == [] and 2 <= len(re.split(r"(?<=[.?!])\s+", sb)) <= 4
     assert "hidden" not in s4.sample_body("Union", 500, False) and "$500 a month" in s4.sample_body("Union", 500, False)
@@ -387,7 +387,7 @@ def test_pitch_matches_trade_county_and_caps(db, tmp_path):
     assert "•" in text and "Sample: 2 of 4 rows in full" in flat and 'Reply "start" to the e-mail' in flat
     assert "1 fresh investor (business entity) purchase ·" in flat and "3 active listings" in flat
     assert ob.sample_body.startswith("Here's this week's Essex County sheet, attached: 2 rows in full")
-    assert "$500 a month per county, flat, no commission or per-job fee" in ob.sample_body
+    assert "$500 a month per county plus NJ sales tax, flat, no commission or per-job fee" in ob.sample_body
     report_pdf = sample.parent.parent / sample.name.replace(".sample.pdf", ".pdf")
     assert sample_path(report_pdf) == sample and _pages(report_pdf) == 1
     report = _text(report_pdf)                                            # the trade report: every row in full

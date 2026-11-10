@@ -628,7 +628,7 @@ def sample_body(street: str, deadline: date, price_packet: float, price_monthly:
              else "an estimated Chapter 123 ratio to check against the Director's table")
     return (f"Here's the comparable-sales packet for {street} (attached): the recorded sales, {ratio} and the "
             f"arithmetic, with no opinion of value. It is ${price_packet:,.0f} a packet or ${price_monthly:,.0f} a "
-            "month for a weekly set, flat research fees, no contingency and nothing tied to any appeal result; the "
+            "month for a weekly set, plus NJ sales tax, flat research fees, no contingency and nothing tied to any appeal result; the "
             f"{deadline:%B} {deadline.day}, {deadline.year} filing deadline is the clock. "
             "Reply \"start\" and I'll set it up.")
 

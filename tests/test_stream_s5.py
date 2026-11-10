@@ -123,11 +123,11 @@ def test_followup_and_sample_copy():
     assert _sentences(s5.followup_body("Sam")) == ["Should I send this week's 1-page list over?"]
     sb = s5.sample_body(750, True)
     assert sb == ("Here's this week's feed, attached: the top 2 companies in full, the rest with the name hidden. The "
-                  "weekly feed is $750 a month flat, a data retainer with no per-loan fee or commission; it is not a "
+                  "weekly feed is $750 a month plus NJ sales tax, flat, a data retainer with no per-loan fee or commission; it is not a "
                   "consumer or credit report. Reply \"start\" and I'll set it up.")
     assert hc.lint(sb) == [] and 2 <= len(re.split(r"(?<=[.?!])\s+", sb)) <= 4
     plain = s5.sample_body(750, False)
-    assert "hidden" not in plain and "$750 a month flat" in plain and "not a consumer or credit report" in plain
+    assert "hidden" not in plain and "$750 a month plus NJ sales tax" in plain and "not a consumer or credit report" in plain
 
 
 # -- the feed on a database ---------------------------------------------------------------------------------------
@@ -201,7 +201,7 @@ def test_stream_pdf_privacy_and_pitches(db, tmp_path):
     assert ob.subject == "Acme Flip Homes LLC + 1 more NJ investor company"
     # two companies: no masked sample is written, so the held sample is the feed itself and says nothing is hidden
     assert not sample_path(pdf).exists() and ob.sample_attachments == [pdf]
-    assert ob.sample_body.startswith("Here's this week's feed, attached. The weekly feed is $750 a month flat")
+    assert ob.sample_body.startswith("Here's this week's feed, attached. The weekly feed is $750 a month plus NJ sales tax")
     for o in res.outbound:
         for secret in ("Quinn", "QUINN", "Owner @", "Hidden", "HIDDEN", "Office Park", "OFFICE PARK", "One Deal"):
             assert secret not in o.subject + o.body, secret
@@ -294,7 +294,7 @@ def test_touch1_holds_the_sample_and_the_stream_never_sends_a_second_touch(db, t
     row = fo.enqueue(db, ob)
     held = db.query(FirmOutbox).filter_by(key=f"{ob.key}:sample").one()
     assert row.status == "queued" and row.attachments_json == [] and held.status == "held"
-    assert "$750 a month flat" in held.body and held.attachments_json[0]["name"].startswith("s5_borrower_feed_")
+    assert "$750 a month plus NJ sales tax" in held.body and held.attachments_json[0]["name"].startswith("s5_borrower_feed_")
     row.status, row.message_id, row.sent_at = "sent", "<t1@desk.example>", utcnow()
     t.touches, t.stage, t.last_contact_at = 1, "CONTACTED", now
     db.flush()

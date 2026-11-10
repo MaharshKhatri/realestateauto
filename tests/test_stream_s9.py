@@ -262,7 +262,7 @@ def test_pitches_by_kind_two_sentences_no_attachment_stable_keys_and_dry_run(db,
                 "2026), that may fit cost-segregation or 1031 work.") in o.body
         assert sentences(o.body)[-1] == "Want the property and buyer-entity list?"
         assert "HOLDINGS" not in o.body.upper()                            # no buyer named in Touch 1
-        assert "$500 a month flat, no other charge" in o.sample_body and "the client's CPA decides" in o.sample_body
+        assert "$500 a month plus NJ sales tax, flat" in o.sample_body and "the client's CPA decides" in o.sample_body
         assert "no commission or per-deal fee" in o.sample_body and hc.lint(o.sample_body) == []
         assert "the first 2 rows in full, the rest with the property and buyer entity hidden" in o.sample_body
         assert o.sample_body.endswith('Reply "start" and I\'ll set it up.')

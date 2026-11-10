@@ -399,7 +399,7 @@ def sample_body(price: float, masked: bool) -> str:
     """Touch 2, sent with the sample only after their yes: what is attached, the flat price, how to start."""
     what = (f"Here's this week's feed, attached: the top {SAMPLE_FULL_ROWS} companies in full, the rest with the name "
             "hidden." if masked else "Here's this week's feed, attached.")
-    return (f"{what} The weekly feed is ${price:,.0f} a month flat, a data retainer with no per-loan fee or commission; "
+    return (f"{what} The weekly feed is ${price:,.0f} a month plus NJ sales tax, flat, a data retainer with no per-loan fee or commission; "
             "it is not a consumer or credit report. Reply \"start\" and I'll set it up.")
 
 

@@ -536,7 +536,7 @@ def sample_body(county: str, price: float, masked: bool) -> str:
     """Touch 2, sent with the sample only after their yes: what is attached, the flat price, how to start."""
     what = (f"Here's this week's {county} County sheet, attached: {SAMPLE_FULL_ROWS} rows in full, the rest with the "
             "street hidden." if masked else f"Here's this week's {county} County sheet, attached.")
-    return (f"{what} The full sheet every week is ${price:,.0f} a month per county, flat, no commission or per-job fee. "
+    return (f"{what} The full sheet every week is ${price:,.0f} a month per county plus NJ sales tax, flat, no commission or per-job fee. "
             "Reply \"start\" and I'll set it up.")
 
 

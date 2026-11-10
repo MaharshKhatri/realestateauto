@@ -611,8 +611,8 @@ def sample_body(reports: list[CountyReport], lim: dict[str, Any]) -> str:
          "with the street and docket hidden." if any(r.masked for r in reports) else f"{here}."),
         "Your office verifies every case on eCourts and decides whom, if anyone, to contact.",
         f"The weekly report is ${float(lim['price_monthly']):,.0f} a month flat, or "
-        f"${float(lim['price_report']):,.0f} for one county report, never a percentage of any recovery or tied to "
-        "a case.",
+        f"${float(lim['price_report']):,.0f} for one county report, plus NJ sales tax, never a percentage of any "
+        "recovery or tied to a case.",
         'Reply "start" and I\'ll set it up.',
     ]
     return " ".join(lines)

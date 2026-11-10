@@ -585,7 +585,7 @@ def sample_body(where: str, n_cs: int, n_ex: int, masked: bool, price: float) ->
               else "the property and buyer entity" if n_cs else "the property and listing brokerage")
     rows = f"the first {SAMPLE_FULL_ROWS} rows in full, the rest with {hidden} hidden" if masked else "every row in full"
     return (f"Here's this week's {where} list (attached): {rows}, all from public records, and the client's CPA "
-            f"decides eligibility. The full weekly feed is ${price:,.0f} a month flat, no other charge, with no "
+            f"decides eligibility. The full weekly feed is ${price:,.0f} a month plus NJ sales tax, flat, with no "
             "commission or per-deal fee. Reply \"start\" and I'll set it up.")
 
 

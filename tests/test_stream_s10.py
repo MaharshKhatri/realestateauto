@@ -290,7 +290,7 @@ def test_an_agent_gets_a_plain_touch1_and_the_masked_town_sheet_waits_as_the_sam
     [sheet] = list((tmp_path / "out").glob("s10_agent_sheet_*.pdf"))
     assert sheet.name == f"s10_agent_sheet_essex_newark_{_week(WEEKDAY)}.pdf"
     assert o.sample_attachments == [sample_path(sheet)] and sample_path(sheet).exists()
-    assert ("$250 a month per town, flat, no referral fee and nothing tied to a listing or sale (N.J.S.A. 45:15-3)"
+    assert ("$250 a month per town plus NJ sales tax, flat, no referral fee and nothing tied to a listing or sale (N.J.S.A. 45:15-3)"
             in o.sample_body)
     assert 'Reply "start" and I\'ll set it up.' in o.sample_body and "no rescue promises" in o.sample_body
     assert "the first 2 properties in full, the rest with the street and docket hidden" in o.sample_body

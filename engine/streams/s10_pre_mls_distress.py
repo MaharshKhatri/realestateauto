@@ -710,7 +710,7 @@ def agent_sample_body(sheet: TownSheet, lim: dict[str, Any]) -> str:
         (f"Here's the {sheet.town} docket sheet, attached: the first {SAMPLE_FULL_ROWS} properties in full, the rest "
          "with the street and docket hidden." if sheet.masked else f"Here's the {sheet.town} docket sheet, attached."),
         "Please contact owners only as NJ law and your brokerage allow, with no rescue promises.",
-        f"The full sheet every week is ${price:,.0f} a month per town, flat, no referral fee and nothing tied to a "
+        f"The full sheet every week is ${price:,.0f} a month per town plus NJ sales tax, flat, no referral fee and nothing tied to a "
         "listing or sale (N.J.S.A. 45:15-3).",
         'Reply "start" and I\'ll set it up.',
     ]
@@ -734,7 +734,7 @@ def render_agent_sheet(sheet: TownSheet, ctx: StreamContext, lim: dict[str, Any]
         "any day. Verify each docket on eCourts and each sale with the sheriff: sales are often adjourned (N.J.S.A. "
         "2A:17-36), stayed or cancelled.",
     ]
-    box = (f"<b>Subscription:</b> this sheet every week for each town you choose, ${price:,.0f} a month per town, flat; "
+    box = (f"<b>Subscription:</b> this sheet every week for each town you choose, ${price:,.0f} a month per town plus NJ sales tax, flat; "
            "no referral fee and nothing tied to a listing or sale (N.J.S.A. 45:15-3).")
     kept = sheet.rows[:max(1, int(lim["agent_sheet_rows"]))]
     while True:
