@@ -113,10 +113,24 @@ def _attachments(paths: list[Path]) -> list[dict[str, str]]:
     return out
 
 
+SAMPLE_DEFAULT = ("Here's the 1-page sheet (attached): the first rows in full, the rest with the street hidden. The "
+                  "full weekly version is a flat monthly research fee with no commission or per-deal pay; reply "
+                  "\"start\" and I'll set it up.")
+
+
 def enqueue(session: Session, ob: Outbound, now: datetime | None = None) -> FirmOutbox | None:
-    """Store one proposed e-mail under its key. Returns None when the key was already used (never twice)."""
+    """Store one proposed e-mail under its key. Returns None when the key was already used (never twice).
+
+    The 2-step funnel (2026-11-10): a cold pitch / follow-up never carries an attachment. Its PDFs become the held
+    sample (the masked `sample_path` version when one was written), released in the prospect's thread by
+    `handle_reply` when they answer yes."""
     if session.scalar(select(FirmOutbox.id).where(FirmOutbox.key == ob.key)):
         return None
+    if ob.kind in ("pitch", "followup") and ob.attachments:
+        from engine.streams.base import sample_path
+        if not ob.sample_attachments:
+            ob.sample_attachments = [sample_path(a) if sample_path(a).exists() else Path(a) for a in ob.attachments]
+        ob.attachments = []
     target = session.get(FirmTarget, ob.target_id) if ob.target_id else None
     why = stop_reason(session, ob.to, target)
     if why is None and ob.kind == "pitch" and target is not None:
@@ -134,7 +148,42 @@ def enqueue(session: Session, ob: Outbound, now: datetime | None = None) -> Firm
     except IntegrityError:
         session.rollback()
         return None
+    if row.status == "queued" and ob.sample_attachments and ob.target_id:
+        files = _attachments(ob.sample_attachments)
+        if files and not session.scalar(select(FirmOutbox.id).where(FirmOutbox.key == f"{ob.key}:sample")):
+            subj = ob.subject if ob.subject.lower().startswith("re:") else f"Re: {ob.subject}"
+            session.add(FirmOutbox(key=f"{ob.key}:sample"[:200], stream=ob.stream, priority=PRIORITY_REPLY,
+                                   kind="sample", target_id=ob.target_id, lead_id=ob.lead_id, to_email=row.to_email,
+                                   subject=subj[:250], body=(ob.sample_body or SAMPLE_DEFAULT).strip(),
+                                   attachments_json=files, status="held", reason="waits for a yes"))
+            session.flush()
     return row
+
+
+def release_sample(session: Session, target: FirmTarget, reply_message_id: str | None,
+                   reply_subject: str | None = None) -> FirmOutbox | None:
+    """A prospect said yes: their newest held sample goes out next in their own thread (priority 1)."""
+    row = session.scalar(select(FirmOutbox).where(FirmOutbox.target_id == target.id, FirmOutbox.kind == "sample",
+                                                  FirmOutbox.status == "held").order_by(FirmOutbox.id.desc()).limit(1))
+    if row is None:
+        return None
+    row.status, row.reason = "queued", "they said yes"
+    if reply_message_id:
+        row.in_reply_to = reply_message_id
+    if reply_subject:
+        subj = re.sub(r"(?i)^\s*(re|fwd?):\s*", "", reply_subject).strip()
+        row.subject = f"Re: {subj}"[:250]
+    for older in session.scalars(select(FirmOutbox).where(FirmOutbox.target_id == target.id, FirmOutbox.kind == "sample",
+                                                          FirmOutbox.status == "held", FirmOutbox.id != row.id)):
+        older.status, older.reason, older.attachments_json = "skipped", "a newer sample went", []
+    session.flush()
+    return row
+
+
+def sample_sent(session: Session, target: FirmTarget) -> bool:
+    return bool(session.scalar(select(FirmOutbox.id).where(FirmOutbox.target_id == target.id,
+                                                           FirmOutbox.kind == "sample",
+                                                           FirmOutbox.status.in_(("queued", "sent"))).limit(1)))
 
 
 def _pitch_block(session: Session, target: FirmTarget, now: datetime | None) -> str | None:
@@ -169,7 +218,7 @@ def caps() -> dict[int, int]:
 
 def in_business_hours(now: datetime | None = None) -> bool:
     t = _now(now)
-    a, b = (int(x) for x in cfg().get("business_hours", [9, 17]))
+    a, b = (int(x) for x in cfg().get("business_hours", [8, 20]))
     return t.weekday() < 5 and a <= t.hour < b
 
 
@@ -178,8 +227,10 @@ def footer(op: dict[str, str], commercial: bool) -> str:
     sig = hc.signature_lines(op)
     lines = ["", *sig, ""]
     if commercial:
+        # CAN-SPAM 7704(a)(5)(A)(i): a cold commercial message identifies itself as a solicitation; the law leaves the
+        # wording open, so it is one plain footer line (never "Ad:" in the subject)
         who = max((op.get("name") or "", op.get("company") or ""), key=len) or "the sender"
-        lines.append(f"This is a commercial message from {who}.")
+        lines.append(str(cfg().get("ad_line") or "Business offer from {who}.").format(who=who))
     if op.get("postal"):
         lines.append(f"Mail: {op['postal']}")
     lines.append('Reply "no more" and I won\'t e-mail you again.')
@@ -192,7 +243,7 @@ def compose(row: FirmOutbox, op: dict[str, str], message_id: str, user: str) -> 
     if row.in_reply_to:
         msg["In-Reply-To"] = row.in_reply_to
         msg["References"] = row.in_reply_to
-    if row.kind in ("pitch", "followup"):
+    if row.kind in ("pitch", "followup", "sample"):
         # one-click opt-out in the mail client (Gmail's sender rules; CAN-SPAM opt-out); an "unsubscribe" reply is
         # read as an opt-out by classify()
         msg["List-Unsubscribe"] = f"<mailto:{user}?subject=unsubscribe>"
@@ -248,6 +299,9 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
     password = clean_app_password(os.environ["SMTP_APP_PASSWORD"])
     op = hc.operator()
     gap = [float(x) for x in cfg().get("pace_seconds", [8, 20])]
+    cold_gap = timedelta(minutes=float(cfg().get("cold_gap_minutes", 12)))
+    with scope() as s:
+        expire_samples(s, now)
     while out["sent"] < per_run:
         with scope() as s:
             used = {p: sent_24h(s, now, p) for p in cap}
@@ -255,7 +309,12 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
             if total >= int((settings().get("outreach") or {}).get("reply_daily_limit", 150)):
                 out["blocked"] = "gmail ceiling"
                 break
-            allowed = [p for p in sorted(cap) if used[p] < cap[p] and (biz if p > PRIORITY_REPLY else replies_ok)]
+            # cold first touches are spread out (one every `cold_gap_minutes`, 2026-11-10: "spaced naturally"), so a
+            # run sends at most one; replies and released samples are never held back by the gap
+            last_cold = s.scalar(select(func.max(FirmOutbox.sent_at)).where(
+                FirmOutbox.status == "sent", FirmOutbox.priority > PRIORITY_REPLY))
+            cold_ok = biz and not (last_cold and utcnow() - last_cold < cold_gap)
+            allowed = [p for p in sorted(cap) if used[p] < cap[p] and (cold_ok if p > PRIORITY_REPLY else replies_ok)]
             if not allowed:
                 break
             row = s.scalar(select(FirmOutbox).where(FirmOutbox.status == "queued", FirmOutbox.priority.in_(allowed))
@@ -301,12 +360,25 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
     return out
 
 
+def expire_samples(session: Session, now: datetime | None = None) -> int:
+    """Held samples nobody asked for within `sample_hold_days` (30) are dropped (the data is stale by then)."""
+    cutoff = utcnow() - timedelta(days=float(cfg().get("sample_hold_days", 30)))
+    n = 0
+    for row in session.scalars(select(FirmOutbox).where(FirmOutbox.status == "held", FirmOutbox.created_at < cutoff)):
+        row.status, row.reason, row.attachments_json = "expired", "no yes within the hold", []
+        n += 1
+    return n
+
+
 # -- replies from targets -----------------------------------------------------------------------------------------
 _OPT_OUT = re.compile(r"\b(no more|unsubscribe|remove me|take me off|stop (e-?mailing|sending|contacting)|"
                       r"do not (e-?mail|contact)|don't (e-?mail|contact) (me|us))\b", re.I)
 _NOT = re.compile(r"\b(not interested|no thanks|no thank you|we'?re (all )?set|not at this time|not right now|"
                   r"pass on this|we('ll| will) pass|not for us|no need)\b", re.I)
-_YES = re.compile(r"(^\s*(yes|yep|sure|absolutely|definitely)\b|\b(i'?m|we'?re|we are|i am) interested\b|"
+_YES = re.compile(r"(^\s*(yes|yep|yeah|sure|absolutely|definitely|ok|okay|please)\b|"
+                  r"\b(i'?m|we'?re|we are|i am) interested\b|\bplease send\b|\bsend (it |that |them |this )?over\b|"
+                  r"\bgo ahead\b|\bwould (love|like) (to see|it|that|a copy)\b|\bplease do\b|\bshare it\b|"
+                  r"\bi'?d (love|like) (to see|it|that|a copy)\b|\bsure thing\b|"
                   r"\binterested\b(?![^.?!]*\bnot\b)|\bsign (me|us) up\b|\bactivate\b|\bstart (the |a )?trial\b|"
                   r"\blet'?s (do it|try it|talk|set up)\b|\bsend (me |us )?(more|the next|it)\b|\btell me more\b|"
                   r"\bhow do (we|i) (start|sign up|get started)\b|\bsounds (good|great|interesting)\b)", re.I)
@@ -355,11 +427,20 @@ def handle_reply(session: Session, mail: Any, target_id: int, now: datetime | No
                     status="closed" if intent in ("opt_out", "not_interested", "auto") else "new")
     session.add(row)
     if t is not None and intent != "auto":
+        first_yes = intent == "interested" and not sample_sent(session, t)
         t.stage = {"opt_out": "OPTED_OUT", "not_interested": "LOST", "interested": "INTERESTED"}.get(intent, "REPLIED")
         t.next_touch_at = None
         for q in session.scalars(select(FirmOutbox).where(FirmOutbox.target_id == t.id, FirmOutbox.status == "queued",
                                                           FirmOutbox.kind.in_(("pitch", "followup")))):
             q.status, q.reason, q.attachments_json = "skipped", f"target replied ({intent})", []
+        if intent in ("opt_out", "not_interested"):
+            for q in session.scalars(select(FirmOutbox).where(FirmOutbox.target_id == t.id,
+                                                              FirmOutbox.status == "held")):
+                q.status, q.reason, q.attachments_json = "skipped", f"target replied ({intent})", []
+        elif first_yes and release_sample(session, t, mail.message_id, getattr(mail, "subject", None)) is not None:
+            # Touch 2: "yes, send it" gets the sample in their thread by itself; the next yes (to the price) is the
+            # warm action for the operator
+            row.status = "sample_sent"
     session.flush()
     return row
 

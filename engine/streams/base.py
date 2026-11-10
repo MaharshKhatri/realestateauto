@@ -45,6 +45,11 @@ class Outbound:
     lead_id: int | None = None
     in_reply_to: str | None = None              # a reply in an existing thread
     commercial: bool = True                     # adds the CAN-SPAM commercial-message line
+    # The 2-step funnel (2026-11-10): Touch 1 is plain text with no attachment; the sample (PDF with 2 rows in full,
+    # the rest masked, and the flat price) waits as a "held" outbox row and goes out in the prospect's own thread the
+    # moment they reply yes. A pitch with attachments but no sample is converted by the outbox (never a cold PDF).
+    sample_body: str = ""
+    sample_attachments: list[Path] = field(default_factory=list)
 
 
 @dataclass
@@ -134,11 +139,71 @@ def slug(text: str, n: int = 48) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", text or "").strip("_")[:n] or "x"
 
 
+# -- samples: 2 rows in full, the rest masked (the 2-step funnel's Touch 2) ---------------------------------------------
+SAMPLE_FULL_ROWS = 2
+_MASK_HEAD = re.compile(r"(?i)\b(property|address|street|docket|sheriff|entity|buyer|brokerage|agent|parcel|block|"
+                        r"lot|listing agent)\b")
+_KEEP_WORDS = {"st", "st.", "ave", "ave.", "rd", "rd.", "dr", "dr.", "ln", "ct", "pl", "blvd", "way", "ter", "cir",
+               "pkwy", "hwy", "llc", "inc", "inc.", "lp", "llp", "corp", "co", "co.", "n", "s", "e", "w", "unit",
+               "apt", "#", "the", "of", "and", "&"}
+
+
+def sample_path(path: Path) -> Path:
+    """Where the masked sample of a report lives (a samples/ folder next to it, so report globs never see it)."""
+    path = Path(path)
+    return path.parent / "samples" / (path.stem + ".sample" + path.suffix)
+
+
+def _mask_word(w: str) -> str:
+    core = re.sub(r"[^\w]", "", w)
+    if not core or core.lower() in _KEEP_WORDS or w.lower() in _KEEP_WORDS:
+        return w
+    if core.isdigit() or re.fullmatch(r"[\dA-Za-z-]*\d[\dA-Za-z-]*", core):
+        return re.sub(r"(?<=\w)[\dA-Za-z]", "\u2022", w, count=0) if len(core) > 1 else w
+    return w[0] + re.sub(r"[A-Za-z]", "\u2022", w[1:])
+
+
+def mask_text(text: str) -> str:
+    """'263 Morningside Ave<br/>Montclair' -> '2\u2022\u2022 M\u2022\u2022\u2022 Ave<br/>Montclair': the identifying
+    first line is masked, a following town line stays (the buyer still sees where the deal is)."""
+    t = str(text or "")
+    parts = re.split(r"(<br/>)", t, maxsplit=1)
+    first = re.sub(r"</?b>", "", parts[0])
+    head, sep, tail = first.partition(", ")
+    masked = " ".join(_mask_word(w) for w in head.split(" ")) + (sep + tail if sep else "")
+    return masked + "".join(parts[1:])
+
+
+def masked_rows(head: list[str], rows: list[list[str]], full: int = SAMPLE_FULL_ROWS) -> list[list[str]] | None:
+    """Rows for a sample (None when nothing identifying is in the table)."""
+    cols = [i for i, h in enumerate(head) if _MASK_HEAD.search(re.sub(r"<[^>]+>", "", str(h)))]
+    if not cols or len(rows) <= full:
+        return None
+    out = [list(r) for r in rows[:full]]
+    for r in rows[full:]:
+        r = list(r)
+        for i in cols:
+            if i < len(r):
+                r[i] = mask_text(r[i])
+        out.append(r)
+    return out
+
+
 def render_table_pdf(path: Path, *, title: str, subtitle: str, head: list[str], rows: list[list[str]],
                      notes: list[str] | None = None, box: str | None = None, footer: list[str] | None = None,
-                     col_widths: list[float] | None = None, landscape_page: bool = True) -> Path:
+                     col_widths: list[float] | None = None, landscape_page: bool = True,
+                     write_sample: bool = True) -> Path:
     """A one-page research packet: title, subtitle, a table, small-print notes, an optional highlighted box and the
-    footer lines (operator contact, disclaimers). Inline markup <b>/<br/> allowed in cells."""
+    footer lines (operator contact, disclaimers). Inline markup <b>/<br/> allowed in cells. When the table has more
+    than 2 rows and an identifying column, a masked sample (`sample_path`) is written next to it."""
+    if write_sample:
+        mrows = masked_rows(head, rows)
+        if mrows is not None:
+            render_table_pdf(sample_path(path), title=title,
+                             subtitle=f"{subtitle} · Sample: {SAMPLE_FULL_ROWS} of {len(rows)} rows in full, the rest "
+                                      "with the street hidden (the weekly report has every row in full)",
+                             head=head, rows=mrows, notes=notes, box=box, footer=footer, col_widths=col_widths,
+                             landscape_page=landscape_page, write_sample=False)
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import LETTER, landscape
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet

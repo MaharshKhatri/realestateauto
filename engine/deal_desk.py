@@ -335,7 +335,14 @@ def pitch_lines(prof: BuyerProfile, op: dict[str, str], audience: str = "buyer")
     ]
 
 
-def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None, audience: str = "buyer") -> Path:
+def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None, audience: str = "buyer",
+               mask_after: int | None = None) -> Path:
+    """The one-page digest. With more than 2 rows a masked sample (streams.base.sample_path) is written next to it:
+    rows 3+ keep the town, type, numbers and room, but the street and the listing agent are hidden (the 2-step funnel's
+    Touch 2 sends the sample; the weekly subscription has every row in full)."""
+    from engine.streams.base import SAMPLE_FULL_ROWS, mask_text, sample_path
+    if mask_after is None and len(d.rows) > SAMPLE_FULL_ROWS:
+        render_pdf(d, sample_path(path), op, audience, mask_after=SAMPLE_FULL_ROWS)
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import LETTER, landscape
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -367,10 +374,13 @@ def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None, audience
     data = [[P(f"<b>{h}</b>") for h in head]]
     for i, r in enumerate(d.rows, 1):
         room = r.room
-        data.append([P(str(i)), P(f"<b>{r.street}</b><br/>{r.town}"), P(f"{r.kind}<br/>{r.price_label}"), P(k(r.arv)),
+        hidden = mask_after is not None and i > mask_after
+        street = mask_text(r.street) if hidden else r.street
+        who = "(street and listing agent in the weekly digest)" if hidden else "<br/>".join(x for x in (r.agent, r.note) if x)
+        data.append([P(str(i)), P(f"<b>{street}</b><br/>{r.town}"), P(f"{r.kind}<br/>{r.price_label}"), P(k(r.arv)),
                      P(k(r.repairs)), P(f"<b>{k(r.max_buy)}</b>"),
                      P(("+" if room >= 0 else "-") + k(abs(room)) if room is not None else "-"),
-                     P("<br/>".join(x for x in (r.agent, r.note) if x))])
+                     P(who)])
     if len(d.rows) == 0:
         data.append([P("-"), P("No match in your towns this week."), *[P("") for _ in range(6)]])
     t = Table(data, colWidths=[0.3 * inch, 1.5 * inch, 1.45 * inch, 0.55 * inch, 0.6 * inch, 0.65 * inch,
@@ -381,8 +391,9 @@ def render_pdf(d: Digest, path: Path, op: dict[str, str] | None = None, audience
                            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9fafb")])]))
     contact = " · ".join(x for x in (op.get("name"), op.get("phone"), op.get("email"),
                                      op.get("postal")) if x)
-    story = [P(f"Weekly Deal Digest for {d.profile.entity}", h1),
-             P(f"Week of {d.week_of:%B %-d, %Y} · "
+    story = [P(f"Weekly Deal Digest for {d.profile.entity}" + (" (sample)" if mask_after is not None else ""), h1),
+             P((f"Sample: {mask_after} of {len(d.rows)} deals in full; the weekly digest has every street and agent. "
+                if mask_after is not None else "") + f"Week of {d.week_of:%B %-d, %Y} · "
                + ("Towns you list in: " if audience == "agent" else "Your buy box from recorded deeds: ")
                + d.profile.box_line(), body),
              Spacer(1, 5), t, Spacer(1, 4),

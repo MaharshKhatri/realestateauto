@@ -371,20 +371,25 @@ research_firm:
   # The 10-stream research firm (engine/swarm_firm.py, engine/firm_outbox.py, engine/streams/). Flat-fee research
   # products only: no referral fees, no pay tied to a deal or a client (N.J.S.A. 45:15-3; NJ RPC 7.2(c)).
   budget_seconds: 150                # stream time per desk run (the rest waits ~6 minutes for the next run)
-  per_run: 6                         # e-mails the outbox sends per desk run, 8-20 s apart
+  per_run: 6                         # e-mails the outbox sends per desk run, 8-20 s apart (cold ones: at most one, below)
   pace_seconds: [8, 20]
-  business_hours: [9, 17]            # cold B2B pitches: weekdays 9 AM-5 PM Eastern; replies: outreach.send_hours
-  caps: {p1: 150, p2: 15, p3: 8}     # rolling 24 h by priority: replies / deal-desk pitches + warm follow-ups / specialty.
-                                     # Conservative on purpose: Gmail's program policies forbid unsolicited commercial
-                                     # mail from a personal account (suspension risk for the inbox that holds every
-                                     # agent thread). Raise only after moving cold B2B to a Workspace domain with
-                                     # SPF / DKIM / DMARC, and while spam complaints stay under 0.1%.
+  business_hours: [8, 20]            # cold first touches: weekdays 8 AM-8 PM Eastern (operator, 2026-11-10); replies:
+                                     # outreach.send_hours
+  cold_gap_minutes: 12               # one cold first touch every 12+ minutes, spread across the day ("spaced naturally")
+  caps: {p1: 150, p2: 12, p3: 18}    # rolling 24 h by priority: replies + released samples / deal-desk pitches / specialty.
+                                     # 30 B2B first touches a day (operator, 2026-11-10: no separate domain, stay on the
+                                     # personal Gmail with 2-sentence plain-text openers, no attachments on Touch 1);
+                                     # with the 15 listing-agent openers that is ~45 cold e-mails a day. Gmail's program
+                                     # policies still apply: the bounce guard (agent_outreach.record_bounce) and a 0-reply
+                                     # week are the signals to slow down.
+  ad_line: "Business offer from {who}."   # the cold footer's solicitation line (CAN-SPAM 7704(a)(5)(A)(i)); never "Ad:"
+  sample_hold_days: 30               # a held Touch-2 sample nobody asked for expires after this many days
   pitch_gap_days: 6                  # one cold pitch per target per this many days
   max_touches: 2                     # cold touches per target in all (a pitch + one follow-up); a reply ends them
   max_attempts: 3                    # a send that keeps failing is marked failed
   streams:
     s1: {enabled: true, warm_days: 21, buyers_per_deal: 3}
-    s2: {enabled: true, price_trial: 500, price_monthly: 1000, pitches_per_run: 4, agents_top: 150}
+    s2: {enabled: true, price_trial: 500, price_monthly: 1000, pitches_per_run: 4, agents_top: 300}
     s3: {enabled: true, price_monthly: 400, price_report: 150, pitches_per_run: 2, window_days: 60, min_equity: 75000,
          lookback_days: 730, min_surplus: 5000, max_rows_per_pdf: 12, min_confidence: 45, partial_debt_share: 0.25,
          statewide_attachments: 2, deed_window_days: 240}

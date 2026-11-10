@@ -71,8 +71,14 @@ def test_every_message_carries_the_signature_postal_address_opt_out_and_ad_line(
     msg = fo.compose(row, hc.operator(), "<x@y>", ME)
     text = msg.get_body(preferencelist=("plain",)).get_content()
     assert "PO Box 10, Edison, NJ 08817" in text and 'Reply "no more"' in text
-    assert "This is a commercial message from Garden State Home Buyers LLC." in text and "Jordan Operator" in text
-    assert [p.get_filename() for p in msg.iter_attachments()] == ["packet.pdf"]
+    assert "Business offer from Garden State Home Buyers LLC." in text and "Jordan Operator" in text
+    # 2026-11-10: a cold first touch never carries an attachment; the PDF waits as the held sample
+    assert list(msg.iter_attachments()) == [] and msg["List-Unsubscribe"]
+    held = db.query(FirmOutbox).filter_by(key=f"{row.key}:sample").one()
+    assert held.status == "held" and held.kind == "sample" and held.attachments_json[0]["name"] == "packet.pdf"
+    m3 = fo.compose(held, hc.operator(), "<s@y>", ME)
+    assert [p.get_filename() for p in m3.iter_attachments()] == ["packet.pdf"]
+    assert "Business offer" not in m3.get_body(preferencelist=("plain",)).get_content()   # they asked for it
     reply = Outbound(stream="s6", key="r1", to=t.email, subject="Re: data", body="Thanks, here it is.",
                      priority=PRIORITY_REPLY, kind="reply", target_id=t.id, in_reply_to="<their@msg>")
     r = fo.enqueue(db, reply, TUE)
@@ -361,3 +367,63 @@ def test_company_names_keep_their_initials():
     assert nice_name("JC HEIGHTS HOUSE LLC") == "JC Heights House LLC"
     assert nice_name("42 RUTGERS AVE., LLC") == "42 Rutgers Ave., LLC"
     assert nice_name("AL MAR LLC") == "Al Mar LLC"
+
+
+def test_a_yes_releases_the_held_sample_in_their_thread_and_the_next_yes_is_warm(live, tmp_path, monkeypatch):
+    """The 2-step funnel (2026-11-10): Touch 1 is two plain sentences; "yes, send it over" gets the sample (2 rows in
+    full, the rest masked) by itself in their thread; a yes after the sample is the operator's warm action."""
+    from types import SimpleNamespace
+    from engine.streams.base import render_table_pdf, sample_path
+    db = live
+    t = target(db)
+    pdf = render_table_pdf(tmp_path / "report.pdf", title="Report", subtitle="This week",
+                           head=["#", "Property", "Upset"],
+                           rows=[[str(i), f"{100 + i} Sample St<br/>Edison", "$100K"] for i in range(5)])
+    assert sample_path(pdf).exists()
+    ob = pitch(t, key="s3:pitch:9", sample_body="Here's the sheet; $400 a month flat.", sample_attachments=[sample_path(pdf)])
+    row = fo.enqueue(db, ob, TUE)
+    db.commit()
+    held = db.query(FirmOutbox).filter_by(kind="sample").one()
+    assert held.status == "held" and held.attachments_json[0]["name"] == "report.sample.pdf"
+    mail = SimpleNamespace(message_id="<yes@firm.example>", text="Yes, please send it over.", subject="Re: " + row.subject,
+                           from_email=t.email, references=[], received=None, auto_reply=False)
+    r = fo.handle_reply(db, mail, t.id, TUE)
+    db.commit()
+    db.expire_all()
+    held = db.get(FirmOutbox, held.id)
+    assert r.intent == "interested" and r.status == "sample_sent" and fo.warm(db) == []
+    assert held.status == "queued" and held.priority == PRIORITY_REPLY and held.in_reply_to == "<yes@firm.example>"
+    assert held.subject == "Re: " + row.subject
+    held.status = "sent"
+    db.commit()
+    again = SimpleNamespace(message_id="<yes2@firm.example>", text="Sounds good, how do we start?", subject="Re: x",
+                            from_email=t.email, references=[], received=None, auto_reply=False)
+    r2 = fo.handle_reply(db, again, t.id, TUE)
+    db.commit()
+    assert r2.intent == "interested" and r2.status == "new" and [w.id for w in fo.warm(db)] == [r2.id]
+    # a no drops a held sample
+    t2 = target(db, email="no@firm.example", org="No LLC")
+    fo.enqueue(db, pitch(t2, key="s3:pitch:10", sample_attachments=[sample_path(pdf)]), TUE)
+    db.commit()
+    no = SimpleNamespace(message_id="<no@firm.example>", text="Not interested, thanks.", subject="Re: x",
+                         from_email=t2.email, references=[], received=None, auto_reply=False)
+    fo.handle_reply(db, no, t2.id, TUE)
+    db.commit()
+    assert db.query(FirmOutbox).filter_by(key="s3:pitch:10:sample").one().status == "skipped"
+
+
+def test_cold_first_touches_are_spaced_but_replies_are_not(live, monkeypatch):
+    db = live
+    monkeypatch.setitem(settings(), "research_firm", {**settings()["research_firm"], "pace_seconds": [0, 0],
+                                                      "cold_gap_minutes": 12})
+    a, b = target(db, email="a@firm.example", org="A LLC"), target(db, email="b@firm.example", org="B LLC")
+    fo.enqueue(db, pitch(a, key="g1"), TUE)
+    fo.enqueue(db, pitch(b, key="g2"), TUE)
+    fo.enqueue(db, Outbound(stream="s6", key="g3", to=a.email, subject="Re: x", body="Answer.", priority=PRIORITY_REPLY,
+                            kind="reply", target_id=a.id, in_reply_to="<m@x>"), TUE)
+    db.commit()
+    FakeSMTP.sent = []
+    r = fo.send_due(now=TUE_ET, smtp_factory=FakeSMTP, pace=False)
+    assert r["sent"] == 2                         # the reply + one cold pitch; the second pitch waits for the gap
+    db.expire_all()
+    assert db.query(FirmOutbox).filter_by(key="g2").one().status == "queued"
