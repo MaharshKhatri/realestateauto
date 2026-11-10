@@ -1134,6 +1134,10 @@ def warm_event(session: Session, now: datetime) -> Desired | None:
     for r in fo.warm(session, limit=5):
         t = session.get(FirmTarget, r.target_id) if r.target_id else None
         who = (t.org or t.email) if t else (r.from_email or "a prospect")
+        if r.stream == "s1":
+            items.append(f"{who} answered the buy-box question (cash buyer for our offers): reply #{r.id}; tell "
+                         "Claude to save their buy box and line them up for the first contract.")
+            continue
         items.append(f"{who} said yes ({r.stream}): tell Claude \"start the trial for #{r.id}\" to answer and set "
                      "them up.")
     items = items[:5]

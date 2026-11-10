@@ -112,7 +112,8 @@ def cold_sent_since(session: Session, since: datetime) -> int:
     from db.models import FirmOutbox, Interaction
     from engine.gmail_autopilot import now_eastern
     firm = int(session.scalar(select(func.count(FirmOutbox.id)).where(
-        FirmOutbox.status == "sent", FirmOutbox.sent_at >= since, FirmOutbox.kind.in_(("pitch", "followup")))) or 0)
+        FirmOutbox.status == "sent", FirmOutbox.sent_at >= since,
+        FirmOutbox.kind.in_(("pitch", "followup", "buyer_note")))) or 0)
     since_et = now_eastern(since.replace(tzinfo=timezone.utc)).replace(tzinfo=None)
     rows = session.execute(select(Interaction.debrief_json).where(
         Interaction.channel.in_(("email_smtp", "email_gmail")), Interaction.occurred_at >= since_et)).all()

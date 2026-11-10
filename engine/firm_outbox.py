@@ -135,7 +135,10 @@ def enqueue(session: Session, ob: Outbound, now: datetime | None = None) -> Firm
     why = stop_reason(session, ob.to, target)
     if why is None and ob.kind == "pitch" and target is not None:
         why = _pitch_block(session, target, now)
-    if why is None and ob.kind == "followup" and target is not None and not ob.in_reply_to and ob.commercial:
+    if why is None and ob.kind == "followup" and target is not None and ob.commercial and \
+            not ob.key.startswith("nudge:"):
+        # one sequence per target: the outbox's own in-thread nudge and close-the-loop note (queue_nudges) are the
+        # only follow-ups, whatever a stream proposes
         why = "the in-thread nudges follow up (one sequence per target)"
     row = FirmOutbox(key=ob.key[:200], stream=ob.stream, priority=int(ob.priority), kind=ob.kind,
                      target_id=ob.target_id, lead_id=ob.lead_id, to_email=(norm_email(ob.to) or ob.to)[:160],
@@ -163,10 +166,14 @@ def enqueue(session: Session, ob: Outbound, now: datetime | None = None) -> Firm
 
 
 def release_sample(session: Session, target: FirmTarget, reply_message_id: str | None,
-                   reply_subject: str | None = None) -> FirmOutbox | None:
-    """A prospect said yes: their newest held sample goes out next in their own thread (priority 1)."""
-    row = session.scalar(select(FirmOutbox).where(FirmOutbox.target_id == target.id, FirmOutbox.kind == "sample",
-                                                  FirmOutbox.status == "held").order_by(FirmOutbox.id.desc()).limit(1))
+                   reply_subject: str | None = None, stream: str | None = None) -> FirmOutbox | None:
+    """A prospect said yes: their newest held sample (of the stream they answered, when known) goes out next in their
+    own thread (priority 1). A yes to an s1 buy-box note releases nothing: there is no sample in that conversation."""
+    q = select(FirmOutbox).where(FirmOutbox.target_id == target.id, FirmOutbox.kind == "sample",
+                                 FirmOutbox.status == "held")
+    if stream:
+        q = q.where(FirmOutbox.stream == stream)
+    row = session.scalar(q.order_by(FirmOutbox.id.desc()).limit(1))
     if row is None:
         return None
     row.status, row.reason = "queued", "they said yes"
@@ -182,10 +189,12 @@ def release_sample(session: Session, target: FirmTarget, reply_message_id: str |
     return row
 
 
-def sample_sent(session: Session, target: FirmTarget) -> bool:
-    return bool(session.scalar(select(FirmOutbox.id).where(FirmOutbox.target_id == target.id,
-                                                           FirmOutbox.kind == "sample",
-                                                           FirmOutbox.status.in_(("queued", "sent"))).limit(1)))
+def sample_sent(session: Session, target: FirmTarget, stream: str | None = None) -> bool:
+    q = select(FirmOutbox.id).where(FirmOutbox.target_id == target.id, FirmOutbox.kind == "sample",
+                                    FirmOutbox.status.in_(("queued", "sent")))
+    if stream:
+        q = q.where(FirmOutbox.stream == stream)
+    return bool(session.scalar(q.limit(1)))
 
 
 def pitch_ok(target: FirmTarget, now: datetime | None = None) -> bool:
@@ -221,6 +230,13 @@ def _pitch_block(session: Session, target: FirmTarget, now: datetime | None) -> 
     if queued:
         return "a pitch is already queued"
     return None
+
+
+# Cold kinds carry the solicitation line and List-Unsubscribe. A "buyer_note" (s1: the buy-box question to cash buyers
+# while our offers are live) is its own conversation: it counts against the first-touch caps but never starts or uses
+# up a target's data-product sequence (`touches`).
+FIRST_TOUCH_KINDS = ("pitch", "buyer_note")
+COLD_KINDS = ("pitch", "followup", "buyer_note")
 
 
 # -- the in-thread sequence ---------------------------------------------------------------------------------------
@@ -305,7 +321,7 @@ def pitches_24h(session: Session, priority: int) -> int:
     """First touches sent in the last 24 hours at that priority (nudges have their own `caps.nudges`)."""
     return int(session.scalar(select(func.count(FirmOutbox.id)).where(
         FirmOutbox.status == "sent", FirmOutbox.sent_at >= utcnow() - timedelta(hours=24),
-        FirmOutbox.priority == priority, FirmOutbox.kind == "pitch")) or 0)
+        FirmOutbox.priority == priority, FirmOutbox.kind.in_(FIRST_TOUCH_KINDS))) or 0)
 
 
 def caps() -> dict[int, int]:
@@ -341,7 +357,7 @@ def compose(row: FirmOutbox, op: dict[str, str], message_id: str, user: str) -> 
     if row.in_reply_to:
         msg["In-Reply-To"] = row.in_reply_to
         msg["References"] = row.in_reply_to
-    if row.kind in ("pitch", "followup", "sample"):
+    if row.kind in ("pitch", "followup", "sample", "buyer_note"):
         # one-click opt-out in the mail client (Gmail's sender rules; CAN-SPAM opt-out); an "unsubscribe" reply is
         # read as an opt-out by classify()
         msg["List-Unsubscribe"] = f"<mailto:{user}?subject=unsubscribe>"
@@ -353,7 +369,7 @@ def compose(row: FirmOutbox, op: dict[str, str], message_id: str, user: str) -> 
     if not (lines and re.fullmatch(r"(?i)(thanks|thank you|best|regards|best regards|sincerely|cheers)[,.!]?",
                                    lines[-1].strip())):
         body += "\n\nThanks,"                         # the house sign-off above the signature, as in agent e-mails
-    msg.set_content(body + footer(op, row.kind in ("pitch", "followup")))
+    msg.set_content(body + footer(op, row.kind in COLD_KINDS))
     for a in row.attachments_json or []:
         try:
             msg.add_attachment(base64.b64decode(a["b64"]), maintype="application",
@@ -438,7 +454,7 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
             if cold_ok:
                 pitch_ps = [p for p in (PRIORITY_PITCH, PRIORITY_SPECIALTY) if used[p] < cap[p]]
                 if pitch_ps:
-                    conds.append((FirmOutbox.kind == "pitch") & FirmOutbox.priority.in_(pitch_ps))
+                    conds.append(FirmOutbox.kind.in_(FIRST_TOUCH_KINDS) & FirmOutbox.priority.in_(pitch_ps))
                 if nudges_used < nudge_cap:
                     conds.append(FirmOutbox.kind.in_(("followup", "notice")) & (FirmOutbox.priority > PRIORITY_REPLY))
             if not conds:
@@ -450,13 +466,13 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
                 q = q.where(or_(FirmOutbox.priority == PRIORITY_REPLY, FirmOutbox.target_id.is_(None),
                                 FirmOutbox.target_id.not_in(pro_ids)))
             # replies first, then nudges (they finish a sequence already started), then first touches
-            row = s.scalar(q.order_by(FirmOutbox.priority, case((FirmOutbox.kind == "pitch", 1), else_=0),
+            row = s.scalar(q.order_by(FirmOutbox.priority, case((FirmOutbox.kind.in_(FIRST_TOUCH_KINDS), 1), else_=0),
                                       FirmOutbox.created_at).limit(1))
             if row is None:
                 break
             target = s.get(FirmTarget, row.target_id) if row.target_id else None
             why = stop_reason(s, row.to_email, target)
-            if why is None and row.kind in ("pitch", "followup") and target is not None and \
+            if why is None and row.kind in COLD_KINDS and target is not None and \
                     target.stage not in ("NEW", "CONTACTED"):
                 why = f"target {target.stage.lower()}"
             if why:
@@ -490,8 +506,8 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
                     t.touches = 1                       # Touch 1 of a (new) round
                 elif r.kind == "followup":
                     t.touches = int(t.touches or 0) + 1
-                if r.kind in ("pitch", "followup") and t.stage == "NEW":
-                    t.stage = "CONTACTED"
+                if r.kind in COLD_KINDS and t.stage == "NEW":
+                    t.stage = "CONTACTED"            # a buyer note (s1) leaves `touches` alone: no data sequence
         out["sent"] += 1
         if pace and out["sent"] < per_run:
             time.sleep(random.uniform(*gap))
@@ -573,7 +589,7 @@ def known(session: Session) -> tuple[dict[str, int], dict[str, int]]:
                                                                   FirmOutbox.target_id.is_not(None)))}
     emails = {e: tid for e, tid in session.execute(
         select(FirmTarget.email, FirmTarget.id).where(FirmTarget.email.is_not(None),
-                                                      FirmTarget.touches > 0))}
+                                                      or_(FirmTarget.touches > 0, FirmTarget.stage != "NEW")))}
     return thread, emails
 
 
@@ -591,24 +607,31 @@ def handle_reply(session: Session, mail: Any, target_id: int, now: datetime | No
     t = session.get(FirmTarget, target_id)
     text = (getattr(mail, "text", "") or "")[:4000]
     intent = "auto" if getattr(mail, "auto_reply", False) else classify(text)
-    row = FirmReply(message_id=mail.message_id, target_id=target_id, stream=t.stream if t else None,
+    # The stream of the message they answered (an s1 buy-box note to an s2 target counts under s1), else the target's
+    ids = [x for x in [getattr(mail, "in_reply_to", None), *(getattr(mail, "references", []) or [])] if x]
+    thread_stream = session.scalar(select(FirmOutbox.stream).where(FirmOutbox.message_id.in_(ids),
+                                                                   FirmOutbox.target_id == target_id)
+                                   .order_by(FirmOutbox.id.desc()).limit(1)) if ids else None
+    stream = thread_stream or (t.stream if t else None)
+    row = FirmReply(message_id=mail.message_id, target_id=target_id, stream=stream,
                     from_email=getattr(mail, "from_email", None), subject=(getattr(mail, "subject", "") or "")[:250],
                     received_at=getattr(mail, "received", None), body_text=text, intent=intent,
                     references_json=[*(getattr(mail, "references", []) or []), mail.message_id],
                     status="closed" if intent in ("opt_out", "not_interested", "auto") else "new")
     session.add(row)
     if t is not None and intent != "auto":
-        first_yes = intent == "interested" and not sample_sent(session, t)
+        first_yes = intent == "interested" and not sample_sent(session, t, stream)
         t.stage = {"opt_out": "OPTED_OUT", "not_interested": "LOST", "interested": "INTERESTED"}.get(intent, "REPLIED")
         t.next_touch_at = None
         for q in session.scalars(select(FirmOutbox).where(FirmOutbox.target_id == t.id, FirmOutbox.status == "queued",
-                                                          FirmOutbox.kind.in_(("pitch", "followup")))):
+                                                          FirmOutbox.kind.in_(COLD_KINDS))):
             q.status, q.reason, q.attachments_json = "skipped", f"target replied ({intent})", []
         if intent in ("opt_out", "not_interested"):
             for q in session.scalars(select(FirmOutbox).where(FirmOutbox.target_id == t.id,
                                                               FirmOutbox.status == "held")):
                 q.status, q.reason, q.attachments_json = "skipped", f"target replied ({intent})", []
-        elif first_yes and release_sample(session, t, mail.message_id, getattr(mail, "subject", None)) is not None:
+        elif first_yes and release_sample(session, t, mail.message_id, getattr(mail, "subject", None),
+                                          stream=stream) is not None:
             # Touch 2: "yes, send it" gets the sample in their thread by itself; the next yes (to the price) is the
             # warm action for the operator
             row.status = "sample_sent"

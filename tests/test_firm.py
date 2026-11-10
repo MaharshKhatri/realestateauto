@@ -310,11 +310,12 @@ def test_s2_pitches_an_agent_a_digest_of_other_agents_deals_in_their_towns(live,
     r = s2.STREAM.run(db, StreamContext(now=TUE, out_dir=tmp_path, operator=hc.operator(),
                                         limits={"pitches_per_run": 4, "agents_top": 0}))
     ob = next(o for o in r.outbound if o.target_id == t.id)
-    assert ob.key == f"s2:pitch:{t.id}:2026-W46" and ob.priority == PRIORITY_PITCH and ob.attachments
-    assert ob.body.startswith("Hi Pat,") and "$500" in ob.body and "commission" in ob.body
-    assert "—" not in ob.body and len(ob.body.split()) < 110
+    assert ob.key == f"s2:pitch:{t.id}:2026-W46" and ob.priority == PRIORITY_PITCH and ob.attachments == []
+    # the 2-step funnel (2026-11-10): no price or attachment in Touch 1; the digest sample and the price wait for a yes
+    assert ob.body.startswith("Hi Pat,") and "$500" not in ob.body and "$500" in ob.sample_body
+    assert "commission" in ob.sample_body and lint(ob.body) == [] and len(ob.body.split()) < 70
     from pypdf import PdfReader
-    text = PdfReader(str(ob.attachments[0])).pages[0].extract_text()
+    text = PdfReader(str(ob.sample_attachments[0])).pages[0].extract_text()
     assert "Towns you list in" in text and own.property.street_address.title() not in text
     sat = s2.STREAM.run(db, StreamContext(now=datetime(2026, 11, 14, 10), out_dir=tmp_path, operator=hc.operator()))
     assert sat.outbound == []
@@ -336,17 +337,17 @@ def test_s2_never_names_a_person_as_the_company():
     # 2026-11-09: a buyer family filed under a person went out as "Deals this week in Rutherford for Soine, Travis"
     from types import SimpleNamespace
     from engine.streams import s2_deal_desk_saas as s2
-    prof = SimpleNamespace(towns=[(1, "Rutherford", "Bergen", 3)])
-    d = SimpleNamespace(profile=prof, rows=[1, 2, 3])
+    f = s2.TouchFacts(street="12 Test St", price="$389,900 ask", others=2, mix="fixer listings", where="in your towns",
+                      sheet_for="Bergen County", near="Rutherford", subject_where="near Rutherford", rows=3)
     person = SimpleNamespace(kind="flipper", org="QUINN, SAMPLE", name=None, data_json={})
-    subject, body = s2.pitch_body(person, d, {"first": "Sam"}, follow=False)
-    assert subject == "Deals this week in Rutherford" and "Quinn" not in body and "the towns you have been buying" in body
+    subject, body = s2.pitch_body(person, f, {"first": "Sam"}, follow=False)
+    assert subject == "12 Test St + 2 more near Rutherford" and "Quinn" not in body and "you've been buying" in body
     shop = SimpleNamespace(kind="flipper", org="Sample Home Buyers", name=None, data_json={})
-    subject, body = s2.pitch_body(shop, d, {"first": "Sam"}, follow=False)
-    assert subject.endswith("for Sample Home Buyers") and "the towns Sample Home Buyers has been buying" in body
+    subject, body = s2.pitch_body(shop, f, {"first": "Sam"}, follow=False)
+    assert "Sample Home Buyers" not in subject and "that Sample Home Buyers has been buying around Rutherford" in body
     agent = SimpleNamespace(kind="investor_agent", org="Sample Realty", name="JC Agent", data_json={"resales": 1,
                                                                                                     "fixers": 3})
-    subject, body = s2.pitch_body(agent, d, {"first": "Sam"}, follow=False)
+    subject, body = s2.pitch_body(agent, f, {"first": "Sam"}, follow=False)
     assert body.startswith("Hi JC,") and "3 fixer listings and 1 investor resale around Rutherford" in body
 
 
