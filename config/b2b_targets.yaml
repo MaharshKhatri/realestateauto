@@ -4907,3 +4907,399 @@ targets:
   county: Hudson
   source: https://www.domrosato.com/
   note: 'Investor agent: condos and 2-4 family, house hacks, BRRRR, flips; North Jersey'
+- kind: property_tax_appeal_attorney
+  org: McKirdy, Riskin, Olson & DellaPelle, P.C.
+  email: info@mrod.law
+  phone: 973-539-8900
+  website: https://www.mrod.law
+  town: Morris Plains
+  county: Morris
+  source: https://www.mrod.law/practice-areas/property-tax-appeals/
+  note: commercial, industrial + residential tax appeals; county boards and NJ Tax Court
+- kind: property_tax_appeal_attorney
+  org: Kulzer & DiPadova, P.A.
+  email: info@kulzerdipadova.com
+  phone: 856-795-7744
+  website: https://kulzerdipadova.com
+  town: Haddonfield
+  county: Camden
+  source: https://kulzerdipadova.com/practice-areas/real-estate-tax-appeals/
+  note: residential, special-use + commercial real estate tax appeals, South Jersey
+- kind: property_tax_appeal_attorney
+  org: Wolf Vespasiano LLC
+  email: chad@jerseypropertytax.com
+  phone: 973-635-1100
+  website: https://jerseypropertytax.com
+  town: Chatham Township
+  county: Morris
+  source: https://jerseypropertytax.com/
+  note: commercial property tax appeals in all 21 NJ counties
+- kind: property_tax_appeal_attorney
+  org: Jacobus Law
+  email: info@jacobuslaw.com
+  phone: 973-535-3032
+  website: https://www.jacobuslaw.com
+  town: Morris Plains
+  county: Morris
+  source: https://www.jacobuslaw.com/
+  note: property tax appeals for taxpayers + municipalities, county boards and State Tax Court
+- kind: property_tax_appeal_attorney
+  org: Giordano, Halleran & Ciesla, P.C.
+  email: info@ghclaw.com
+  phone: 732-741-3900
+  website: https://www.ghclaw.com
+  town: Red Bank
+  county: Monmouth
+  source: https://www.ghclaw.com/tax-appeals
+  note: tax appeals for residential, commercial, farmland + nonprofit owners
+- kind: property_tax_appeal_attorney
+  org: High Swartz LLP
+  email: glens@highswartz.com
+  phone: 856-324-0677
+  website: https://highswartz.com
+  town: Cherry Hill
+  county: Camden
+  source: https://www.highswartz.com/attorneys/glen-schwarzschild/
+  note: 'Glen-David Schwarzschild: commercial real estate tax appeals, Cherry Hill office (NJ + PA)'
+- kind: property_tax_appeal_attorney
+  org: Beattie Padovano, LLC
+  email: adelvecchio@beattielaw.com
+  phone: 201-573-1810
+  website: https://www.beattielaw.com
+  town: Montvale
+  county: Bergen
+  source: https://www.beattielaw.com/our-attorneys/antimo-a-del-vecchio/
+  note: 'Antimo Del Vecchio: owners before county tax boards + NJ Tax Court; annual tax appeal newsletter'
+- kind: property_tax_appeal_attorney
+  org: Hyland Levin Shapiro LLP
+  email: dungey@hylandlevin.com
+  phone: 856-355-2927
+  website: https://www.hylandlevin.com
+  town: Marlton
+  county: Burlington
+  source: https://www.hylandlevin.com/news/is-it-time-to-appeal-your-property-tax-assessment/
+  note: 'William H. Dungey III: commercial property tax assessment appeals, South Jersey'
+- kind: property_tax_appeal_attorney
+  org: Hill Wallack LLP
+  email: info@hillwallack.com
+  phone: 609-924-0808
+  website: https://www.hillwallack.com
+  town: Princeton
+  county: Mercer
+  source: https://www.hillwallack.com/real-estate-tax-appeals
+  note: commercial real estate tax appeals before county boards + NJ Tax Court
+- kind: property_tax_appeal_attorney
+  org: McManimon, Scotland & Baumann, LLC
+  email: rbullock@msbnj.com
+  phone: 973-622-5165
+  website: https://www.msbnj.com
+  town: Roseland
+  county: Essex
+  source: https://www.msbnj.com/practice-areas/real-estate-property-tax-appeals
+  note: 'Romal Bullock: prosecutes + defends residential, commercial, industrial tax appeals (county boards, Tax Court)'
+- kind: property_tax_appeal_attorney
+  org: Spector Foerst & Associates
+  email: james.foerst@spectorfoerst.com
+  phone: 973-258-9200
+  website: https://www.spectorfoerst.com
+  town: Millburn
+  county: Essex
+  source: https://www.spectorfoerst.com/attorneys---james-m-foerst
+  note: residential property tax appeals for homeowners (county boards); James M. Foerst
+- kind: property_tax_appeal_attorney
+  org: Lum, Drasco & Positan LLC
+  email: rlipschitz@lumlaw.com
+  phone: 973-403-9000
+  website: https://www.lumlaw.com
+  town: Roseland
+  county: Essex
+  source: https://lumlaw.com/robert-s-lipschitz/
+  note: 'Robert S. Lipschitz: taxpayers + municipalities before the NJ Tax Court and county tax boards'
+- kind: property_tax_appeal_attorney
+  org: Huntington Bailey, LLP
+  email: dsl@huntingtonbailey.com
+  phone: 201-666-8282
+  website: https://www.huntingtonbailey.com
+  town: Westwood
+  county: Bergen
+  source: https://www.huntingtonbailey.com/attorneys/david-s-lafferty/
+  note: residential + commercial real estate tax appeals; David S. Lafferty handles property tax appeals
+- kind: property_tax_appeal_attorney
+  org: Day Pitney LLP
+  email: cstracco@daypitney.com
+  phone: 973-966-8220
+  website: https://www.daypitney.com
+  town: Parsippany
+  county: Morris
+  source: https://www.daypitney.com/professionals/s/stracco-christopher-john
+  note: 'Christopher Stracco: real property tax appeals + taxation consulting, valuation litigation'
+- kind: property_tax_appeal_attorney
+  org: Winne, Banta, Basralian & Kahn, P.C.
+  email: info@winnebanta.com
+  phone: 201-487-3800
+  website: https://winnebanta.com
+  town: Hackensack
+  county: Bergen
+  source: https://winnebanta.com/contact/
+  note: real estate tax appeals + certiorari proceedings throughout NJ (see winnebanta.com/real-estate/)
+- kind: property_tax_appeal_attorney
+  org: Carlin, Ward, Ash & Heiart, LLC
+  email: info@carlinward.com
+  phone: 973-377-3350
+  website: https://www.carlinward.com
+  town: Florham Park
+  county: Morris
+  source: https://www.carlinward.com/
+  note: tax appeals of over-assessed commercial property (e.g. Bergen County refunds) + eminent domain
+- kind: property_tax_appeal_attorney
+  org: Carluccio, Leone, Dimon, Doyle, Gutman & Petro, L.L.C.
+  email: info@clddgp.com
+  phone: 732-797-1600
+  website: https://www.clddgp.com
+  town: Toms River
+  county: Ocean
+  source: https://www.clddgp.com/practice-areas/real-estate-property-tax-appeals/
+  note: residential + commercial property tax appeals, Ocean County
+- kind: property_tax_appeal_attorney
+  org: Zipp & Tannenbaum, LLC
+  email: generalmail@zipplaw.com
+  phone: 732-605-1000
+  website: https://zipplaw.com
+  town: Edison
+  county: Middlesex
+  source: https://zipplaw.com/
+  note: commercial + complex property tax appeals, PILOTs, property tax consulting
+- kind: property_tax_appeal_attorney
+  org: Hanlon Niemann & Wright, P.C.
+  email: fniemann@hnlawfirm.com
+  phone: 732-863-9900
+  website: https://hnwlaw.com
+  town: Freehold
+  county: Monmouth
+  source: https://hnwlaw.com/2012/05/04/new-jersey-municipailities-suffer-big-losses-when-property-owners-appeal-tax-assessments/
+  note: 'Fredrick P. Niemann: NJ property tax appeal attorney (commercial assessment appeals)'
+- kind: property_tax_appeal_attorney
+  org: Norris McLaughlin, P.A.
+  email: nfpellitta@norris-law.com
+  phone: 908-722-0700
+  website: https://norrismclaughlin.com
+  town: Bridgewater
+  county: Somerset
+  source: https://norrismclaughlin.com/attorneys/nicholas-f-pellitta/
+  note: 'Nicholas F. Pellitta: real property tax appeals before county tax boards + NJ Tax Court'
+- kind: property_tax_appeal_attorney
+  org: Inglesino Taylor
+  email: info@itfirm.law
+  phone: 973-947-7111
+  website: https://itfirm.law
+  town: Parsippany
+  county: Morris
+  source: https://itfirm.law/tax-appeals/
+  note: 'Tax Appeal Group: local property tax appeals, exemptions, tax abatements'
+- kind: property_tax_appeal_attorney
+  org: Harwood Lloyd, LLC
+  email: rleblancq@harwoodlloyd.com
+  phone: 201-487-1080
+  website: https://harwoodlloyd.com
+  town: Hackensack
+  county: Bergen
+  source: https://harwoodlloyd.com/attorneys/richard-w-le-blancq/
+  note: 'Richard W. LeBlancq: commercial real estate incl. real estate tax appeals'
+- kind: property_tax_appeal_attorney
+  org: Rothstein, Mandell, Strohm, Halm & Cipriani, P.A.
+  email: awyatt@rmshc.law
+  phone: 732-363-0777
+  website: https://rmshc.law
+  town: Toms River
+  county: Ocean
+  source: https://rmshc.law/attorneys/andrea-e-wyatt/
+  note: 'Andrea E. Wyatt: municipal law + property tax appeals, Ocean County'
+- kind: property_tax_appeal_attorney
+  org: Meyner and Landis LLP
+  email: mdolan@meyner.com
+  phone: 973-602-3478
+  website: https://meyner.com
+  town: Newark
+  county: Essex
+  source: https://meyner.com/attorneys/matthew-p-dolan/
+  note: 'Matthew P. Dolan: represented commercial clients in property tax appeals'
+- kind: property_tax_appeal_attorney
+  org: Schneck Law Group LLC
+  email: mschneck@schnecklaw.com
+  phone: 973-533-9300
+  website: http://schnecklaw.com
+  town: Florham Park
+  county: Morris
+  source: http://schnecklaw.com/
+  note: 'property tax appeal boutique (Michael I. Schneck): residential + commercial assessment appeals statewide'
+- kind: property_tax_appeal_attorney
+  org: Wells, Jaworski & Liebman, LLP
+  email: jvaneck@wellslaw.com
+  phone: 201-587-0888
+  website: https://www.wellslaw.com
+  town: Paramus
+  county: Bergen
+  source: https://www.wellslaw.com/jameson-p-van-eck/
+  note: 'Jameson P. Van Eck: commercial tax appeals (firm won a $1.36M Paramus Park refund)'
+- kind: property_tax_appeal_attorney
+  org: Coppolecchia Law
+  email: mcoppolecchia@coppolecchialaw.com
+  phone: 908-437-8969
+  website: https://www.coppolecchialaw.com
+  town: Summit
+  county: Union
+  source: https://www.coppolecchialaw.com/real-estate-tax-appeals
+  note: residential real estate tax appeals for over-assessed homes + condos, county board hearings
+- kind: property_tax_appeal_attorney
+  org: Law Office of Joseph A. Rutigliano, L.L.C.
+  email: law@jarlawyer.com
+  phone: 201-850-1100
+  website: https://www.josephrutiglianolaw.com
+  town: North Bergen
+  county: Hudson
+  source: https://www.josephrutiglianolaw.com/practice-areas/property-tax-law/
+  note: residential property tax appeals across Hudson + Bergen towns (Jersey City, Hoboken, Bayonne ...)
+- kind: property_tax_appeal_attorney
+  org: The Law Office of Marcel R. Wurms
+  email: mrw@lodiattorney.com
+  phone: 973-614-0870
+  website: https://lodiattorney.wordpress.com
+  town: Lodi
+  county: Bergen
+  source: https://lodiattorney.wordpress.com/law-services/real-estate/law-service-2/
+  note: residential + commercial property tax appeals for homeowners and municipalities, Bergen + Passaic
+- kind: property_tax_appeal_attorney
+  org: Rubin & Dombeck LLC
+  email: seth@rdlawllc.com
+  phone: 201-578-1578
+  website: http://www.rdlawllc.com
+  town: Teaneck
+  county: Bergen
+  source: http://www.rdlawllc.com/contact-us/
+  note: residential tax appeals in Teaneck + other Bergen towns (see /practice-areas/tax-appeals/)
+- kind: property_tax_appeal_attorney
+  org: Ronald J. Cappuccio, J.D., LL.M. (Tax)
+  email: ron@taxesq.com
+  phone: 856-665-2121
+  website: https://cherryhilltaxappeal.com
+  town: Cherry Hill
+  county: Camden
+  source: https://cherryhilltaxappeal.com/
+  note: real estate tax appeals of over-assessments (Cherry Hill revaluation), Camden + Burlington county boards
+- kind: property_tax_appeal_attorney
+  org: The Law Firm of Earl P. White, PC
+  email: contact@earlwhite.law
+  phone: 201-627-2457
+  website: https://www.earlwhite.law
+  town: Rutherford
+  county: Bergen
+  source: https://www.earlwhite.law/practices/real-estate-attorney-in-morris-county/
+  note: real estate firm handling tax appeals for NJ property owners (Bergen + Morris)
+- kind: property_tax_appeal_attorney
+  org: Barli Law LLC
+  email: office@barlilaw.com
+  phone: 973-638-1101
+  website: https://barlilaw.com
+  town: Totowa
+  county: Passaic
+  source: https://barlilaw.com/real-estate/property-tax-appeals/
+  note: residential property tax appeals (Clifton / Totowa / Paramus offices), free initial consultation
+- kind: property_tax_appeal_attorney
+  org: The Law Office of Jason S. Lustbader, LLC
+  email: jason@jlustbaderlaw.com
+  phone: 973-206-1819
+  website: https://jlustbaderlaw.com
+  town: Morristown
+  county: Morris
+  source: https://jlustbaderlaw.com/
+  note: NJ property tax appeals, residential + commercial, free initial consultation
+- kind: property_tax_appeal_attorney
+  org: Wirtz Property Tax Law, LLC
+  email: greg@wirtzpropertytax.com
+  phone: 201-500-8499
+  website: https://wirtzpropertytax.com
+  town: Hoboken
+  county: Hudson
+  source: https://wirtzpropertytax.com/
+  note: 'property tax appeal boutique (Gregory Wirtz, ex-Tax Court clerk): owners of all sizes, added assessments'
+- kind: property_tax_appeal_attorney
+  org: Law Office of Timothy B. Middleton (Middleton Law)
+  email: middletonlaw2517@gmail.com
+  phone: 732-223-8171
+  website: https://tmiddletonlaw.com
+  town: Manasquan
+  county: Monmouth
+  source: https://tmiddletonlaw.com/home
+  note: property tax appeals statewide ("thousands filed"), added/omitted assessments; Wall Twp tax counsel
+- kind: property_tax_appeal_attorney
+  org: The Matus Law Group
+  email: admin@matuslaw.com
+  phone: 732-281-0060
+  website: https://matuslaw.com
+  town: Toms River
+  county: Ocean
+  source: https://matuslaw.com/understanding-property-tax-appeals-process-new-jersey/
+  note: real estate + estate firm that takes NJ property tax appeal matters (county tax board process guide)
+- kind: property_tax_appeal_attorney
+  org: Meese Edwards (formerly Price, Meese, Shulman & D'Arminio)
+  email: wbierman@meese-edwards.com
+  phone: 201-391-3737
+  website: https://meese-edwards.com
+  town: Woodcliff Lake
+  county: Bergen
+  source: https://meese-edwards.com/attorney/william-d-bierman/
+  note: 'William D. Bierman: transportation real estate incl. tax appeals'
+- kind: property_tax_appeal_attorney
+  org: Aiello, Harris, Abate Law Group PC
+  email: info@ahalawgroup.com
+  phone: 908-561-5577
+  website: https://aielloharris.com
+  town: Watchung
+  county: Somerset
+  source: https://aielloharris.com/practice-areas/tax-law/
+  note: tax litigation incl. property tax appeals before the NJ Tax Court (Watchung, Woodbridge, Lyndhurst offices)
+- kind: property_tax_appeal_attorney
+  org: Eisner & Fowler (Steven M. Eisner, Counsellor at Law)
+  email: info@taxappealsonline.com
+  phone: 856-354-1213
+  website: https://taxappealsonline.com
+  town: Haddonfield
+  county: Camden
+  source: https://taxappealsonline.com/appeal.html
+  note: real property tax assessment appeals for owners (37+ years; former special tax counsel to NJ towns)
+- kind: property_tax_appeal_attorney
+  org: Gess Gess & Wallace, P.C. (Gesslaw)
+  email: rich@gesslaw.com
+  phone: ''
+  website: https://www.gesslaw.com
+  town: Hoboken
+  county: Hudson
+  source: https://www.gesslaw.com/partners
+  note: Hoboken real estate + condo firm; property tax appeals listed among its practice areas (homepage)
+- kind: property_tax_appeal_attorney
+  org: Law Office of Rogendy Toussaint, Esq., PLLC (Toussaint & Associates)
+  email: rtoussaint@paylessretaxes.com
+  phone: 973-937-7440
+  website: https://www.paylessretaxes.com
+  town: Summit
+  county: Union
+  source: https://www.paylessretaxes.com/union-county-tax-appeal/
+  note: residential + commercial property tax appeals across six NJ counties (Union County page)
+- kind: property_tax_appeal_attorney
+  org: Cecinini Law Group, LLC
+  email: office@cecininilaw.com
+  phone: 201-354-9305
+  website: https://cecininilaw.com
+  town: Bayonne
+  county: Hudson
+  source: https://cecininilaw.com/
+  note: property tax appeals at county board + State Tax Court (Peter Cecinini, former Asst. City Attorney, Bayonne)
+- kind: property_tax_appeal_attorney
+  org: Askin & Hooker, LLC
+  email: contacts@askinlaw.com
+  phone: 973-729-7711
+  website: https://askinlaw.com
+  town: Sparta
+  county: Sussex
+  source: https://askinlaw.com/sussex-county-nj-property-tax-appeal/
+  note: Sussex County property tax appeal guide; offers property tax attorney help (Sparta, Ship Bottom, Jersey City offices)
