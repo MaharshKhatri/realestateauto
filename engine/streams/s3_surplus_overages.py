@@ -553,11 +553,10 @@ def pitches(session: Session, ctx: StreamContext, lim: dict[str, Any], pdfs: dic
             ) -> tuple[list[Outbound], int]:
     """At most `pitches_per_run` e-mails to surplus attorneys (NEW / CONTACTED) whose county has a report; statewide
     targets get the largest reports. One key per target per ISO week, so a re-run never proposes twice."""
-    from engine.firm_outbox import cfg as firm_cfg
+    from engine.firm_outbox import pitch_ok
     if not pdfs or not ctx.send:
         return [], 0
     tag = week_tag(ctx.now)
-    max_touches = int(firm_cfg().get("max_touches", 2))
     by_size = sorted(pdfs, key=lambda c: (-(pdfs[c][1] + pdfs[c][2]), c))
     targets = list(session.scalars(select(FirmTarget).where(FirmTarget.kind == TARGET_KIND,
                                                             FirmTarget.stage.in_(("NEW", "CONTACTED")),
@@ -574,7 +573,7 @@ def pitches(session: Session, ctx: StreamContext, lim: dict[str, Any], pdfs: dic
         if not chosen:
             continue
         matched += 1
-        if len(out) >= int(lim["pitches_per_run"]) or int(t.touches or 0) >= max_touches:
+        if len(out) >= int(lim["pitches_per_run"]) or not pitch_ok(t, ctx.now):
             continue
         key = f"s3:pitch:{t.id}:{tag}"
         if session.scalar(select(FirmOutbox.id).where(FirmOutbox.key == key)):

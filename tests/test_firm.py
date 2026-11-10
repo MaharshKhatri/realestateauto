@@ -57,7 +57,12 @@ def test_an_outbound_is_queued_once_and_stop_lists_always_win(live):
     assert fo.enqueue(db, pitch(stop, key="k4"), TUE).reason == "on a stop list"
     again = target(db, email="recent@firm.example", org="Recent LLC")
     again.last_contact_at, again.touches = TUE - timedelta(days=2), 1
-    assert fo.enqueue(db, pitch(again, key="k5"), TUE).reason == "pitched recently"
+    assert fo.enqueue(db, pitch(again, key="k5"), TUE).reason == "in a sequence: the in-thread nudges follow up"
+    rest = target(db, email="rest@firm.example", org="Rest LLC")
+    rest.last_contact_at, rest.touches = TUE - timedelta(days=20), 3
+    assert fo.enqueue(db, pitch(rest, key="k6"), TUE).reason == "sequence finished: resting"
+    rest.last_contact_at = TUE - timedelta(days=61)                      # rest_days 60: a new round with fresh data
+    assert fo.enqueue(db, pitch(rest, key="k7"), TUE).status == "queued"
 
 
 def test_every_message_carries_the_signature_postal_address_opt_out_and_ad_line(live, tmp_path):
@@ -71,14 +76,14 @@ def test_every_message_carries_the_signature_postal_address_opt_out_and_ad_line(
     msg = fo.compose(row, hc.operator(), "<x@y>", ME)
     text = msg.get_body(preferencelist=("plain",)).get_content()
     assert "PO Box 10, Edison, NJ 08817" in text and 'Reply "no more"' in text
-    assert "Business offer from Garden State Home Buyers LLC." in text and "Jordan Operator" in text
+    assert "A business solicitation from Garden State Home Buyers LLC." in text and "Jordan Operator" in text
     # 2026-11-10: a cold first touch never carries an attachment; the PDF waits as the held sample
     assert list(msg.iter_attachments()) == [] and msg["List-Unsubscribe"]
     held = db.query(FirmOutbox).filter_by(key=f"{row.key}:sample").one()
     assert held.status == "held" and held.kind == "sample" and held.attachments_json[0]["name"] == "packet.pdf"
     m3 = fo.compose(held, hc.operator(), "<s@y>", ME)
     assert [p.get_filename() for p in m3.iter_attachments()] == ["packet.pdf"]
-    assert "Business offer" not in m3.get_body(preferencelist=("plain",)).get_content()   # they asked for it
+    assert "business solicitation" not in m3.get_body(preferencelist=("plain",)).get_content()   # they asked for it
     reply = Outbound(stream="s6", key="r1", to=t.email, subject="Re: data", body="Thanks, here it is.",
                      priority=PRIORITY_REPLY, kind="reply", target_id=t.id, in_reply_to="<their@msg>")
     r = fo.enqueue(db, reply, TUE)

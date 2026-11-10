@@ -605,6 +605,8 @@ def record_bounce(session: Session, email: str) -> None:
     if addr not in emails:
         row.value_json = {"emails": emails + [addr]}
         session.flush()
+        from engine import cold_guard
+        cold_guard.log_bounce(session, addr)        # 3 in 48 h, or > 2% in a week, pause cold mail (cold_guard)
 
 
 def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = None, smtp_factory: Any = None,
@@ -621,6 +623,10 @@ def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = Non
         if sent_last_24h(session, now) >= cap:
             raise RuntimeError(f"Gmail safety ceiling reached ({cap} e-mails in 24 hours); replies resume tomorrow")
     else:
+        from engine import cold_guard
+        held = cold_guard.paused(session, now)
+        if held:
+            raise RuntimeError(f"{held}; replies to agents who wrote back still go out")
         limit = int(_cfg().get("daily_email_limit", 25))
         if sent_last_24h(session, now, cold_only=True) >= limit:
             raise RuntimeError(f"daily limit reached ({limit} cold e-mails in 24 hours); replies to agents who wrote "
@@ -679,6 +685,11 @@ def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = Non
                             "couldn't be checked. Look in Gmail's Sent folder: if it isn't there, run the same "
                             "command again.", fatal=True) from exc
                 continue
+            try:
+                from engine import cold_guard
+                cold_guard.note_error(session, exc, now)  # Gmail's spam / rate codes stop cold mail for 7 days
+            except Exception:              # noqa: BLE001 - the send error below is what the caller needs
+                log.exception("cold guard: could not record the SMTP error")
             raise GmailSendError(explain(exc, user, str(_cfg().get("smtp_host", "smtp.gmail.com"))),
                                  fatal=is_fatal(exc)) from exc
     raise AssertionError("unreachable")  # pragma: no cover

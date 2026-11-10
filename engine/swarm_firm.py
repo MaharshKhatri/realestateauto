@@ -232,6 +232,8 @@ def tick(*, now: datetime | None = None, smtp_factory: Any = None, send: bool = 
         out["streams"] = run_streams(now=t, out_dir=Path(tmp), only=only, force=force, send=send,
                                      budget_seconds=budget_seconds)
     if send:
+        with session_scope() as s:
+            out["nudges_queued"] = fo.queue_nudges(s, now)   # the in-thread rest of each cold sequence
         out["outbox"] = fo.send_due(now=now, smtp_factory=smtp_factory)
     return out
 
@@ -273,14 +275,25 @@ def status(session: Any, now: datetime | None = None) -> dict[str, Any]:
                      "products": last.products if last else 0, "queued": queued, "sent_24h": sent,
                      "waiting": waiting, "warm": warm, "targets": sum(stages.values()), "stages": stages,
                      "mrr": mrr})
+    from engine import cold_guard
+    caps = fo.caps()
+    ceiling = caps[fo.PRIORITY_PITCH] + caps[fo.PRIORITY_SPECIALTY]
     return {"streams": rows, "mrr": total_mrr, "sent_24h": sum(r["sent_24h"] for r in rows),
-            "waiting": sum(r["waiting"] for r in rows), "warm": sum(r["warm"] for r in rows)}
+            "waiting": sum(r["waiting"] for r in rows), "warm": sum(r["warm"] for r in rows),
+            "cold_paused": cold_guard.paused(session, now), "quiet_inbox": cold_guard.quiet_inbox(session, now),
+            "first_touch_cap": cold_guard.first_touch_cap(session, ceiling)}
 
 
 def flat(st: dict[str, Any]) -> dict[str, Any]:
     """Counts only, for the public run log: {"s3_found": 12, ...}."""
     out: dict[str, Any] = {"firm_mrr": int(st["mrr"]), "firm_sent_24h": st["sent_24h"],
                            "firm_waiting": st["waiting"], "firm_warm": st["warm"]}
+    if st.get("first_touch_cap") is not None:
+        out["firm_touch_cap"] = st["first_touch_cap"]
+    if st.get("cold_paused"):
+        out["cold_paused"] = 1                           # the reason stays off the public log (it may name a count)
+    if st.get("quiet_inbox"):
+        out["quiet_inbox"] = 1
     for r in st["streams"]:
         k = r["key"]
         out.update({f"{k}_found": r["found"], f"{k}_products": r["products"], f"{k}_sent": r["sent_24h"],
@@ -302,4 +315,10 @@ def table_lines(st: dict[str, Any]) -> list[str]:
         lines.append(f"{name[:32]:<32} {r['processed']:>7} {r['found']:>6} {r['products']:>5} {r['queued']:>6} "
                      f"{r['sent_24h']:>5} {r['waiting']:>5} {r['warm']:>5}")
     lines.append(f"Recurring revenue from trials / paying clients: ${st['mrr']:,.0f}/month")
+    if st.get("first_touch_cap") is not None:
+        lines.append(f"B2B first touches allowed today: {st['first_touch_cap']} (weekly ramp; nudges separate)")
+    if st.get("cold_paused"):
+        lines.append(f"COLD E-MAIL PAUSED: {st['cold_paused']}. Replies still go out.")
+    if st.get("quiet_inbox"):
+        lines.append(f"CHECK: {st['quiet_inbox']}")
     return lines

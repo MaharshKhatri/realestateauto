@@ -26,7 +26,7 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -135,6 +135,8 @@ def enqueue(session: Session, ob: Outbound, now: datetime | None = None) -> Firm
     why = stop_reason(session, ob.to, target)
     if why is None and ob.kind == "pitch" and target is not None:
         why = _pitch_block(session, target, now)
+    if why is None and ob.kind == "followup" and target is not None and not ob.in_reply_to and ob.commercial:
+        why = "the in-thread nudges follow up (one sequence per target)"
     row = FirmOutbox(key=ob.key[:200], stream=ob.stream, priority=int(ob.priority), kind=ob.kind,
                      target_id=ob.target_id, lead_id=ob.lead_id, to_email=(norm_email(ob.to) or ob.to)[:160],
                      subject=ob.subject[:250], body=ob.body, in_reply_to=ob.in_reply_to,
@@ -186,19 +188,108 @@ def sample_sent(session: Session, target: FirmTarget) -> bool:
                                                            FirmOutbox.status.in_(("queued", "sent"))).limit(1)))
 
 
-def _pitch_block(session: Session, target: FirmTarget, now: datetime | None) -> str | None:
+def pitch_ok(target: FirmTarget, now: datetime | None = None) -> bool:
+    """Streams pick their Touch-1 targets with this (the same rule `enqueue` enforces): never pitched, or a finished
+    sequence that has rested `rest_days`."""
+    return _sequence_block(target, now) is None
+
+
+def _sequence_block(target: FirmTarget, now: datetime | None) -> str | None:
     c = cfg()
     if target.stage not in ("NEW", "CONTACTED"):
         return f"target {target.stage.lower()}: no more cold pitches"
-    if int(target.touches or 0) >= int(c.get("max_touches", 2)):
-        return "cold touches used up"
+    touches = int(target.touches or 0)
+    if touches:
+        rest = float(c.get("rest_days", 0) or 0)
+        done = touches >= int(c.get("max_touches", 3))
+        if not (done and rest and target.last_contact_at and target.last_contact_at <= _now(now) - timedelta(days=rest)):
+            return "in a sequence: the in-thread nudges follow up" if not done else "sequence finished: resting"
     if target.last_contact_at and target.last_contact_at > _now(now) - timedelta(days=float(c.get("pitch_gap_days", 6))):
         return "pitched recently"
+    return None
+
+
+def _pitch_block(session: Session, target: FirmTarget, now: datetime | None) -> str | None:
+    """A new Touch 1 only for a target that hasn't been pitched this round. The round is Touch 1 + the in-thread nudge
+    (day 3-4) + close-the-loop (day 9-10) (`queue_nudges`, the B2B playbook 2026-11-10); after that the target rests
+    `rest_days` (0 = never pitched again) before a new round with fresh data."""
+    why = _sequence_block(target, now)
+    if why:
+        return why
     queued = session.scalar(select(func.count(FirmOutbox.id)).where(FirmOutbox.target_id == target.id,
                                                                    FirmOutbox.status == "queued"))
     if queued:
         return "a pitch is already queued"
     return None
+
+
+# -- the in-thread sequence ---------------------------------------------------------------------------------------
+# What each stream's sample is called in a nudge ("want me to send ...?") and in the close-the-loop line ("if ... isn't
+# useful"). Counts and facts stay in Touch 1; the nudges add nothing new to check.
+SEQUENCE_WORDS = {
+    "s2": ("this week's deal sheet for your towns", "a weekly deal sheet"),
+    "s3": ("the county surplus sheet", "the surplus research"),
+    "s4": ("this week's county sheet", "the weekly listing sheet"),
+    "s5": ("this month's borrower sheet", "a borrower feed"),
+    "s6": ("the recorded-sales sheet", "the Chapter 123 sales data"),
+    "s7": ("the net sheet", "the net sheet"),
+    "s9": ("this month's purchases sheet", "a monthly purchases sheet"),
+    "s10": ("this week's sheet", "the weekly sheet"),
+}
+PROFESSIONAL_KINDS = {"property_tax_appeal_attorney", "foreclosure_surplus_attorney", "real_estate_cpa",
+                      "cost_segregation_firm", "qualified_intermediary_1031", "estate_attorney", "probate_attorney"}
+
+
+def _greeting(target: FirmTarget) -> str:
+    from engine.streams.s2_deal_desk_saas import first_name
+    return first_name(target.name) if target.name else "there"
+
+
+def nudge_body(target: FirmTarget, stream: str, step: int) -> str:
+    noun, topic = SEQUENCE_WORDS.get(stream, ("the one-page sheet", "the sheet"))
+    hi = f"Hi {_greeting(target)},"
+    if step == 2:
+        return f"{hi}\n\nQuick follow-up: want me to send {noun}? It's one page and free."
+    return f"{hi}\n\nLast note from me. If {topic} isn't useful, no problem, and I won't follow up."
+
+
+def queue_nudges(session: Session, now: datetime | None = None, limit: int = 40) -> int:
+    """The rest of each cold sequence, in the prospect's own thread: a nudge `nudge_days` (3) days after Touch 1 and a
+    close-the-loop note `close_days` (6) days after the nudge (day 9-10), each plain text with no attachment. A reply,
+    an opt-out, a bounce or a stage change ends the sequence (stage is no longer CONTACTED). Weekdays only."""
+    c = cfg()
+    t = _now(now)
+    if t.weekday() >= 5:
+        return 0
+    max_touches = int(c.get("max_touches", 3))
+    if max_touches < 2:
+        return 0
+    waits = {2: float(c.get("nudge_days", 3)), 3: float(c.get("close_days", 6))}
+    n = 0
+    targets = session.scalars(select(FirmTarget).where(FirmTarget.stage == "CONTACTED",
+                                                       FirmTarget.touches.between(1, max_touches - 1))
+                              .order_by(FirmTarget.last_contact_at))
+    for target in targets:
+        if n >= limit:
+            break
+        step = int(target.touches or 0) + 1
+        if not target.last_contact_at or target.last_contact_at > t - timedelta(days=waits.get(step, 6)):
+            continue
+        pitch = session.scalar(select(FirmOutbox).where(FirmOutbox.target_id == target.id, FirmOutbox.kind == "pitch",
+                                                        FirmOutbox.status == "sent").order_by(FirmOutbox.sent_at.desc())
+                               .limit(1))
+        if pitch is None or not pitch.message_id:
+            continue
+        key = f"nudge:{pitch.id}:{step}"
+        if session.scalar(select(FirmOutbox.id).where(FirmOutbox.key == key)):
+            continue
+        subj = re.sub(r"(?i)^\s*(re|fwd?):\s*", "", pitch.subject).strip()
+        ob = Outbound(stream=pitch.stream, key=key, to=pitch.to_email, subject=f"Re: {subj}",
+                      body=nudge_body(target, pitch.stream, step), priority=pitch.priority, kind="followup",
+                      target_id=target.id, in_reply_to=pitch.message_id)
+        if enqueue(session, ob, now) is not None:
+            n += 1
+    return n
 
 
 # -- sending ------------------------------------------------------------------------------------------------------
@@ -208,6 +299,13 @@ def sent_24h(session: Session, now: datetime | None = None, priority: int | None
     if priority is not None:
         q = q.where(FirmOutbox.priority == priority)
     return int(session.scalar(q) or 0)
+
+
+def pitches_24h(session: Session, priority: int) -> int:
+    """First touches sent in the last 24 hours at that priority (nudges have their own `caps.nudges`)."""
+    return int(session.scalar(select(func.count(FirmOutbox.id)).where(
+        FirmOutbox.status == "sent", FirmOutbox.sent_at >= utcnow() - timedelta(hours=24),
+        FirmOutbox.priority == priority, FirmOutbox.kind == "pitch")) or 0)
 
 
 def caps() -> dict[int, int]:
@@ -230,7 +328,7 @@ def footer(op: dict[str, str], commercial: bool) -> str:
         # CAN-SPAM 7704(a)(5)(A)(i): a cold commercial message identifies itself as a solicitation; the law leaves the
         # wording open, so it is one plain footer line (never "Ad:" in the subject)
         who = max((op.get("name") or "", op.get("company") or ""), key=len) or "the sender"
-        lines.append(str(cfg().get("ad_line") or "Business offer from {who}.").format(who=who))
+        lines.append(str(cfg().get("ad_line") or "A business solicitation from {who}.").format(who=who))
     if op.get("postal"):
         lines.append(f"Mail: {op['postal']}")
     lines.append('Reply "no more" and I won\'t e-mail you again.')
@@ -299,31 +397,67 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
     password = clean_app_password(os.environ["SMTP_APP_PASSWORD"])
     op = hc.operator()
     gap = [float(x) for x in cfg().get("pace_seconds", [8, 20])]
-    cold_gap = timedelta(minutes=float(cfg().get("cold_gap_minutes", 12)))
+    g = cfg().get("cold_gap_minutes", [8, 15])
+    lo_gap, hi_gap = (float(g[0]), float(g[-1])) if isinstance(g, (list, tuple)) and g else (float(g or 12),) * 2
+    cold_gap = timedelta(minutes=random.uniform(lo_gap, hi_gap))   # one draw per run: spacing varies 8-15 minutes
+    nudge_cap = int(dict(cfg().get("caps") or {}).get("nudges", 20))
+    t_now = _now(now)
+    pro_ok = t_now.hour < int(cfg().get("professional_last_hour", 18)) and not (t_now.weekday() == 4 and t_now.hour >= 12)
     with scope() as s:
         expire_samples(s, now)
+        from engine import cold_guard
+        held = cold_guard.paused(s, now)
+        # The weekly ramp (`ramp`): first touches a day this week, split between deal-desk and specialty pitches in
+        # the same proportion as their caps.
+        ceiling = cap[PRIORITY_PITCH] + cap[PRIORITY_SPECIALTY]
+        allowed_total = cold_guard.first_touch_cap(s, ceiling, t_now.date())
+        if allowed_total < ceiling and ceiling:
+            p2 = round(cap[PRIORITY_PITCH] * allowed_total / ceiling)
+            cap = {**cap, PRIORITY_PITCH: p2, PRIORITY_SPECIALTY: allowed_total - p2}
+    if held:
+        out["cold_paused"] = held
     while out["sent"] < per_run:
         with scope() as s:
-            used = {p: sent_24h(s, now, p) for p in cap}
+            used = {p: pitches_24h(s, p) for p in (PRIORITY_PITCH, PRIORITY_SPECIALTY)}
+            used[PRIORITY_REPLY] = sent_24h(s, now, PRIORITY_REPLY)
+            nudges_used = int(s.scalar(select(func.count(FirmOutbox.id)).where(
+                FirmOutbox.status == "sent", FirmOutbox.sent_at >= utcnow() - timedelta(hours=24),
+                FirmOutbox.kind.in_(("followup", "notice")))) or 0)
             total = sent_24h(s, now) + ao.sent_last_24h(s, now)
             if total >= int((settings().get("outreach") or {}).get("reply_daily_limit", 150)):
                 out["blocked"] = "gmail ceiling"
                 break
-            # cold first touches are spread out (one every `cold_gap_minutes`, 2026-11-10: "spaced naturally"), so a
-            # run sends at most one; replies and released samples are never held back by the gap
+            # cold touches are spread out (one every 8-15 minutes, 2026-11-10: "spaced naturally"), so a run sends at
+            # most one; replies and released samples are never held back by the gap or by a pause
             last_cold = s.scalar(select(func.max(FirmOutbox.sent_at)).where(
                 FirmOutbox.status == "sent", FirmOutbox.priority > PRIORITY_REPLY))
-            cold_ok = biz and not (last_cold and utcnow() - last_cold < cold_gap)
-            allowed = [p for p in sorted(cap) if used[p] < cap[p] and (cold_ok if p > PRIORITY_REPLY else replies_ok)]
-            if not allowed:
+            cold_ok = biz and not held and not (last_cold and utcnow() - last_cold < cold_gap)
+            conds = []
+            if replies_ok and used[PRIORITY_REPLY] < cap[PRIORITY_REPLY]:
+                conds.append(FirmOutbox.priority == PRIORITY_REPLY)
+            if cold_ok:
+                pitch_ps = [p for p in (PRIORITY_PITCH, PRIORITY_SPECIALTY) if used[p] < cap[p]]
+                if pitch_ps:
+                    conds.append((FirmOutbox.kind == "pitch") & FirmOutbox.priority.in_(pitch_ps))
+                if nudges_used < nudge_cap:
+                    conds.append(FirmOutbox.kind.in_(("followup", "notice")) & (FirmOutbox.priority > PRIORITY_REPLY))
+            if not conds:
                 break
-            row = s.scalar(select(FirmOutbox).where(FirmOutbox.status == "queued", FirmOutbox.priority.in_(allowed))
-                           .order_by(FirmOutbox.priority, FirmOutbox.created_at).limit(1))
+            q = select(FirmOutbox).where(FirmOutbox.status == "queued", or_(*conds))
+            if not pro_ok:
+                # no attorney / CPA cold mail after 6 PM or on a Friday afternoon (the playbook's timing rule)
+                pro_ids = select(FirmTarget.id).where(FirmTarget.kind.in_(PROFESSIONAL_KINDS))
+                q = q.where(or_(FirmOutbox.priority == PRIORITY_REPLY, FirmOutbox.target_id.is_(None),
+                                FirmOutbox.target_id.not_in(pro_ids)))
+            # replies first, then nudges (they finish a sequence already started), then first touches
+            row = s.scalar(q.order_by(FirmOutbox.priority, case((FirmOutbox.kind == "pitch", 1), else_=0),
+                                      FirmOutbox.created_at).limit(1))
             if row is None:
                 break
             target = s.get(FirmTarget, row.target_id) if row.target_id else None
             why = stop_reason(s, row.to_email, target)
-            if why is None and row.kind == "pitch" and target is not None and target.stage not in ("NEW", "CONTACTED"):
+            if why is None and row.kind in ("pitch", "followup") and target is not None and \
+                    target.stage not in ("NEW", "CONTACTED"):
                 why = f"target {target.stage.lower()}"
             if why:
                 row.status, row.reason, row.attachments_json = "skipped", why, []
@@ -342,7 +476,9 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
                 r.reason = type(exc).__name__
                 if r.attempts >= int(cfg().get("max_attempts", 3)):
                     r.status, r.attachments_json = "failed", []
-            out["error"] = type(exc).__name__
+                from engine import cold_guard
+                code = cold_guard.note_error(s, exc, now)   # Gmail's spam / rate codes stop cold mail for 7 days
+            out["error"] = type(exc).__name__ + (f" {code}" if code else "")
             break                                       # one failure stops this run's batch; the next run retries
         with scope() as s:
             r = s.get(FirmOutbox, rid)
@@ -350,10 +486,12 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
             t = s.get(FirmTarget, r.target_id) if r.target_id else None
             if t is not None:
                 t.last_contact_at = _now(now)
-                if r.kind in ("pitch", "followup"):
+                if r.kind == "pitch":
+                    t.touches = 1                       # Touch 1 of a (new) round
+                elif r.kind == "followup":
                     t.touches = int(t.touches or 0) + 1
-                    if t.stage == "NEW":
-                        t.stage = "CONTACTED"
+                if r.kind in ("pitch", "followup") and t.stage == "NEW":
+                    t.stage = "CONTACTED"
         out["sent"] += 1
         if pace and out["sent"] < per_run:
             time.sleep(random.uniform(*gap))
@@ -414,11 +552,12 @@ def price_line(stream: str | None) -> str:
     from engine.swarm_firm import stream_cfg
     sc = stream_cfg(stream or "") if stream else {}
     trial, monthly = sc.get("price_trial"), sc.get("price_monthly")
+    tax = " plus NJ sales tax" if cfg().get("sales_tax_line", True) else ""
     if trial and monthly:
-        return f"${float(trial):,.0f} for the first 30 days, then ${float(monthly):,.0f} a month"
+        return f"${float(trial):,.0f} for the first 30 days, then ${float(monthly):,.0f} a month{tax}"
     if monthly:
-        return f"${float(monthly):,.0f} a month"
-    return "the flat monthly fee"
+        return f"${float(monthly):,.0f} a month{tax}"
+    return f"the flat monthly fee{tax}"
 
 
 def start_reply_text(stream: str | None, link: str) -> str:

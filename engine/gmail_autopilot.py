@@ -144,6 +144,7 @@ class Mail:
     bounce: bool = False
     bounced_ids: list[str] = field(default_factory=list)
     bounced_addresses: list[str] = field(default_factory=list)
+    block_code: str | None = None                  # a bounce carrying Gmail's spam / rate code (engine/cold_guard.py)
 
 
 def _ids(value: Any) -> list[str]:
@@ -252,6 +253,8 @@ def parse_message(raw: bytes, uid: int, uidvalidity: int = 0) -> Mail:
                             if m != mail.message_id]
         mail.bounced_addresses = sorted({a.lower() for a in re.findall(
             r"(?im)^\s*(?:Final|Original)-Recipient:\s*rfc822;\s*<?([^\s<>;]+@[^\s<>;]+)>?", flat)})
+        from engine import cold_guard
+        mail.block_code = cold_guard.block_code(flat[:20000])
         return mail
     mail.text = strip_quoted(body_text(msg))
     return mail
@@ -708,6 +711,9 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
     from engine import reply_negotiator as rn
     when = mail.received_at or now_eastern(now)
     if mail.bounce:
+        if mail.block_code:
+            from engine import cold_guard
+            cold_guard.note_error(session, f"bounce {mail.block_code}", now)   # spam / rate block: cold mail stops
         leads = {known.thread[m] for m in mail.bounced_ids if m in known.thread}
         q = select(Contact).where(Contact.contact_type == ContactType.LISTING_AGENT, Contact.email.is_not(None))
         hit = [c for c in session.scalars(q.where(func.lower(Contact.email).in_(mail.bounced_addresses)))] \
@@ -1811,6 +1817,10 @@ def daily_openers(limit: int, *, at: str = "10:30", now: datetime | None = None,
     waves = sorted(set(waves)) or [(10, 30)]
     if limit <= 0 or t.weekday() >= 5 or not in_send_hours(now):
         return None
+    from engine import cold_guard
+    with session_scope() as s:
+        if cold_guard.paused(s, now):
+            return None                            # bounces / a Gmail warning: openers wait (the wave stays undone)
     today = t.date().isoformat()
     with session_scope() as s:
         row = s.get(SwarmState, DAILY_KEY)

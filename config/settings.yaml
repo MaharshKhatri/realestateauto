@@ -375,21 +375,33 @@ research_firm:
   pace_seconds: [8, 20]
   business_hours: [8, 20]            # cold first touches: weekdays 8 AM-8 PM Eastern (operator, 2026-11-10); replies:
                                      # outreach.send_hours
-  cold_gap_minutes: 12               # one cold first touch every 12+ minutes, spread across the day ("spaced naturally")
-  caps: {p1: 150, p2: 12, p3: 18}    # rolling 24 h by priority: replies + released samples / deal-desk pitches / specialty.
-                                     # 30 B2B first touches a day (operator, 2026-11-10: no separate domain, stay on the
-                                     # personal Gmail with 2-sentence plain-text openers, no attachments on Touch 1);
-                                     # with the 15 listing-agent openers that is ~45 cold e-mails a day. Gmail's program
-                                     # policies still apply: the bounce guard (agent_outreach.record_bounce) and a 0-reply
-                                     # week are the signals to slow down.
-  ad_line: "Business offer from {who}."   # the cold footer's solicitation line (CAN-SPAM 7704(a)(5)(A)(i)); never "Ad:"
+  professional_last_hour: 18         # attorneys / CPAs / cost-seg / 1031: no cold mail after 6 PM or Friday afternoon
+  cold_gap_minutes: [8, 15]          # one cold touch every 8-15 minutes (random), spread across the day
+  caps: {p1: 150, p2: 12, p3: 18, nudges: 20}
+                                     # rolling 24 h: replies + released samples / deal-desk first touches / specialty
+                                     # first touches / in-thread nudges + close-the-loop notes. 30 B2B first touches a day
+                                     # at full ramp (operator, 2026-11-10: stay on the personal Gmail at $0 with 2-sentence
+                                     # plain-text openers, no attachments on Touch 1); with the 15 listing-agent openers
+                                     # that is ~45 cold first touches a day.
+  ramp: [20, 30]                     # first touches a day by week since the first B2B pitch (2026-11-09): 20 this week,
+                                     # 30 from week 2 (engine/cold_guard.py); [] = the caps from day 1
+  bounce_pause_count: 3              # 3+ bounces in 48 h pause every cold e-mail until they age out
+  bounce_pause_rate: 0.02            # or > 2% of the last 7 days' cold sends (50+ sent)
+  block_pause_days: 7                # Gmail 5.7.1 unsolicited / 4.7.28 / 5.7.28 / 5.4.5: no cold mail for 7 days
+  ad_line: "A business solicitation from {who}."   # the cold footer line (CAN-SPAM 7704(a)(5)(A)(i), the statute's own
+                                     # word); never "Ad:" in the subject; dropped after a yes (affirmative consent)
+  sales_tax_line: true               # every price says "plus NJ sales tax" (N.J.S.A. 54:32B-3(b)(12), ANJ-29)
   sample_hold_days: 30               # a held Touch-2 sample nobody asked for expires after this many days
   payment_link: ""                   # the operator's payment link (Stripe Payment Link / PayPal / Square); when set, a
                                      # "start" reply gets it in their thread by itself. Per-product links go in
   payment_links: {}                  # payment_links: {s3: "https://...", s4: "https://..."}. Paying / trial clients
                                      # (a sealed note sets the target TRIAL / PAYING) get the full weekly report by itself.
-  pitch_gap_days: 6                  # one cold pitch per target per this many days
-  max_touches: 2                     # cold touches per target in all (a pitch + one follow-up); a reply ends them
+  pitch_gap_days: 6                  # a new Touch 1 to the same target never within this many days
+  max_touches: 3                     # one sequence: Touch 1, a nudge in-thread after nudge_days, close-the-loop after
+  nudge_days: 3                      # close_days more (day 9-10); a reply, opt-out or bounce ends it
+  close_days: 6
+  rest_days: 60                      # after a finished sequence with no reply, a new Touch 1 (fresh data) at most every
+                                     # 60 days; 0 = never
   max_attempts: 3                    # a send that keeps failing is marked failed
   streams:
     s1: {enabled: true, warm_days: 21, buyers_per_deal: 3}

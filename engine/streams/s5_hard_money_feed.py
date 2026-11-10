@@ -279,14 +279,13 @@ def eligible_targets(session: Session, kinds: list[str], stream: str, key_for: C
     from engine import firm_outbox as fo
     c = fo.cfg()
     gap = timedelta(days=float(c.get("pitch_gap_days", 6)))
-    max_touches = int(c.get("max_touches", 2))
     used = set(session.scalars(select(FirmOutbox.key).where(FirmOutbox.stream == stream)))
     out: list[FirmTarget] = []
     for t in session.scalars(select(FirmTarget).where(FirmTarget.kind.in_(kinds),
                                                       FirmTarget.stage.in_(("NEW", "CONTACTED")),
                                                       FirmTarget.email.is_not(None))
                              .order_by(FirmTarget.score.desc(), FirmTarget.id)):
-        if key_for(t) in used or int(t.touches or 0) >= max_touches:
+        if key_for(t) in used or not fo.pitch_ok(t, now):
             continue
         if t.last_contact_at and t.last_contact_at > now - gap:
             continue

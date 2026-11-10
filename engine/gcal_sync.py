@@ -1089,6 +1089,10 @@ def firm_status_event(session: Session, now: datetime) -> Desired | None:
         lines.append(f"- {r['key']} {r['name']}: {r['processed']} / {r['found']} / {r['products']} / {r['sent_24h']} / "
                      f"{r['waiting']} / {r['warm']}" + (f" (last run failed: {r['error']})" if r["error"] else ""))
     lines.append(f"Recurring revenue (trials + paying): ${st['mrr']:,.0f}/month")
+    if st.get("cold_paused"):
+        lines.append(f"COLD E-MAIL PAUSED: {st['cold_paused']}. Replies still go out.")
+    if st.get("quiet_inbox"):
+        lines.append(f"CHECK: {st['quiet_inbox']}")
     for fr in fo_warm(session):
         lines.append(f"WARM: {fr}")
     for rec in _daniels_open(session, now):

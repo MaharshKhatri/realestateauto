@@ -110,10 +110,10 @@ def due_targets(session: Session, now: Any, limit: int, gap_days: float, max_tou
     never an agent we are in deal talks with."""
     cutoff = now - timedelta(days=gap_days)
     rows = session.scalars(select(FirmTarget).where(
-        FirmTarget.stream == "s2", FirmTarget.email.is_not(None), FirmTarget.stage.in_(("NEW", "CONTACTED")),
-        FirmTarget.touches < max_touches)).all()
+        FirmTarget.stream == "s2", FirmTarget.email.is_not(None), FirmTarget.stage.in_(("NEW", "CONTACTED")))).all()
     talks = in_deal_talks(session, now)
-    ok = [t for t in rows if (t.last_contact_at is None or t.last_contact_at <= cutoff)
+    # Touch 1 only (the outbox sends the in-thread nudges): never pitched, or a finished sequence that has rested.
+    ok = [t for t in rows if fo.pitch_ok(t, now) and (t.last_contact_at is None or t.last_contact_at <= cutoff)
           and not (t.kind == "investor_agent" and (t.email or "").lower() in talks)]
     ok.sort(key=lambda t: (t.kind != "flipper", int(t.touches or 0), -(t.score or 0)))
     return ok[:limit]
