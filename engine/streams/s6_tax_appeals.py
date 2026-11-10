@@ -22,13 +22,20 @@ Which properties get a packet is our own screen (not printed, not pitched): time
 77%-130% of its living area), the higher of the median-price and median-$/sqft indications, and a property is kept
 only when assessment / that figure is above the upper limit AND the Chapter 123 reduction would be at least 15% of
 the assessment. Class 4A/4C parcels need commercial sales (the stored sets are house sales): counted and skipped.
+
+The pitch is the 2-step funnel (2026-11-10): Touch 1 is two plain sentences with no attachment and no price (what we
+ran, how many homes in one town, one public-record street, "Want the comparable-sales packet for it?"); that
+property's one-page packet waits as the held sample with the flat price and goes out in the attorney's own thread
+when they say yes. A one-property packet is itself the sample (its sales are the evidence: nothing is masked). The
+second cold touch is one sentence in the first one's thread.
 """
 from __future__ import annotations
 
 import html
+import math
 import re
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from statistics import median
@@ -38,7 +45,7 @@ from typing import Any
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
-from db.models import FirmTarget, Property, Valuation
+from db.models import FirmOutbox, FirmTarget, Property, Valuation
 from engine.streams.base import (
     PRIORITY_SPECIALTY,
     Outbound,
@@ -543,9 +550,10 @@ def render_packet(case: Case, path: Path, op: dict[str, str], params: dict[str, 
     head = ["#", "Sale (recorded deed or MLS sold)", "Sold", "Sale price", "Living area", "$/sqft", "Distance", "Source",
             "Subject assessment / sale price"]
     box = f"<b>{DISCLAIMER}</b> {deadline_line(case.deadline, case.county)}"
+    # one property per packet: the packet is its own sample (the listed sales are the evidence, nothing to mask)
     return render_table_pdf(path, title=title, subtitle=subtitle, head=head, rows=packet_rows(case),
                             notes=packet_notes(case, params), box=box, footer=operator_footer(op),
-                            col_widths=[0.3, 2.1, 0.75, 0.85, 0.75, 0.65, 0.7, 1.5, 2.45])
+                            col_widths=[0.3, 2.1, 0.75, 0.85, 0.75, 0.65, 0.7, 1.5, 2.45], write_sample=False)
 
 
 def with_comps(case: Case, comps: list[Comp], params: dict[str, Any]) -> Case | None:
@@ -573,25 +581,107 @@ def fit_one_page(case: Case, path: Path, op: dict[str, str], params: dict[str, A
     return None
 
 
-# -- the pitch ----------------------------------------------------------------------------------------------------
-def pitch_body(county: str, deadline: date, price_packet: float, price_monthly: float, first: str) -> str:
-    """No value, no savings, no verdict: what the packet is, that it is data, the flat price, the deadline."""
-    return (f"Hello,\n\nI put together comparable-sales data packets for high-tax properties in {county} County "
-            f"where the assessment divided by recent sale prices of similar houses runs above the Chapter 123 common "
-            f"level range. A sample is attached: the recorded sales, the "
-            f"Director's Chapter 123 ratio and the arithmetic, with no opinion of value, for your own review. The "
-            f"flat research fee is ${price_packet:,.0f} a packet or ${price_monthly:,.0f} a month for a weekly set, "
-            f"ahead of the {deadline:%B} {deadline.day}, {deadline.year} filing deadline. Would a set for your towns "
-            f"be useful?\n\n{first}").strip()
+# -- the pitch: the 2-step funnel (2026-11-10) -------------------------------------------------------------------
+def taxes_floor(min_taxes: float) -> str:
+    """The tax screen in words ("12,000"): rounded down to the thousand, so "paying over X" stays true."""
+    v = float(min_taxes or 0)
+    return f"{math.floor(v / 1000) * 1000 if v >= 1000 else v:,.0f}"
 
 
-def pitches(session: Session, ctx: StreamContext, packets: list[tuple[Case, Path]]) -> list[Outbound]:
+def town_label(case: Case) -> str:
+    """The municipality as people write it ("NEWARK CITY" -> "Newark"): a Chapter 123 ratio is per municipality."""
+    from core.text import muni_base, postal_title
+    return postal_title(muni_base(case.town)) if case.town else postal_title(case.city)
+
+
+def street_label(case: Case) -> str:
+    from core.text import postal_title
+    return postal_title(case.street).strip(" .,")
+
+
+def pitch_subject(town: str, street: str, n: int) -> str:
+    return (f"Chapter 123 ratios: {street} + {n - 1} more in {town}" if n > 1
+            else f"Chapter 123 ratios: {street}, {town}")
+
+
+def pitch_body(town: str, street: str, n: int, min_taxes: float, first: str) -> str:
+    """Touch 1: two plain sentences, no attachment, no price, no value and no verdict: what we ran, the true count in
+    one town (the tax screen is a public-record filter, written out in words), one public-record street and a yes/no
+    question. Never "over-assessed", "savings" or "sold for less"."""
+    homes = "one home" if n == 1 else f"{n} homes"
+    which = f"at {street}" if n == 1 else f"including {street}"
+    return (f"Hello,\n\nWe ran Chapter 123 assessment-to-sale ratios across {town} and found {homes} paying over "
+            f"{taxes_floor(min_taxes)} dollars a year in taxes where the assessment divided by recent sale prices of "
+            f"similar homes runs above the common level range, {which}. Want the comparable-sales packet for it?"
+            f"\n\n{first}").strip()
+
+
+def followup_body(street: str, first: str) -> str:
+    """The second cold touch: one sentence, no attachment, in the first touch's thread."""
+    return f"Hello,\n\nShould I send the comparable-sales packet for {street} over?\n\n{first}".strip()
+
+
+def sample_body(street: str, deadline: date, price_packet: float, price_monthly: float, official: bool = True) -> str:
+    """Touch 2, sent with the packet only after their yes: what is attached, the flat price (never contingent, never
+    per client: NJ RPC 7.2(c)) and the filing deadline."""
+    ratio = ("the Director's Chapter 123 ratio" if official
+             else "an estimated Chapter 123 ratio to check against the Director's table")
+    return (f"Here's the comparable-sales packet for {street} (attached): the recorded sales, {ratio} and the "
+            f"arithmetic, with no opinion of value. It is ${price_packet:,.0f} a packet or ${price_monthly:,.0f} a "
+            "month for a weekly set, flat research fees, no contingency and nothing tied to any appeal result; the "
+            f"{deadline:%B} {deadline.day}, {deadline.year} filing deadline is the clock. "
+            "Reply \"start\" and I'll set it up.")
+
+
+def thread_subject(subject: str) -> str:
+    return subject if subject.lower().startswith("re:") else f"Re: {subject}"
+
+
+def earlier_pitch(session: Session, target_id: int, stream: str) -> FirmOutbox | None:
+    """The newest cold touch this stream sent the target: the second touch goes in its thread."""
+    return session.scalar(select(FirmOutbox).where(
+        FirmOutbox.target_id == target_id, FirmOutbox.stream == stream, FirmOutbox.kind.in_(("pitch", "followup")),
+        FirmOutbox.status == "sent", FirmOutbox.message_id.is_not(None))
+        .order_by(FirmOutbox.sent_at.desc(), FirmOutbox.id.desc()).limit(1))
+
+
+def pitch_due(session: Session, t: FirmTarget, key: str, now: datetime) -> bool:
+    """The outbox's own gates, checked here first so a target it would skip never takes one of the run's pitch slots
+    (a re-run in the same week, cold touches used up, pitched inside the gap, a pitch still queued)."""
+    from engine.firm_outbox import cfg
+    c = cfg()
+    if session.scalar(select(FirmOutbox.id).where(FirmOutbox.key == key)):
+        return False
+    if int(t.touches or 0) >= int(c.get("max_touches", 2)):
+        return False
+    if t.last_contact_at and t.last_contact_at > now - timedelta(days=float(c.get("pitch_gap_days", 6))):
+        return False
+    return not session.scalar(select(FirmOutbox.id).where(FirmOutbox.target_id == t.id,
+                                                         FirmOutbox.status == "queued").limit(1))
+
+
+def names_street(text: str | None, street: str) -> bool:
+    """`street` appears in `text` as a whole address ("1 Main St" is not in "11 Main St")."""
+    return bool(street) and re.search(rf"(?<![\w-]){re.escape(street)}(?!\w)", text or "") is not None
+
+
+def pitches(session: Session, ctx: StreamContext, packets: list[tuple[Case, Path]],
+            cases: list[Case] | None = None) -> list[Outbound]:
+    """One cold touch per due attorney whose county has a packet this week. Touch 1 names that county's top property
+    (no attachment); its packet is the held sample. A target touched before gets the one-sentence follow-up in that
+    thread. Both are kind "pitch", so the outbox's gap and max-touches rules hold for each. One key per target per
+    ISO week."""
     if not ctx.send or not packets:
         return []
-    best: dict[str, tuple[Case, Path]] = {}
+    by_county: dict[str, list[tuple[Case, Path]]] = {}
     for case, path in packets:                                   # packets arrive in screen order
-        best.setdefault(_county_key(case.county), (case, path))
+        by_county.setdefault(_county_key(case.county), []).append((case, path))
+    per_town: dict[tuple[str, str], int] = {}
+    for c in cases or [case for case, _ in packets]:
+        k = (_county_key(c.county), c.mun_code or _town_key(c.town))
+        per_town[k] = per_town.get(k, 0) + 1
     iso = ctx.now.isocalendar()
+    first = (ctx.operator or {}).get("first", "")
     out: list[Outbound] = []
     targets = session.scalars(select(FirmTarget).where(
         FirmTarget.kind == TARGET_KIND, FirmTarget.stage.in_(("NEW", "CONTACTED")), FirmTarget.email.is_not(None))
@@ -599,17 +689,26 @@ def pitches(session: Session, ctx: StreamContext, packets: list[tuple[Case, Path
     for t in targets:
         if len(out) >= int(_lim(ctx, "pitches_per_run")):
             break
-        hit = best.get(_county_key(t.county))
-        if hit is None:
+        mine = by_county.get(_county_key(t.county))
+        key = f"{KEY}:pitch:{t.id}:{iso[0]}-W{iso[1]:02d}"
+        if not mine or not pitch_due(session, t, key, ctx.now):
             continue
-        case, path = hit
-        county = (case.county or "").title()
+        earlier = earlier_pitch(session, t.id, KEY) if int(t.touches or 0) > 0 else None
+        if earlier is not None:
+            # the follow-up names the packet the first touch named while it is still in this week's set
+            case, path = next(((c, p) for c, p in mine if names_street(earlier.body, street_label(c))), mine[0])
+            subject, body = thread_subject(earlier.subject), followup_body(street_label(case), first)
+        else:
+            case, path = mine[0]
+            n = max(per_town.get((_county_key(case.county), case.mun_code or _town_key(case.town)), 0), 1)
+            subject = pitch_subject(town_label(case), street_label(case), n)
+            body = pitch_body(town_label(case), street_label(case), n, float(_lim(ctx, "min_taxes")), first)
         out.append(Outbound(
-            stream=KEY, key=f"{KEY}:pitch:{t.id}:{iso[0]}-W{iso[1]:02d}", to=t.email or "",
-            subject=f"Comparable sales data for {county} County tax appeals",
-            body=pitch_body(county, case.deadline, float(_lim(ctx, "price_per_packet")),
-                            float(_lim(ctx, "price_monthly")), (ctx.operator or {}).get("first", "")),
-            priority=PRIORITY_SPECIALTY, kind="pitch", attachments=[path], target_id=t.id))
+            stream=KEY, key=key, to=t.email or "", subject=subject, body=body, priority=PRIORITY_SPECIALTY,
+            kind="pitch", target_id=t.id, in_reply_to=earlier.message_id if earlier is not None else None,
+            sample_body=sample_body(street_label(case), case.deadline, float(_lim(ctx, "price_per_packet")),
+                                    float(_lim(ctx, "price_monthly")), case.ratio.official),
+            sample_attachments=[path]))
     return out
 
 
@@ -636,7 +735,7 @@ class TaxAppealStream(Stream):
             if fitted is not None:
                 packets.append(fitted)
         res.products = len(packets)
-        res.outbound = pitches(session, ctx, packets)
+        res.outbound = pitches(session, ctx, packets, cases)
         res.metrics = {**metrics, "packets": len(packets), "pitches": len(res.outbound)}
         res.notes.append(f"{len(cases)} high-tax properties passed the Chapter 123 screen; {len(packets)} packets")
         if metrics.get("ratio_estimated"):

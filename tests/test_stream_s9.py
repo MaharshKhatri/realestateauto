@@ -2,15 +2,17 @@
 nominal-sale guard, suppression, the one-page feed (no owner names, no tax advice) and the flat-fee pitch."""
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from itertools import count
 
 import pytest
 
-from db.models import CashBuyer, DeedTransfer, FirmTarget, Listing, SignalType
+from core.text import postal_title
+from db.models import CashBuyer, DeedTransfer, FirmOutbox, FirmTarget, Listing, SignalType
 from db.repository import upsert_property, upsert_signal
 from engine.streams import s9_cpa_1031_feed as s9
-from engine.streams.base import StreamContext
+from engine.streams.base import StreamContext, sample_path
 
 NOW = datetime(2026, 11, 9, 10, 0)          # ISO week 2026-W46
 TODAY = NOW.date()
@@ -69,7 +71,40 @@ def _target(db, kind: str = "real_estate_cpa", email: str | None = None, stage: 
 def _pdf_text(path) -> tuple[int, str]:
     from pypdf import PdfReader
     r = PdfReader(str(path))
-    return len(r.pages), " ".join(" ".join(p.extract_text().split()) for p in r.pages)
+    # pypdf reads reportlab's WinAnsi bullet (the sample's mask) back as \x7f
+    return len(r.pages), " ".join(" ".join(p.extract_text().split()) for p in r.pages).replace("\x7f", "\u2022")
+
+
+def sentences(body: str) -> list[str]:
+    """The sentences above the sign-off: the greeting line and the operator's first name are not sentences; a lone
+    initial ("N.") or a decimal ("1.2") does not end one."""
+    lines = [ln.strip() for ln in body.strip().splitlines() if ln.strip()]
+    lines = [ln for ln in lines if ln not in ("Hello,", OP["first"]) and not re.fullmatch(r"Hi [\w.'-]+,", ln)]
+    out, cur = [], []
+    for tok in " ".join(lines).split():
+        cur.append(tok)
+        if re.search(r"[.?!][\")]?$", tok) and not re.fullmatch(r"[A-Z]\.", tok):
+            out.append(" ".join(cur))
+            cur = []
+    return out + ([" ".join(cur)] if cur else [])
+
+
+def touch_words(body: str) -> int:
+    from engine import human_copy as hc
+    lines = body.rstrip().splitlines()
+    return hc.word_count("\n".join(lines[:-1] if lines and lines[-1].strip() == OP["first"] else lines))
+
+
+def _sent_pitch(db, t, body: str, subject: str = "Entity purchases", days_ago: int = 8):
+    """An earlier cold touch the outbox sent (the target then counts one touch)."""
+    from datetime import timedelta
+    row = FirmOutbox(key=f"s9:pitch:{t.id}:2026-W45", stream="s9", priority=3, kind="pitch", target_id=t.id,
+                     to_email=t.email, subject=subject, body=body, status="sent", message_id=f"<p{t.id}@desk.example>",
+                     sent_at=NOW - timedelta(days=days_ago), attachments_json=[])
+    db.add(row)
+    t.touches, t.stage, t.last_contact_at = 1, "CONTACTED", NOW - timedelta(days=days_ago)
+    db.flush()
+    return row
 
 
 # -- pure helpers -------------------------------------------------------------------------------------------------
@@ -190,12 +225,19 @@ def test_full_feed_is_one_page_with_no_owner_names_and_no_tax_advice(db, tmp_pat
     low = text.lower()
     for banned in ("quinn", "sample", "you should", "we recommend", "guarantee", "will qualify"):
         assert banned not in low, banned
+    # the masked sample (Touch 2): one page, rows 1-2 in full, the property and the entity / brokerage hidden after
+    spages, stext = _pdf_text(sample_path(pdf))
+    assert spages == 1 and s9.ELIGIBILITY_LINE in stext and "Sample: 2 of 24 rows in full" in stext
+    assert "BLOCK 13 HOLDINGS LLC" in stext and "BLOCK 12 HOLDINGS LLC" in stext
+    assert "BLOCK 11 HOLDINGS LLC" not in stext and "B•••• 1• H••••••• LLC" in stext
+    assert "Long Hold Boulevard" not in stext and "Very Long Brokerage" not in stext
+    assert "Jersey City (Hudson)" in stext and "Apartments (4C)" in stext   # town, kind and prices stay visible
 
 
-def test_pitches_by_kind_flat_fee_stable_keys_and_dry_run(db, tmp_path):
+def test_pitches_by_kind_two_sentences_no_attachment_stable_keys_and_dry_run(db, tmp_path):
     from engine import human_copy as hc
-    for i in range(3):
-        _deed(db, f"BLOCK {i} HOLDINGS LLC", price=1_000_000 + i)
+    deeds = [_deed(db, f"BLOCK {i} HOLDINGS LLC", price=1_000_000 + 100_000 * i) for i in range(3)]
+    top = postal_title(deeds[-1].property_location)                         # the largest purchase
     qi = _target(db, "qualified_intermediary_1031")                        # no 1031 rows this week: not pitched
     cs = _target(db, "cost_segregation_firm")
     cpa = _target(db, "real_estate_cpa")
@@ -206,12 +248,27 @@ def test_pitches_by_kind_flat_fee_stable_keys_and_dry_run(db, tmp_path):
     by = {o.target_id: o for o in res.outbound}
     assert set(by) == {cs.id, cpa.id} and qi.id not in by
     assert by[cs.id].key == f"s9:pitch:{cs.id}:2026-W46"
+    feed = tmp_path / "out" / "s9_feed_2026-W46.pdf"
+    assert res.products == 1                                               # the Union feed is the statewide one
     for o in res.outbound:
-        assert hc.lint(o.body) == [] and hc.word_count(o.body) < 110
-        assert o.body.rstrip().endswith("Alex") and "$500 a month" in o.body
-        assert o.attachments == [tmp_path / "out" / "s9_feed_2026-W46.pdf"] and o.priority == 3
-        for banned in ("referral", "clients", "guarantee", "opportunit", "—", "will qualify"):
-            assert banned not in o.body.lower(), banned
+        assert o.kind == "pitch" and o.priority == 3 and o.in_reply_to is None
+        assert o.attachments == [] and o.sample_attachments == [sample_path(feed)] and sample_path(feed).exists()
+        assert o.subject == f"{top} + 2 more entity purchases in Union County"
+        assert hc.lint(o.body) == [] and o.body.rstrip().endswith("Alex") and o.body.startswith("Hello,\n\n")
+        assert len(sentences(o.body)) == 2 and touch_words(o.body) <= 60
+        assert "$" not in o.body and top in o.body and "in Elizabeth" in o.body
+        assert ("We pulled 3 recent multi-family and commercial purchases by business entities in Union County from "
+                f"public deed and tax records, including {top} in Elizabeth (bought for 1.2 million dollars in March "
+                "2026), that may fit cost-segregation or 1031 work.") in o.body
+        assert sentences(o.body)[-1] == "Want the property and buyer-entity list?"
+        assert "HOLDINGS" not in o.body.upper()                            # no buyer named in Touch 1
+        assert "$500 a month flat, no other charge" in o.sample_body and "the client's CPA decides" in o.sample_body
+        assert "no commission or per-deal fee" in o.sample_body and hc.lint(o.sample_body) == []
+        assert "the first 2 rows in full, the rest with the property and buyer entity hidden" in o.sample_body
+        assert o.sample_body.endswith('Reply "start" and I\'ll set it up.')
+        for text in (o.body, o.sample_body, o.subject):
+            for banned in ("referral", "clients", "guarantee", "opportunit", "—", "will qualify", "free", "!"):
+                assert banned not in text.lower(), banned
     again = s9.STREAM.run(db, _ctx(tmp_path / "2"))
     assert sorted(o.key for o in again.outbound) == sorted(o.key for o in res.outbound)
     capped = s9.STREAM.run(db, _ctx(tmp_path / "3", pitches_per_run=1))
@@ -241,3 +298,109 @@ def test_page_counter_and_the_one_page_guard(db, tmp_path, monkeypatch):
     res = s9.STREAM.run(db, _ctx(tmp_path, rows_costseg=12, rows_1031=12))
     pdf = tmp_path / "out" / "s9_feed_2026-W46.pdf"
     assert len(PdfReader(str(pdf)).pages) == 1 and 0 < res.metrics["feed_rows"] < 24
+
+
+# -- the 2-step funnel (2026-11-10) -------------------------------------------------------------------------------
+def test_spoken_price_scope_and_singular_copy():
+    assert s9.spoken_price(1_200_000) == "1.2 million dollars"
+    assert s9.spoken_price(3_125_000) == "3.12 million dollars" and s9.spoken_price(2_000_000) == "2 million dollars"
+    assert s9.spoken_price(650_000) == "650,000 dollars"
+    row = s9.CostSegRow(entity="ELM LLC", town="Linden", county="Union", price=800_000, deed_date=date(2026, 5, 1),
+                        kind="2 units (class 2)", source="deed export", keys=(), street="9 PINE ST, LINDEN")
+    one = s9.pitch_body("cs", "Union County", 1, row, 8, "Alex")
+    assert ("We pulled a recent multi-family or commercial purchase by a business entity in Union County from public "
+            "deed and tax records, 9 Pine St in Linden (bought for 800,000 dollars in May 2026)") in one
+    assert len(sentences(one)) == 2 and "$" not in one and "ELM" not in one
+    assert s9.pitch_subject("cs", "Union County", "9 Pine St", 1) == "9 Pine St: an entity purchase in Union County"
+    assert s9.pitch_subject("ex", "New Jersey", "9 Pine St", 4) == "9 Pine St + 3 more long-held listings in New Jersey"
+    assert s9.short_kind("commercial / mixed use (class 4A)") == "Commercial (4A)"
+    assert s9.short_kind("3 units (class 2)") == "3 units" and s9.short_kind("multi-family (listing)") == "Multi-family"
+    full = s9.sample_body("Union County", 2, 0, False, 500)
+    assert "every row in full" in full and "hidden" not in full
+
+
+def test_a_1031_intermediary_hears_about_long_held_listings_in_its_county_first(db, tmp_path):
+    from engine import human_copy as hc
+    for i in range(4):
+        _deed(db, f"BLOCK {i} HOLDINGS LLC", price=1_500_000 + i)              # Union purchases (Table A)
+    near = _parcel(db, street_address="77 DIRECT ST", last_sale_date=date(1999, 3, 1), last_sale_price=150_000)
+    _listing(db, near, list_price=900_000)                                     # the largest gain: named
+    for i in range(3):
+        _listing(db, _parcel(db, street_address=f"{10 + i} HARBOR AVE"), linked=True)
+    qi = _target(db, "qualified_intermediary_1031")
+    qi.county = "Hudson"
+    far = _target(db, "qualified_intermediary_1031")
+    far.county = "Ocean"                                                       # no rows there: New Jersey
+    db.flush()
+    res = s9.STREAM.run(db, _ctx(tmp_path))
+    by = {o.target_id: o for o in res.outbound}
+    o = by[qi.id]
+    assert o.subject == "77 Direct St + 3 more long-held listings in Hudson County"
+    assert ("We pulled 4 multi-family and commercial properties listed for sale in Hudson County whose last recorded "
+            "sale was 8 or more years ago, from public listings and tax records, including 77 Direct St in Jersey City "
+            "(last sold in 1999), that may fit 1031 work.") in o.body
+    assert sentences(o.body)[-1] == "Want the property and listing-brokerage list?"
+    assert len(sentences(o.body)) == 2 and touch_words(o.body) <= 60 and "$" not in o.body and hc.lint(o.body) == []
+    assert "Quinn" not in o.body and "QUINN" not in o.body                     # listings never name an owner
+    # its sample: the Hudson feed, Table B first, the named listing in full, the rest masked
+    (sample,) = o.sample_attachments
+    assert sample.exists() and sample.parent.name == "samples" and "hudson_ex" in sample.name
+    pages, text = _pdf_text(sample)
+    assert pages == 1 and "77 Direct St" in text and "10 Harbor Ave" in text   # rows 1-2 in full
+    assert "11 Harbor Ave" not in text and "12 Harbor Ave" not in text and "1• H••••• Ave" in text
+    assert "Harbor Realty Group" in text                                       # row 2's brokerage, in full
+    assert text.count("Harbor Realty Group") == 1                              # row 4's (masked) is hidden
+    assert "BLOCK" not in text                                                 # a Hudson feed: no Union purchases
+    assert "property and listing brokerage hidden" in o.sample_body and "$500 a month" in o.sample_body
+    w = by[far.id]
+    assert w.subject.endswith("in New Jersey") and "in New Jersey" in w.body and "77 Direct St" in w.body
+    _, wtext = _pdf_text(w.sample_attachments[0])
+    assert "BLOCK 3 HOLDINGS LLC" not in wtext                                 # Table A rows sit after B: masked
+    assert res.products == 3                                                   # statewide + Hudson + New Jersey (B first)
+
+
+def test_second_touch_is_one_sentence_in_the_first_ones_thread(db, tmp_path):
+    deeds = [_deed(db, f"BLOCK {i} HOLDINGS LLC", price=1_000_000 + 100_000 * i) for i in range(4)]
+    named = postal_title(deeds[1].property_location)                          # named last week, not this week's top
+    t = _target(db, "cost_segregation_firm")
+    earlier = _sent_pitch(db, t, f"Hello,\n\nWe pulled 4 ... including {named} in Elizabeth (...).\n\nAlex",
+                          subject=f"{named} + 3 more entity purchases in Union County")
+    res = s9.STREAM.run(db, _ctx(tmp_path))
+    (o,) = res.outbound
+    assert o.key == f"s9:pitch:{t.id}:2026-W46" and o.kind == "pitch" and o.attachments == []
+    assert o.in_reply_to == earlier.message_id and o.subject == f"Re: {earlier.subject}"
+    assert sentences(o.body) == ["Should I send the Union County list over?"] and "$" not in o.body
+    # the sample keeps last week's named purchase in row 1, in full
+    _, text = _pdf_text(o.sample_attachments[0])
+    assert text.index(named) < text.index(postal_title(deeds[3].property_location))
+    assert "BLOCK 1 HOLDINGS LLC" in text
+
+
+def test_targets_the_outbox_would_skip_never_take_a_pitch_slot(db, tmp_path):
+    from datetime import timedelta
+    for i in range(3):
+        _deed(db, f"BLOCK {i} HOLDINGS LLC", price=1_000_000 + i)
+    used = _target(db, "cost_segregation_firm")
+    used.touches = 2
+    recent = _target(db, "cost_segregation_firm")
+    recent.touches, recent.last_contact_at = 1, NOW - timedelta(days=3)
+    week = _target(db, "cost_segregation_firm")
+    db.add(FirmOutbox(key=f"s9:pitch:{week.id}:2026-W46", stream="s9", kind="pitch", target_id=week.id,
+                      to_email=week.email, subject="x", body="x", status="skipped"))
+    fresh = _target(db, "cost_segregation_firm")
+    db.flush()
+    res = s9.STREAM.run(db, _ctx(tmp_path, pitches_per_run=1))
+    assert [o.target_id for o in res.outbound] == [fresh.id]
+
+
+def test_the_outbox_sends_touch1_bare_and_holds_the_masked_sample(db, tmp_path):
+    from engine import firm_outbox as fo
+    for i in range(3):
+        _deed(db, f"BLOCK {i} HOLDINGS LLC", price=1_000_000 + i)
+    t = _target(db, "cost_segregation_firm")
+    (ob,) = s9.STREAM.run(db, _ctx(tmp_path)).outbound
+    row = fo.enqueue(db, ob, NOW)
+    assert row.status == "queued" and row.attachments_json == []
+    held = db.query(FirmOutbox).filter_by(key=f"{ob.key}:sample").one()
+    assert held.status == "held" and held.target_id == t.id and held.body == ob.sample_body
+    assert [a["name"] for a in held.attachments_json] == ["s9_feed_2026-W46.sample.pdf"]
