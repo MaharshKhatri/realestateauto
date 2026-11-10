@@ -381,7 +381,8 @@ class StaleListingDistressAgent(BaseAgent):
             days_on_market=row.get("days_on_market"), price_reduced=row.get("price_reduced"),
             distress_keywords=kws, description=row.get("description"), lat=row.get("lat"), lon=row.get("lon"),
             raw_json={"original_list_price": row.get("original_list_price"), "mls": row.get("mls"),
-                      "estimated_value": row.get("estimated_value")})
+                      "estimated_value": row.get("estimated_value"),
+                      "lot_sqft": row.get("lot_sqft")})        # the listing's lot size (s13 teardown sheets)
         ctx.records_processed += 1
 
     def _store_lead(self, ctx: AgentContext, gis: NJGISClient, row: dict, kws: list[str], min_dom: int) -> None:
