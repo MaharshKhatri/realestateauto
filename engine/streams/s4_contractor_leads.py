@@ -10,8 +10,15 @@ companies) want to know which houses need their trade before the next owner star
 
 The product is one weekly one-page "NJ Rehab Trigger Report" per county: town, street, trigger, the listing's own words
 (12 or fewer), price, days on market and the listing brokerage, or the entity buyer, month and price of the deed.
-A contractor buys a county as a flat monthly subscription. The pitch attaches that county's report with the rows of
-their own trade first (tank rows lead the tank contractor's sample).
+A contractor buys a county as a flat monthly subscription.
+
+The 2-step funnel (2026-11-10): Touch 1 is two plain sentences with no attachment, no link and no price. It says what we
+did (we read the listing descriptions and recent investor deeds; never "inspections"), names one street from this
+week's sheet in the contractor's county with their own trade's work in words the listing supports ("needing roof
+work", "with an oil tank in the listing"), gives the true count of the other rows of that trade on the sheet and asks
+whether they want the list. Their yes releases the held sample (the county report with their trade's rows first;
+rows 3+ have the street, the brokerage and a deed buyer's company hidden) and the flat price. The second cold touch,
+a week later, is one sentence in the same thread.
 
 Why it stays legal for an unlicensed operator: it is research data for a flat fee, never pay tied to a job or a
 client (N.J.S.A. 45:15-3), and the contractor contacts the brokerage or the owner company on their own. No homeowner
@@ -35,17 +42,19 @@ from sqlalchemy.orm import Session
 from core.text import clean, muni_base, postal_title
 from db.models import CashBuyer, DeedTransfer, DistressSignal, FirmOutbox, FirmTarget, Listing, Property, SignalType
 from engine.streams.base import (
-    week_of,
     PRIORITY_SPECIALTY,
+    SAMPLE_FULL_ROWS,
     Outbound,
     Stream,
     StreamContext,
     StreamResult,
     address_ok,
     entity_like,
+    mask_text,
     money,
     operator_footer,
     render_table_pdf,
+    sample_path,
     slug,
 )
 
@@ -63,12 +72,22 @@ TRADE_TRIGGERS: dict[str, tuple[str, ...]] = {
     "rehab_general_contractor": (FULL_GUT, STRUCTURAL, FRESH_FLIP),
     "dumpster_rental": (FULL_GUT, FRESH_FLIP, STRUCTURAL),
 }
+# Touch 1's words for the trade's work, no stronger than what every rule of that trigger reads in a listing ("oil tank
+# on property" names a tank, not a removal; "sold as-is, needs work" is rehab work, not a gut); a deed row says who bought
+NEED_WORDS = {
+    OIL_TANK: "with an oil tank in the listing",
+    ROOF: "needing roof work",
+    HVAC: "needing heating or AC work",
+    STRUCTURAL: "needing damage or structural repair",
+    FULL_GUT: "needing rehab work",
+}
+# the trade's list, by name, in the one-sentence follow-up ("this week's Essex County oil tank list")
 TRADE_WORDS = {
-    "oil_tank_contractor": "an oil tank",
-    "roofer": "a roof that needs work",
-    "hvac_contractor": "heating or cooling that needs work",
-    "rehab_general_contractor": "a full rehab, damage repair or a fresh investor purchase",
-    "dumpster_rental": "a full rehab, damage cleanup or a fresh investor purchase",
+    "oil_tank_contractor": "oil tank",
+    "roofer": "roof",
+    "hvac_contractor": "heating and AC",
+    "rehab_general_contractor": "rehab",
+    "dumpster_rental": "rehab and cleanout",
 }
 LISTING_SIGNALS = (SignalType.STALE_LISTING, SignalType.ACTIVE_LISTING)
 RES_CLASSES = {"", "2", "4C"}               # MOD-IV residential (and residential-style apartments)
@@ -294,11 +313,14 @@ class Row:
     entity: str = ""               # deed rows: the entity buyer (a business, never a person)
     bought: date | None = None
 
-    def cells(self) -> list[str]:
+    def cells(self, mask_entity: bool = False) -> list[str]:
+        """The report's cells. `mask_entity` hides a deed row's buyer company (a sample's rows 3+: the company and the
+        town would find the house as surely as the street)."""
         trig = " + ".join(LABELS[t] for t in self.triggers)
         if self.source == "deed":
-            words = (f"Bought by <b>{escape(self.entity)}</b> in {self.bought:%b %Y}" if self.bought else
-                     f"Bought by <b>{escape(self.entity)}</b>") + " (recorded deed)"
+            who = mask_text(" ".join(self.entity.replace(",", " ").split())) if mask_entity else self.entity
+            words = (f"Bought by <b>{escape(who)}</b> in {self.bought:%b %Y}" if self.bought else
+                     f"Bought by <b>{escape(who)}</b>") + " (recorded deed)"
         else:
             words = f'"{escape(self.words)}"'
         return [escape(self.town), f"<b>{escape(self.street)}</b>", trig, words, money(self.price),
@@ -329,6 +351,22 @@ def brokerage_label(name: str | None) -> str:
     return ""
 
 
+_COMPANY = re.compile(r"\b(LLC|L\.L\.C|PLLC|INC|INCORPORATED|CORP|CORPORATION|COMPANY|CO|LP|L\.P|LLP|LTD|LIMITED)\b")
+_PERSONAL = re.compile(r"\b(TRUSTS?|TRUSTEES?|TR|TRS|TTEE|REVOCABLE|LIVING|(?<!REAL )ESTATE|EST|EXECUTORS?|EXECUTRIX|"
+                       r"ADMINISTRATORS?|HEIRS|DECEASED|C/O|ETAL|ET AL)\b")
+
+
+def company_like(name: str | None) -> bool:
+    """A business that may be named in a product or an e-mail: an entity (`entity_like`), never an unnamed
+    "Owner @ <mailing>" cluster (its "name" is somebody's mailing address), and never a trust or an estate unless it is
+    itself an LLC / Inc / LP ("QUINN Q SAMPLE REVOCABLE TRUST" is a person's name; "SAMPLE TRUST HOMES LLC" is not)."""
+    n = clean(name or "")
+    if not entity_like(n) or n.upper().startswith("OWNER @"):
+        return False
+    up = n.upper().replace(",", " ")
+    return not (_PERSONAL.search(up) and not _COMPANY.search(up))
+
+
 def deed_street(address: str | None) -> str:
     """County deed exports print a range without its hyphen ('210 12 HILLSIDE RD' is 210-12): put it back."""
     a = clean(address or "").upper()
@@ -350,9 +388,10 @@ def _iso(d: Any) -> date | None:
 
 
 def fresh_purchases(families: dict[str, list[Any]], today: date, days: int = 120) -> list[dict[str, Any]]:
-    """Entity purchases recorded in the last `days` (pure). Only buyer records whose own name is a business count
-    (never a person, never an unnamed "Owner @ <mailing>" cluster). One price on one date for 2+ parcels of a family
-    is a package deed and is dropped; the same deed under two records of a family counts once."""
+    """Entity purchases recorded in the last `days` (pure). Only buyer records whose own name is a company count
+    (`company_like`: never a person, a family trust, an estate or an unnamed "Owner @ <mailing>" cluster). One price
+    on one date for 2+ parcels of a family is a package deed and is dropped; the same deed under two records of a
+    family counts once."""
     out: list[dict[str, Any]] = []
     since = today - timedelta(days=days)
     for buyers in families.values():
@@ -360,7 +399,7 @@ def fresh_purchases(families: dict[str, list[Any]], today: date, days: int = 120
         fam: list[dict[str, Any]] = []
         for b in buyers:
             name = clean(getattr(b, "entity_name", "") or "")
-            if not entity_like(name) or name.upper().startswith("OWNER @"):
+            if not company_like(name):
                 continue
             for x in getattr(b, "recent_purchases_json", None) or []:
                 if not isinstance(x, dict) or not x.get("address"):
@@ -402,12 +441,25 @@ def page_count(path: Path) -> int:
     return len(re.findall(rb"/Type\s*/Page(?![s\w])", path.read_bytes())) or 1
 
 
-def render_fit(path: Path, rows: list[Any], build: Callable[[list[Any]], dict[str, Any]], min_rows: int = 3) -> int:
-    """Render, and drop the lowest rows until the packet fits one page. Returns the rows kept."""
+def render_report(path: Path, rows: list[Row], kwargs: dict[str, Any]) -> None:
+    """The report (every row in full) and its sample (`sample_path`: rows 1-2 in full; rows 3+ with the street, the
+    brokerage and a deed row's buyer company hidden), the sample that Touch 2 sends after a yes."""
+    sample_path(path).unlink(missing_ok=True)              # never a stale sample from an earlier render
+    if any(r.source == "deed" for r in rows[SAMPLE_FULL_ROWS:]):
+        hidden = [r.cells(mask_entity=i >= SAMPLE_FULL_ROWS) for i, r in enumerate(rows)]
+        render_table_pdf(path, **{**kwargs, "rows": hidden})     # the sample comes from these cells ...
+        render_table_pdf(path, **kwargs, write_sample=False)     # ... and the report itself has every row in full
+    else:
+        render_table_pdf(path, **kwargs)
+
+
+def render_fit(path: Path, rows: list[Row], build: Callable[[list[Row]], dict[str, Any]], min_rows: int = 3) -> int:
+    """Render, and drop the lowest rows until the report and its sample each fit one page. Returns the rows kept."""
     n = len(rows)
     while True:
-        render_table_pdf(path, **build(rows[:n]))
-        if n <= min_rows or page_count(path) <= 1:
+        render_report(path, rows[:n], build(rows[:n]))
+        sample = sample_path(path)
+        if n <= min_rows or (page_count(path) <= 1 and (not sample.exists() or page_count(sample) <= 1)):
             return n
         n = max(min_rows, int(n * 0.85))
 
@@ -424,8 +476,9 @@ def report_kwargs(county: str, rows: list[Row], ctx: StreamContext, price: float
     first = f" · {LABELS[TRADE_TRIGGERS[trade][0]]} rows first" if trade in TRADE_TRIGGERS else ""
     return dict(
         title=f"NJ Rehab Trigger Report: {county} County",
-        subtitle=(f"Week of {ctx.now:%B %-d, %Y} · {n_list} active listings whose public description names a rehab "
-                  f"need · {n_deed} fresh investor (business entity) purchases{first} · data, not an appraisal"),
+        subtitle=(f"Week of {ctx.now:%B %-d, %Y} · {n_list} active listing{'' if n_list == 1 else 's'} whose public "
+                  f"description names a rehab need · {n_deed} fresh investor (business entity) "
+                  f"purchase{'' if n_deed == 1 else 's'}{first} · data, not an appraisal"),
         head=HEAD, rows=[r.cells() for r in rows], col_widths=WIDTHS,
         notes=[
             "Triggers are read from each listing's public description by keyword rules that skip negations and finished "
@@ -436,26 +489,68 @@ def report_kwargs(county: str, rows: list[Row], ctx: StreamContext, price: float
             "or stop request are left out. Contact the listing brokerage or the owner company yourself.",
         ],
         box=(f"<b>{county} County weekly subscription: ${price:,.0f}/month flat.</b> A new report every week, one county "
-             "per subscription, no commission and no per-job fee. Reply \"yes\" to the e-mail to start."),
+             "per subscription, no commission and no per-job fee. Reply \"start\" to the e-mail and I'll set it up."),
         footer=operator_footer(ctx.operator))
 
 
-# -- pitch --------------------------------------------------------------------------------------------------------
-def pitch_body(county: str, total: int, matching: int, kind: str, price: float, first: str) -> str:
-    """3-5 plain sentences under 110 words: what it is, what is in it, where it comes from, the flat price."""
-    what = TRADE_WORDS.get(kind, "rehab work")
-    return "\n".join([
-        "Hello,",
-        "",
-        f"I compile a weekly NJ Rehab Trigger Report for {county} County, and this week's copy is attached. "
-        f"It lists {total} houses where the listing or a recent deed points to rehab work, {matching} of them to "
-        f"{what}, each with the street, the source words and the brokerage. "
-        "It comes from public listings and recorded deeds; you contact the brokerage or owner yourself. "
-        f"A weekly copy is a flat ${price:,.0f}/month subscription for {county} County, with no commission and no "
-        "per-job fee. Reply \"yes\" and I'll send next week's report.",
-        "",
-        first,
-    ]).rstrip()
+# -- the 2-step funnel (2026-11-10) -------------------------------------------------------------------------------
+def lead_row(rows: list[Row], kind: str) -> tuple[Row, str] | None:
+    """The sheet's first row of the contractor's own trade, and the trigger that makes it theirs."""
+    lead = TRADE_TRIGGERS.get(kind, ())
+    for r in rows:
+        trig = next((t for t in lead if t in r.triggers), None)
+        if trig is not None:
+            return r, trig
+    return None
+
+
+def month_phrase(d: date | None, today: date) -> str:
+    """'in October' this calendar year, 'in October 2025' before it (never a month that reads as the wrong year)."""
+    if d is None:
+        return ""
+    return f"in {d:%B}" if d.year == today.year else f"in {d:%B %Y}"
+
+
+def touch1(county: str, row: Row, trigger: str, more: int, today: date, first: str = "") -> tuple[str, str]:
+    """Touch 1 (subject, body): two plain sentences, no price, no link, no attachment. What we did, one street of
+    the trade from this week's sheet, the true count of the trade's other rows on it, and a yes/no question."""
+    if row.source == "deed" or trigger == FRESH_FLIP:
+        what = f"an investor company bought {row.street} in {row.town} {month_phrase(row.bought, today)}".rstrip()
+    else:
+        what = f"{row.street} in {row.town} came up {NEED_WORDS[trigger]}"
+    tail = f" ({more} more on this week's list)" if more > 0 else ""
+    said = (f"We read the listing descriptions and recent investor deeds in {county} County, and {what}{tail}. "
+            "Want the address list for your trade?")
+    subject = (f"{row.street} + {more} more in {county} County" if more > 0 else
+               f"{row.street} in {row.town}, {county} County")
+    return subject, f"Hello,\n\n{said}\n\n{first}".rstrip()
+
+
+def followup_body(county: str, kind: str, first: str = "") -> str:
+    """The second cold touch, in Touch 1's thread: one sentence, no attachment."""
+    said = f"Should I send this week's {county} County {TRADE_WORDS.get(kind, 'rehab')} list over?"
+    return f"Hello,\n\n{said}\n\n{first}".rstrip()
+
+
+def sample_body(county: str, price: float, masked: bool) -> str:
+    """Touch 2, sent with the sample only after their yes: what is attached, the flat price, how to start."""
+    what = (f"Here's this week's {county} County sheet, attached: {SAMPLE_FULL_ROWS} rows in full, the rest with the "
+            "street hidden." if masked else f"Here's this week's {county} County sheet, attached.")
+    return (f"{what} The full sheet every week is ${price:,.0f} a month per county, flat, no commission or per-job fee. "
+            "Reply \"start\" and I'll set it up.")
+
+
+def last_thread(session: Session, stream: str, target_id: int) -> tuple[str, str] | None:
+    """(Message-ID, subject) of the newest cold e-mail this stream sent the target: the follow-up goes in that thread."""
+    row = session.execute(select(FirmOutbox.message_id, FirmOutbox.subject).where(
+        FirmOutbox.stream == stream, FirmOutbox.target_id == target_id, FirmOutbox.status == "sent",
+        FirmOutbox.kind.in_(("pitch", "followup")), FirmOutbox.message_id.is_not(None))
+        .order_by(FirmOutbox.sent_at.desc(), FirmOutbox.id.desc()).limit(1)).first()
+    return (str(row[0]), str(row[1] or "")) if row else None
+
+
+def re_subject(subject: str) -> str:
+    return "Re: " + re.sub(r"(?i)^\s*(?:(?:re|fwd?):\s*)+", "", subject or "").strip()
 
 
 def _first(op: dict[str, str]) -> str:
@@ -666,6 +761,7 @@ class ContractorTriggerStream(Stream):
         pitches = self._pitches(session, ctx, by_county, reports, price, fresh_days, period, tag, res) if ctx.send else 0
         res.metrics.update({k: int(v) for k, v in scan.counts.items()})
         res.metrics.update(counties_reported=len(reports), report_rows=res.found, pitches=pitches)
+        res.metrics.setdefault("followups", 0)
         res.notes.append(f"{len(reports)} county reports, {res.found} rows, {pitches} pitches proposed")
         return res
 
@@ -684,6 +780,7 @@ class ContractorTriggerStream(Stream):
             return f"{self.key}:pitch:{t.id}:{period}"
 
         samples: dict[tuple[str, str], tuple[Path, list[Row]]] = {}
+        first = _first(ctx.operator)
         made = 0
         for t in eligible_targets(session, kinds, self.key, key_for, ctx.now):
             if made >= cap:
@@ -699,6 +796,11 @@ class ContractorTriggerStream(Stream):
             if not options:
                 continue
             n, county = max(options)
+            # a target we already wrote to gets the one-sentence follow-up in that thread (about the same county when
+            # it still has rows of their trade); the key stays one per target per week, so max_touches holds
+            prior = last_thread(session, self.key, t.id) if int(t.touches or 0) > 0 else None
+            if prior is not None:
+                county = next((c for _, c in options if prior[1].rstrip().endswith(f"{c} County")), county)
             if (county, t.kind) not in samples:
                 chosen = select_rows(by_county[county], limit, max_flips, lead)
                 path = ctx.out_dir / f"s4_rehab_triggers_{slug(county).lower()}_{slug(t.kind).lower()}_{tag}.pdf"
@@ -707,12 +809,25 @@ class ContractorTriggerStream(Stream):
                 samples[(county, t.kind)] = (path, chosen[:kept])
                 res.products += 1
             path, rows = samples[(county, t.kind)]
-            matching = sum(1 for r in rows if set(r.triggers) & set(lead))
-            res.outbound.append(Outbound(
-                stream=self.key, key=key_for(t), to=t.email or "", priority=PRIORITY_SPECIALTY, kind="pitch",
-                subject=f"{county} County rehab trigger report, week of {week_of(ctx.now)}",
-                body=pitch_body(county, len(rows), matching, t.kind, price, _first(ctx.operator)),
-                attachments=[path], target_id=t.id))
+            masked = sample_path(path).exists()
+            # Touch 2, held until they say yes: the masked sample (the report itself if no sample was written)
+            touch2, attach = sample_body(county, price, masked), [sample_path(path) if masked else path]
+            if prior is not None:
+                res.outbound.append(Outbound(
+                    stream=self.key, key=key_for(t), to=t.email or "", priority=PRIORITY_SPECIALTY, kind="followup",
+                    subject=re_subject(prior[1]), body=followup_body(county, t.kind, first), in_reply_to=prior[0],
+                    target_id=t.id, sample_body=touch2, sample_attachments=attach))
+                res.metrics["followups"] = int(res.metrics.get("followups", 0)) + 1
+            else:
+                hit = lead_row(rows, t.kind)
+                if hit is None:
+                    continue
+                row, trig = hit
+                more = sum(1 for r in rows if set(r.triggers) & set(lead)) - 1
+                subject, body = touch1(county, row, trig, more, ctx.now.date(), first)
+                res.outbound.append(Outbound(
+                    stream=self.key, key=key_for(t), to=t.email or "", priority=PRIORITY_SPECIALTY, kind="pitch",
+                    subject=subject, body=body, target_id=t.id, sample_body=touch2, sample_attachments=attach))
             made += 1
         return made
 
