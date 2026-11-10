@@ -145,6 +145,9 @@ PHRASES: dict[str, list[str]] = {
                   r"\bback\s+on\s+(?:the\s+)?market\b", r"\bback\s+(?:to\s+)?active\b",
                   r"\b(?:buyer|deal|contract|offer)s? (?:fell|has fallen|fallen) (?:through|thru|apart)\b",
                   r"not (yet )?under contract", r"no accepted offer", r"what'?s your (offer|number|price)", r"how much",
+                  # "I can't reach out to you if I don't know a number you're looking to come in at" (2026-11-10, 54 N 4th St)
+                  r"\b(?:a|the|your) (?:number|price|offer) (?:you'?re|you are|you'?d be|you would be) "
+                  r"(?:looking|willing|able|comfortable|thinking)\b",
                   r"what number", r"send (me )?(your|the|an) (offer|numbers?|details)", r"make an offer", r"submit (an|your) offer",
                   r"open to offers", r"bring (me |us )?an offer"],
     "UNDER_CONTRACT": [r"under contract", r"in attorney review", r"attorney review (now|already|period)", r"accepted an offer",

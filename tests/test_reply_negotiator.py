@@ -404,6 +404,14 @@ def test_back_on_the_market_is_available_not_under_contract():
     assert "UNDER_CONTRACT" in rn.parse_reply("It is now under contract again").intents
 
 
+def test_a_number_youre_looking_to_come_in_at_asks_for_our_offer():
+    # 2026-11-10, 54 N 4th St: the agent asked for our backup number and the reply sat as an unclassified question
+    text = ("Ok I understand but I can't reach out to you if I don't know a number you're looking to come in at. "
+            "When you do know please let me know")
+    assert "AVAILABLE" in rn.parse_reply(text).intents
+    assert "AVAILABLE" in rn.parse_reply("What's the price you'd be comfortable with?").intents
+
+
 def test_back_on_the_market_alone_is_available():
     # 2026-11-10, 263 Stiles St: no contract word at all, so the reply sat as an unclassified question
     text = ("Hi Maharsh,\n\nThanks for checking in. The property at 263 Stiles St is currently back on\nthe market. "

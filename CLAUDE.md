@@ -1062,7 +1062,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     (your e-mail bounced)" and its script opens "my e-mail to you bounced", never "they asked you to call".
     "I was under contract a month ago, but it's back on the market" / "it WAS under contract" is available, not under
     contract (2026-11-06, 36 Curtis Ave: the desk had congratulated the agent); so is a bare "currently back on the market. Last
-    buyer fell thru" (2026-11-10, 263 Stiles St), unless it's conditional ("if it comes back on the market"). "We have a few offers" with nothing of
+    buyer fell thru" (2026-11-10, 263 Stiles St), unless it's conditional ("if it comes back on the market"). "I can't reach out to you
+    if I don't know a number you're looking to come in at" (2026-11-10, 54 N 4th St) asks for our offer, like "what's your number?". "We have a few offers" with nothing of
     ours in writing gets a written best and final only on a firm number: an ask-first house or one with a certainty
     issue (no living area, old comps) gets "facts first" (the one fact, or the seller's net), no number (4 Richard Ter).
     "It is still aviilable" / "availble" (typos) read as available (2026-11-06, 492 Booth Ct had waited as a question).
