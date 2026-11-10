@@ -250,7 +250,7 @@ SEQUENCE_WORDS = {
     "s6": ("the recorded-sales sheet", "the Chapter 123 sales data"),
     "s7": ("the net sheet", "the net sheet"),
     "s9": ("this month's purchases sheet", "a monthly purchases sheet"),
-    "s10": ("this week's sheet", "the weekly sheet"),
+    "s10": ("this week's docket sheet for your town", "the docket sheet"),
 }
 PROFESSIONAL_KINDS = {"property_tax_appeal_attorney", "foreclosure_surplus_attorney", "real_estate_cpa",
                       "cost_segregation_firm", "qualified_intermediary_1031", "estate_attorney", "probate_attorney"}

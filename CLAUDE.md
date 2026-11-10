@@ -1214,7 +1214,12 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     carries no winning bid, so surplus = bid - payoff - prior liens only when a bid is on record; otherwise "winning bid:
     from the recorded sheriff's deed or the sheriff (OPRA)". One-page county PDFs (docket, sheriff #, plaintiff lender,
     upset, liens, formula; never a defendant / person name), "for attorneys only", law footer (N.J.S.A. 2A:50-37, R.
-    4:64-3, R. 4:57-2, 46:30B-106 finder limits, Zanolini). Pitched to `foreclosure_surplus_attorney` targets: $400/month
+    4:64-3, R. 4:57-2, 46:30B-106 finder limits, Zanolini). 2-step funnel (2026-11-10): Touch 1 is two plain sentences, no
+    file / link / price ("This week we compiled the upset-vs-equity file for N upcoming and recent Essex County sheriff
+    sales, including <street> (sheriff # n). Would the case breakdown be useful for your practice if I e-mailed it over?":
+    the true count, the first row, never a defendant); the county PDF's masked sample (docket and sheriff # share one line,
+    so both are hidden on rows 3+) and the flat price wait as the held Touch 2; a second touch is one sentence in the first
+    touch's thread. Pitched to `foreclosure_surplus_attorney` targets: $400/month
     or $150 a county report, never a percentage or per retained client (Joint Opinion 741).
   - **s4 contractor rehab triggers** (`s4_contractor_leads.py`, daily): a negation-aware classifier over live listing text
     (OIL_TANK / ROOF / HVAC / STRUCTURAL / FULL_GUT; "new roof", "no oil tank", "tank removed", home-warranty "roof leak
@@ -1250,8 +1255,22 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - **s10 pre-MLS distress** (`s10_pre_mls_distress.py`, daily): lis pendens, tax certificates / delinquencies, estates and
     sheriff sales with a fresh adjournment (snapshot `s10_adjournments`) on unlisted properties; adjournments left = 5 -
     used (N.J.S.A. 2A:17-36); an INTERNAL one-page queue mailed to the operator's own inbox ("[njw-s10] <date>",
-    `StreamResult.internal` -> `swarm_firm.mail_internal`); never an e-mail to a homeowner (FRFPA: letters only, operator
-    approved).
+    `StreamResult.internal` -> `swarm_firm.mail_internal`, written under `internal/` so no client delivery picks it up);
+    never an e-mail to a homeowner (FRFPA: letters only, operator approved). The listing-agent docket sheet (operator
+    2026-11-10: "weaponize s10"): per town, properties with a foreclosure lis pendens filed in the last 30 days or a
+    sheriff sale in the next 30 (+ tax-sale / estate records of the same 30 days) on no MLS listing, provable only where
+    the ZIP was harvested within 7 days (`stale_listing_harvests`) and no live `listings` row matches; columns property,
+    filing, filed or sale date, docket / sheriff #, "Assessed value (public record)"; the sheriff's published upset on
+    sheriff-sale rows only, no other debt figure, no names, `address_ok` on every row; footer "contact homeowners only as
+    NJ law and your brokerage allow (FRFPA ...; no rescue promises)". Targets: LISTING_AGENT contacts with a business
+    e-mail (no office inbox, `firm_outbox.stop_reason` clear) and a live listing in that town, ranked by
+    `deal_desk.flipper_agents` score, else listings there; never in deal talks (`s2.in_deal_talks`); an existing target
+    is reused as is, a new one is kind investor_agent, stream s10. ≤ `agent_pitches_per_run` (6) a weekday run, one per
+    agent per 14 days (`s10:agent:<email>:<iso-week>`). Touch 1: "Hi <First>, we pulled N new foreclosure filings and
+    sheriff sales in <Town> this month that aren't on the MLS, including <Street>. Want the docket sheet, either to talk
+    with the owners about listing or to work with us on the investor side?"; Touch 2 = the sheet's masked sample + "$250
+    a month per town, flat, no referral fee and nothing tied to a listing or sale (N.J.S.A. 45:15-3)"; one one-sentence
+    follow-up in that thread. Run log: agent_targets / agent_pitches / agent_sheets (counts).
   - **B2B targets** (`config/b2b_targets.yaml`, 121 firms, 75 with a published e-mail, each with its source page): tax-appeal
     and surplus attorneys, hard-money lenders, cost-seg firms, 1031 intermediaries, CPAs, oil-tank / roofing / HVAC / GC /
     dumpster companies, investor-focused brokerages. Measured on the Nov 2 snapshot (forced run, 43 s): s1 101 convertible
