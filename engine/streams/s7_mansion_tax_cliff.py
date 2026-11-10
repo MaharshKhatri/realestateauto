@@ -7,29 +7,52 @@ the whole price, each threshold is a cliff: a house listed at $1,007,000 leaves 
 than the same house sold at exactly $1,000,000. Most agents already price under the line (the Nov 2 data had 33
 listings at $999,000 and 14 at $999,999); the few just over it are this stream.
 
+Where the listings come from: the stale-listing harvest stops at $900K, so once a day this stream first runs its own
+high-value pass (`engine/streams/s7_highvalue_harvest.py`): homeharvest for-sale listings in price bands around every
+dead zone, in ~45 high-value towns, stored with their listing agents through the stale-listing agent's own helpers.
+
 What it does: for every for-sale listing on one of our leads whose list price sits in a dead zone (above a threshold
-T, where price - transfer taxes < T - transfer taxes at T), it builds a one-page Transfer-Tax Net Sheet (the arithmetic
-of the two statutory fees at both prices, the dead-zone range, the statute / Treasury sources) and proposes a short
-courtesy note to the listing agent with the sheet attached. Rates come only from config/nj_deal_costs.yaml through
-`engine.quant_pricing` (never hard-coded here).
+T, where price - transfer taxes < T - transfer taxes at T) and was seen by a harvest in the last `fresh_days` (3), it
+builds a one-page Transfer-Tax Net Sheet (the arithmetic of the two statutory fees at both prices, the dead-zone range,
+the statute / Treasury sources) and proposes the 2-step courtesy note (2026-11-10):
+- Touch 1, plain text, no attachment: "Quick heads-up on <street>: at <list price> your seller crosses New Jersey's
+  graduated transfer-fee line and pays about <extra> more in transfer tax than at <the line>. Want the 1-page net sheet
+  showing both prices?" (the numbers are the message: statutory fee arithmetic, never an opinion of value);
+- the sheet itself is the sample (one listing, nothing to mask), held in the outbox and sent in the agent's thread only
+  when they say yes, with a one-line no-charge note.
+Rates come only from config/nj_deal_costs.yaml through `engine.quant_pricing` (never hard-coded here).
 
 Why it is safe: the sheet is arithmetic of public statutory fees on the public list price, not an opinion of value,
 not tax or legal advice, no charge and nothing tied to the sale (so no fee that could look like brokerage, N.J.S.A.
-45:15-3); no owner or agent name is printed; Daniel's Law / stop suppressions, agent stop lists, bounces and recent
-e-mails to the agent are honored; one sheet per listing ever.
+45:15-3); no owner or agent name is printed; Daniel's Law / stop suppressions, agent stop lists, bounces, recent
+e-mails about the listing and agents we are in deal talks with (a reply or a lead e-mail in 30 days) are honored; one
+note per listing ever, one per agent per 30 days, and the outbox's pitch gap and cold-touch limit per agent.
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from db.models import Contact, DistressSignal, FirmOutbox, Interaction, Lead, Listing, Property, SignalType, utcnow
+from db.models import (
+    Contact,
+    DistressSignal,
+    FirmOutbox,
+    FirmTarget,
+    InboundReply,
+    Interaction,
+    Lead,
+    Listing,
+    Property,
+    SignalType,
+    utcnow,
+)
 from engine.streams.base import (
     PRIORITY_SPECIALTY,
     Outbound,
@@ -42,6 +65,8 @@ from engine.streams.base import (
     render_table_pdf,
     slug,
 )
+
+log = logging.getLogger(__name__)
 
 KEY = "s7"
 STEP = 500                                   # the RTF is charged per $500 of consideration: solve on that grid
@@ -128,6 +153,11 @@ class Cliff:
         return round(self.net_threshold - self.net_price, 2)
 
     @property
+    def tax_extra(self) -> float:
+        """How much more the seller pays in the two transfer charges at the list price than at the threshold."""
+        return round(self.rtf_price + self.grad_price - self.rtf_threshold - self.grad_threshold, 2)
+
+    @property
     def width(self) -> float:
         return self.edge - self.threshold
 
@@ -170,17 +200,35 @@ def word_count(text: str) -> int:
     return len(re.findall(r"[A-Za-z0-9$][A-Za-z0-9$,.'/&%-]*", text or ""))
 
 
-def note_body(c: Cliff, street: str, first: str) -> str:
-    """The courtesy note: 4 plain sentences, what it is, that it is free and tied to nothing, the operator's name."""
-    return "\n\n".join([
-        "Hi,",
-        "I'm an investor and run these numbers on listings near the NJ transfer-fee thresholds. "
-        f"At {money(c.threshold)}, the seller of {street} nets about {money(c.gain)} more than at your current price "
-        f"of {money(c.price)}, after the realty transfer fee and the graduated fee. "
-        "The one-page net sheet is attached with the statute and Treasury sources. "
-        "There's no charge for it and nothing is tied to the sale.",
-        first,
-    ]).strip()
+def greeting(agent_name: str | None) -> str:
+    """"Hi Pat," only when the listing's agent name reads as a person (s2's rule); a brokerage or team gets "Hello,"."""
+    from engine.streams.s2_deal_desk_saas import first_name
+    first = first_name(agent_name)
+    return f"Hi {first}," if first and first.lower() != "there" else "Hello,"
+
+
+def short_money(v: float) -> str:
+    """$1,000,000 -> "$1M", $2,500,000 -> "$2.5M" (subject lines)."""
+    return f"${v / 1_000_000:,.2f}".rstrip("0").rstrip(".") + "M" if v >= 1_000_000 else money(v)
+
+
+def note_body(c: Cliff, street: str, agent_name: str | None = None) -> str:
+    """Touch 1 (the 2-step funnel, 2026-11-10): a greeting and exactly 2 plain sentences, no attachment, no link. The
+    numbers are the message: the statutory fee arithmetic at the list price and at the line, never a value opinion."""
+    return (f"{greeting(agent_name)}\n\n"
+            f"Quick heads-up on {street}: at {usd(c.price)} your seller crosses New Jersey's graduated transfer-fee "
+            f"line and pays about {usd(c.tax_extra)} more in transfer tax than at {usd(c.threshold)}. "
+            "Want the 1-page net sheet showing both prices?")
+
+
+def note_subject(c: Cliff, street: str) -> str:
+    return f"{street} and the {short_money(c.threshold)} transfer-fee line"
+
+
+def sample_body(street: str) -> str:
+    """Touch 2, sent in the agent's thread only after their yes, with the sheet attached: free, no price, no pitch."""
+    return (f"Here's the net sheet for {street}; no charge. "
+            "If it's useful I send these for any listing near a line.")
 
 
 # -- the product --------------------------------------------------------------------------------------------------
@@ -229,7 +277,8 @@ def render_sheet(path: Any, c: Cliff, street: str, town: str, op: dict[str, str]
                             subtitle=f"{street}, {town} NJ · prepared for the listing agent from the public list price "
                                      "and the statutory fee schedules",
                             head=head, rows=rows, notes=notes, box=box, footer=operator_footer(op),
-                            col_widths=[2.3, 1.9, 1.9, 1.5], landscape_page=False)
+                            col_widths=[2.3, 1.9, 1.9, 1.5], landscape_page=False,
+                            write_sample=False)   # one listing: the sheet itself is the sample (nothing to mask)
 
 
 # -- database helpers ---------------------------------------------------------------------------------------------
@@ -245,6 +294,19 @@ def _emailed_lead(session: Session, lead_id: int, since_eastern: datetime, since
         FirmOutbox.created_at >= since_utc).limit(1)))
 
 
+def _in_deal_talks(session: Session, email: str, since_eastern: datetime, since_utc: datetime) -> bool:
+    """The agent is in a deal conversation with the desk on any listing (they wrote to us, or we e-mailed them about a
+    lead, in the window): no courtesy note in the middle of a negotiation."""
+    if session.scalar(select(InboundReply.id).where(func.lower(InboundReply.from_email) == email,
+                                                    InboundReply.created_at >= since_utc).limit(1)):
+        return True
+    theirs = select(Contact.id).where(func.lower(Contact.email) == email)
+    their_leads = select(Contact.lead_id).where(func.lower(Contact.email) == email, Contact.lead_id.is_not(None))
+    return bool(session.scalar(select(Interaction.id).where(
+        Interaction.channel.like("email%"), Interaction.occurred_at >= since_eastern,
+        or_(Interaction.contact_id.in_(theirs), Interaction.lead_id.in_(their_leads))).limit(1)))
+
+
 def _agent_stopped(session: Session, email: str) -> bool:
     from engine import agent_outreach as ao
     e = email.strip().lower()
@@ -254,20 +316,56 @@ def _agent_stopped(session: Session, email: str) -> bool:
                                                         Contact.dnc_status == "dnc").limit(1)))
 
 
-def _candidates(session: Session, lo: float, hi: float, limit: int) -> list[tuple[Listing, Lead]]:
-    """For-sale listings priced inside [lo, hi] that an active listing signal ties to one of our leads."""
-    rows = session.execute(
-        select(Listing, Lead).join(DistressSignal, DistressSignal.source_ref == Listing.source_ref)
-        .join(Lead, Lead.property_id == DistressSignal.property_id)
-        .where(Listing.status == "for_sale", Listing.list_price > lo, Listing.list_price < hi,
-               DistressSignal.signal_type.in_(LISTING_SIGNALS), DistressSignal.active.is_(True))
-        .order_by(Listing.list_price).limit(limit)).all()
+def _target(session: Session, email: str, agent: Contact, town: str) -> FirmTarget | None:
+    """The agent as a firm target (the held sample is released in their thread when they reply yes). An address that
+    is already a target of another stream keeps its row, its stage and its cold-touch count (one agent, one budget)."""
+    from engine import firm_outbox as fo
+    t = session.scalar(select(FirmTarget).where(FirmTarget.email == fo.norm_email(email)))
+    if t is not None:
+        return t
+    return fo.upsert_target(session, kind="listing_agent", stream=KEY, email=email, name=agent.name,
+                            org=agent.company, town=town or None, source="listing data (MLS)")
+
+
+def _candidates(session: Session, lo: float, hi: float, limit: int,
+                seen_since: datetime | None = None) -> list[tuple[Listing, Lead]]:
+    """For-sale listings priced inside [lo, hi] that an active listing signal ties to one of our leads; with
+    `seen_since`, only listings a harvest saw since then (one nobody has seen for days may have changed price or
+    sold)."""
+    q = (select(Listing, Lead).join(DistressSignal, DistressSignal.source_ref == Listing.source_ref)
+         .join(Lead, Lead.property_id == DistressSignal.property_id)
+         .where(Listing.status == "for_sale", Listing.list_price > lo, Listing.list_price < hi,
+                DistressSignal.signal_type.in_(LISTING_SIGNALS), DistressSignal.active.is_(True)))
+    if seen_since is not None:
+        q = q.where(Listing.last_seen_at >= seen_since)
+    rows = session.execute(q.order_by(Listing.list_price).limit(limit)).all()
     seen: set[int] = set()
     out: list[tuple[Listing, Lead]] = []
     for lst, lead in rows:
         if lead.id not in seen:
             seen.add(lead.id)
             out.append((lst, lead))
+    return out
+
+
+def run_harvest(session: Session, ctx: StreamContext, lim: dict[str, Any]) -> dict[str, Any]:
+    """The day's high-value listing pass (engine/streams/s7_highvalue_harvest.py). A failure in it never stops the
+    notes on listings already stored: its writes are dropped and the run goes on."""
+    from engine.streams import s7_highvalue_harvest as hv
+    try:
+        return hv.harvest(session, now=ctx.now, limits=lim)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("s7: high-value listing pass failed")
+        session.rollback()
+        return {"status": "error", "error_name": type(exc).__name__}
+
+
+def harvest_metrics(h: dict[str, Any]) -> dict[str, int]:
+    """The pass's counts for the public run log, as numbers (hv_ran / hv_blocked flags instead of a status word)."""
+    status = str(h.get("status") or "")
+    out = {"hv_ran": int(status in ("ran", "blocked", "errors")),
+           "hv_blocked": int(status in ("blocked", "blocked_before")), "hv_failed": int(status == "error")}
+    out.update({f"hv_{k}": int(v) for k, v in h.items() if isinstance(v, (int, float)) and not isinstance(v, bool)})
     return out
 
 
@@ -280,19 +378,22 @@ class MansionTaxCliffStream(Stream):
     def run(self, session: Session, ctx: StreamContext) -> StreamResult:
         from core.text import muni_base, postal_title
         from engine import agent_outreach as ao
+        from engine import firm_outbox as fo
         res = StreamResult(stream=self.key)
         lim = ctx.limits or {}
         max_send = int(lim.get("pitches_per_run", lim.get("max_per_run", 3)))
         recent_days = float(lim.get("recent_days", 30))
         min_gain = float(lim.get("min_gain", 1000))
         scan = int(lim.get("scan_limit", 2000))
+        fresh_days = float(lim.get("fresh_days", 3))
+        hv = harvest_metrics(run_harvest(session, ctx, lim)) if lim.get("harvest", True) else {}
         zones = dead_zones()
         m: dict[str, int] = {k: 0 for k in ("listings_checked", "zone_listings", "just_under", "zone_with_lead",
                                              "sheets", "skipped_class", "skipped_small", "skipped_suppressed",
-                                             "skipped_no_agent", "skipped_stop", "skipped_recent",
-                                             "skipped_sent_before", "skipped_stage")}
+                                             "skipped_no_agent", "skipped_stop", "skipped_recent", "skipped_talks",
+                                             "skipped_target", "skipped_sent_before", "skipped_stage")}
         if not zones:
-            res.metrics = m
+            res.metrics = {**m, **hv}
             return res
         lo, hi = zones[0][0], zones[-1][1]
         # whole-market counts (any for-sale listing, ours or not): how many sit in a dead zone vs just under a line
@@ -304,7 +405,7 @@ class MansionTaxCliffStream(Stream):
         now = ctx.now
         since_e, since_u = now - timedelta(days=recent_days), utcnow() - timedelta(days=recent_days)
         agents_this_run: set[str] = set()
-        for lst, lead in _candidates(session, lo, hi, scan):
+        for lst, lead in _candidates(session, lo, hi, scan, utcnow() - timedelta(days=fresh_days)):
             res.processed += 1
             c = cliff(lst.list_price)
             if c is None:
@@ -341,23 +442,37 @@ class MansionTaxCliffStream(Stream):
                                                 FirmOutbox.created_at >= since_u).limit(1)):
                 m["skipped_recent"] += 1
                 continue
+            if _in_deal_talks(session, email, since_e, since_u):
+                m["skipped_talks"] += 1
+                continue
             if m["sheets"] >= max_send:
                 continue
             street = postal_title((prop.street_address or lst.address or "").split(",")[0].strip()).rstrip(".")
             town = (postal_title(muni_base(prop.municipality)) if prop.municipality
                     else postal_title(prop.city or lst.city or ""))
+            target = None
+            if ctx.send:
+                # checked with the outbox's own rules before anything is proposed: a note the outbox would skip (an
+                # agent another stream pitched this week, cold touches used up) waits for a later run instead of
+                # using up this listing's one note
+                target = _target(session, email, agent, town)
+                why = "no valid e-mail" if target is None else (
+                    fo.stop_reason(session, email, target) or fo._pitch_block(session, target, now))
+                if why:
+                    m["skipped_target"] += 1
+                    continue
             path = render_sheet(ctx.out_dir / f"s7_net_sheet_{lead.id}_{slug(street, 32)}.pdf", c, street, town,
                                 ctx.operator)
             m["sheets"] += 1
             res.products += 1
             agents_this_run.add(email)
-            if ctx.send:
+            if target is not None:
                 res.outbound.append(Outbound(
                     stream=self.key, key=f"{self.key}:sheet:{lead.id}:{int(round(c.price))}", to=email,
-                    subject=f"Transfer-tax net sheet for {street}",
-                    body=note_body(c, street, ctx.operator.get("first", "")),
-                    priority=PRIORITY_SPECIALTY, kind="pitch", attachments=[path], lead_id=lead.id, commercial=True))
-        res.metrics = {**m, "outbound": len(res.outbound), "zones": len(zones)}
+                    subject=note_subject(c, street), body=note_body(c, street, agent.name),
+                    priority=PRIORITY_SPECIALTY, kind="pitch", attachments=[], target_id=target.id, lead_id=lead.id,
+                    commercial=True, sample_body=sample_body(street), sample_attachments=[path]))
+        res.metrics = {**m, **hv, "outbound": len(res.outbound), "zones": len(zones)}
         return res
 
 
