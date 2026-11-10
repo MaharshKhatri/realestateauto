@@ -170,6 +170,12 @@ engine/
                                 reply_negotiator → auto_queued Touch 2 (in-thread, LOI, human delay, send hours) or
                                 needs_approval → approve() / dismiss(); paced outbound batch (pick_cards, start_campaign,
                                 25-60 s, 25 / 24 h); background poller; status() for the simple home; GmailRepliesAgent
+  daniels_law.py              ← Daniel's Law takedown inbox: nondisclosure requests from any sender (body + text / CSV /
+                                PDF attachments) → every NJ address / phone suppressed (source daniels_law), our parcels
+                                at that street too, recorded with a 10-business-day deadline, never answered by itself
+  cold_guard.py               ← cold-mail safety for the one personal Gmail: weekly first-touch ramp, bounce pauses
+                                (3 in 48 h / > 2% in 7 days), Gmail block codes → 7-day pause, quiet-inbox check
+  firm_outbox.py / swarm_firm.py / streams/ ← the research firm (see "The 10-stream research firm")
   clipboard_skiptrace.py      ← Fast Skip-Trace Mode: queue (exempt estates → vacant sheriff → lis pendens → absentee),
                                 parse pasted people-search pages (never fetched), rank, DNC scrub, save, READY flip
   operator_setup.py           ← My Setup: validate + write settings.local.yaml and .env (password never returned)
@@ -366,6 +372,17 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
 - **Daniel's Law** (N.J.S.A. 56:8-166.1): on a nondisclosure request, stop disclosing that person's home
   address/phone (including mailing lists and vendor sharing) within **10 business days**; strict
   liability, $1,000+ per violation (N.J. Supreme Court, Aug. 2026). It is why NJGIN owner names are blank.
+  **The takedown inbox** (learned 2026-11-10, `engine/daniels_law.py`, enforced in code): reports and digests print
+  street addresses, so a request can come from anyone (a covered person or a privacy assignee). Every new INBOX header
+  whose subject or sender may be a request (Daniel's Law, 56:8-166.1, nondisclosure, removal / privacy request, a
+  privacy-assignee domain) gets its body read, attachments included (text, CSV, PDF), to the end; when the subject +
+  body name the law or a do-not-disclose demand, every NJ address in it goes on `mail_suppressions` (source
+  `daniels_law`) along with our own parcels at that street in that town (property or owner mailing address, stored
+  form), and every phone on the internal DNC list. The request is recorded once in swarm_state `daniels_law_requests`
+  (counts, sender domain, deadline = 10 NJ business days; no name, address, subject or body). Nothing is answered by
+  itself. Calendar: a ⚖️ deadline event (9:00 on the deadline) plus a line in the ✅ actions and the 📊 status until
+  the operator confirms with a sealed note `{"daniels_law": "<id>", "done": true}`; `{"suppress_address": "..."}` /
+  `{"suppress_phone": "..."}` add what the parser missed (a scanned attachment). Run log: `daniels_law` count.
 
 ### Phase 3 operating rules (virtual B2B machine) — enforced in code
 - **READY_TO_CALL** (`scoring.ready_to_call`): an underwritten lead with a callable contact (phone not on a DNC
@@ -1167,13 +1184,40 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     value (N.J.S.A. 45:14F: an appraisal needs a license); no private individual's name in a product; every address
     through `address_ok` (Daniel's Law); public records / listing text / our math only, never private e-mail content.
   - **Outbox** (`firm_outbox`): `enqueue` stores each Outbound under its natural key (never twice) after the stop
-    lists (bounced, OPTED_OUT / LOST target, a listing agent's dnc contact, our own address) and the pitch gap (one cold
-    pitch per target per `pitch_gap_days` 6, `max_touches` 2). `send_due` sends by priority inside rolling-24 h caps
-    (`research_firm.caps`: p1 replies 150, p2 deal-desk pitches 15, p3 specialty 8; conservative because Gmail's
-    program policies forbid unsolicited commercial mail from a personal account: move cold B2B to a Workspace domain
-    with SPF / DKIM / DMARC before raising them), cold mail weekdays 9-5 Eastern, `per_run` 6, 8-20 s apart, under the
-    account-wide `reply_daily_limit`. Every message: signature, postal address, "no more" opt-out; pitches also the
-    commercial-message line and a `List-Unsubscribe` mailto header. A failing send retries up to 3 times.
+    lists (bounced, OPTED_OUT / LOST target, a listing agent's dnc contact, our own address) and the sequence rule
+    (`pitch_ok`). `send_due` sends by priority inside rolling-24 h caps (`research_firm.caps`: p1 replies + released
+    samples 150, p2 deal-desk first touches 12, p3 specialty first touches 18, `nudges` 20), cold mail weekdays 8 AM-8 PM
+    Eastern, `per_run` 6, under the account-wide `reply_daily_limit`. Every message: signature, postal address, "no
+    more" opt-out; cold ones also "A business solicitation from <company>." and a `List-Unsubscribe` mailto header.
+    A failing send retries up to 3 times.
+  - **The B2B playbook** (research 2026-11-10, scratch report "b2b_playbook"; the operator stays on the personal Gmail at
+    $0 with plain 2-sentence openers, no separate domain):
+    - **One sequence per target** (any stream): Touch 1 from the stream (2 plain sentences naming one real public-record
+      street, no attachment / link / price), then the outbox's own nudge (`queue_nudges`, `nudge_days` 3: "want me to
+      send <SEQUENCE_WORDS noun>? It's one page and free.") and close-the-loop (`close_days` 6 later: "Last note from
+      me ... I won't follow up."), both in the prospect's thread, plain text, weekdays only. Streams pick Touch-1 targets
+      with `firm_outbox.pitch_ok` and never propose a follow-up (a stream's commercial follow-up is skipped at enqueue);
+      after `rest_days` (60) a finished sequence may get a new Touch 1 with fresh data. A reply, opt-out, bounce or
+      stage change ends it.
+    - **The 2-step funnel**: a pitch's PDFs become the held sample (the masked `sample_path` copy: rows 1-2 in full,
+      street / docket / entity hidden after), released in their thread when they say yes; "start" / "set it up" gets
+      the payment link (`payment_link(s)`, empty until the operator makes a Stripe Payment Link) and a TRIAL / PAYING
+      target gets the full weekly report by itself (`deliver`). A reply is filed under the stream of the message it
+      answers, and a yes releases only that stream's sample.
+    - **Volume** (`engine/cold_guard.py`): `ramp` [20, 30] first touches a day by week since the first B2B pitch
+      (2026-11-09), never above p2 + p3; one cold send every 8-15 minutes at random (`cold_gap_minutes`); no attorney /
+      CPA / cost-seg / 1031 cold mail after 6 PM or on a Friday afternoon (`professional_last_hour`).
+    - **Stop rules**: 3+ bounces in 48 h, or > 2% of the last 7 days' cold sends (50+), pause every cold e-mail (B2B,
+      nudges, listing-agent openers) until it clears; Gmail `550 5.7.1 ... unsolicited`, `421 4.7.28`, `550 5.7.28` or
+      `550 5.4.5` on a send or in a bounce pauses cold mail 7 days (`cold_pause`). Replies always go. 0 B2B replies to
+      25+ first touches in 5 business days = "probably the spam folder: seed test" in the status.
+    - **Copy**: every price "plus NJ sales tax" (N.J.S.A. 54:32B-3(b)(12); the operator registers NJ-REG before the
+      first invoice); never "worth", "ARV", "equity", "over-assessed", "savings" in an e-mail; never pay tied to a deal,
+      case or client; every count real; never a data pitch inside a listing-agent buyer inquiry. Use a P.O. box as the
+      postal address when the operator has one.
+    - **Agents never get our numbers**: a listing agent's digest (s2 `audience="agent"`) shows listing / public-record
+      facts only (no ARV, repairs, max buy, room: a value for a licensee is a CMA, REC Bulletin 13-05); a buyer's own
+      digest keeps them as screening arithmetic for their own bid (N.J.S.A. 45:14F-21(c)).
   - **B2B replies**: the inbox check (`gmail_autopilot.poll_gmail_replies`) downloads a message matched to a pitch's
     Message-ID, or from a pitched address that isn't in a lead thread, into `firm_replies` (`firm_outbox.handle_reply`):
     `classify` -> opt_out (target OPTED_OUT at once) / not_interested (LOST) / interested (INTERESTED, a warm action) /
@@ -1196,7 +1240,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     can send you the first one once it's under contract?"). We don't hold those contracts, so no address, no house's
     price, no spread (N.J.S.A. 45:15-3; no daisy-chaining): the band is rounded outward to $25K, >= $50K wide. Key
     `s1:buyers:<target>:<iso-week>`, `buyers_per_run` 8, one per target per 14 days, 2 ever (the 2nd a one-sentence nudge
-    in the thread), kind pitch, nothing attached and nothing released on a yes (a firm reply for the operator); never a
+    in the thread), kind `buyer_note` (counts against the first-touch caps, carries the solicitation line, never starts or uses
+    up a data sequence), nothing attached and nothing released on a yes (a firm reply for the operator); never a
     target with mail queued or another stream's held sample, never an agent in deal talks. Metrics: live_offers /
     buyer_targets / buyers_queued. **s2 AI Deal Desk SaaS** (`s2_deal_desk_saas.py`, hourly 9-4 weekdays): flippers with
     a business e-mail (prospects) and the top flipper-connected agents become targets; each run builds a digest for up
@@ -1205,8 +1250,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     underwrote <street> (<ask> ask) and N other <fixer / stale listings, sheriff sales> in <county> this week; want the
     1-page numbers sheet?" (the street: an MLS row first, a sheriff sale with its date only, never a pre-foreclosure, a
     house we have an offer on, or a suppressed address). The digest's masked sample + "$500 for the first 30 days, then
-    $1,000 a month flat, no commission or per-deal fee" waits for their yes; the follow-up after the gap is one sentence
-    in the same thread, only after this stream's own Touch 1. Never an agent in deal talks (a reply or a lead e-mail in
+    $1,000 a month flat, no commission or per-deal fee" waits for their yes; follow-ups are the outbox's nudges. An
+    agent's Touch 1 says "I just pulled <street> (<ask>) and N other ... into this week's investor sheet". Never an agent in deal talks (a reply or a lead e-mail in
     30 days), never a target in s1's buy-box conversation (30 days); greetings use a person's first name only ("Hello,").
   - **s3 surplus research** (`s3_surplus_overages.py`, daily): sold-to-third-party sheriff sales (status / history "Purchased
     - 3rd Party", or a recorded sheriff's deed NU code 12 to a non-plaintiff grantee) and a 60-day watchlist where value
@@ -1215,20 +1260,26 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     from the recorded sheriff's deed or the sheriff (OPRA)". One-page county PDFs (docket, sheriff #, plaintiff lender,
     upset, liens, formula; never a defendant / person name), "for attorneys only", law footer (N.J.S.A. 2A:50-37, R.
     4:64-3, R. 4:57-2, 46:30B-106 finder limits, Zanolini). 2-step funnel (2026-11-10): Touch 1 is two plain sentences, no
-    file / link / price ("This week we compiled the upset-vs-equity file for N upcoming and recent Essex County sheriff
-    sales, including <street> (sheriff # n). Would the case breakdown be useful for your practice if I e-mailed it over?":
+    file / link / price ("This week we compiled the upset, payoff and stated-liens file for N upcoming and recent Essex County
+    sheriff sales, including <street> (sheriff # n). Would the case breakdown be useful for your practice if I e-mailed it over?":
     the true count, the first row, never a defendant); the county PDF's masked sample (docket and sheriff # share one line,
-    so both are hidden on rows 3+) and the flat price wait as the held Touch 2; a second touch is one sentence in the first
-    touch's thread. Pitched to `foreclosure_surplus_attorney` targets: $400/month
+    so both are hidden on rows 3+) and the flat price wait as the held Touch 2; follow-ups are the outbox's nudges. Pitched to `foreclosure_surplus_attorney` targets: $400/month
     or $150 a county report, never a percentage or per retained client (Joint Opinion 741).
   - **s4 contractor rehab triggers** (`s4_contractor_leads.py`, daily): a negation-aware classifier over live listing text
     (OIL_TANK / ROOF / HVAC / STRUCTURAL / FULL_GUT; "new roof", "no oil tank", "tank removed", home-warranty "roof leak
     protection" don't fire) + entity purchases in 120 days (FRESH_FLIP); per-county one-page reports quoting <= 12 words of
     the public listing (no phones / e-mails / names), pitched to the five contractor kinds with their own trade's rows
-    first, $500/month per county.
+    first, $500/month per county. Touch 1 (2026-11-10): "We read the listing descriptions and recent investor deeds in
+    <County> County, and <street> in <town> came up with an oil tank in the listing (N more on this week's list). Want
+    the address list for your trade?" (trade words no stronger than the classifier reads; a deed row says "an investor
+    company bought ...", never the company); the county sheet's masked sample (street, brokerage and a deed row's buyer
+    hidden after row 2) waits for a yes.
   - **s5 hard-money borrower feed** (`s5_hard_money_feed.py`, daily): entity buyer families only (no person names, no
     "Owner @" clusters, no suppressed mailing addresses), >= 2 purchases in 36 months, in-rehab counts (bought <= 9 months)
     and resales listed; one-page feed of the top 40, "not a consumer or credit report", pitched to lenders, $750/month.
+    Touch 1 names the top company with a house we may name (bought in the lender's county in the last year first; the
+    town from the recorded deed's parcel); `company_like()` keeps people, family trusts, estates and "Owner @" clusters
+    out of the feed and the e-mails; the sample hides the entity after row 2.
   - **s6 tax-appeal evidence** (`s6_tax_appeals.py`, daily): official Chapter 123 ratios for all 267 target-county towns in
     `config/streams/nj_chapter123_ratios.yaml` (tax year 2027 certification of 2026 ratios, promulgated 2026-10-01; refresh
     every October and check in January for Tax Court amendments). Internal Chapter 123 screen (assessment above 1.15 x R on
@@ -1239,14 +1290,20 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     2-step pitch (2026-11-10): Touch 1 is two sentences, no attachment, no "$" ("We ran Chapter 123 assessment-to-sale
     ratios across <town> and found N homes paying over 12,000 dollars a year in taxes where ... runs above the common level
     range, including <street>. Want the comparable-sales packet for it?"); that property's packet (its own sample, nothing
-    masked) waits with the price and its deadline for their yes; the second touch is one sentence in the same thread.
+    masked) waits with the price and its deadline for their yes; follow-ups are the outbox's nudges.
     Targets the outbox would skip (week key used, touches used up, inside the gap, a row queued) take no pitch slot.
     Pitched to tax-appeal attorneys: $100 a packet or $500/month.
   - **s7 graduated-fee cliff net sheets** (`s7_mansion_tax_cliff.py`, daily): dead zones solved on a $500 grid from the YAML
     tiers via quant_pricing (above $1M to $1,010,500; $2M to $2,021,000; $2.5M to $2,513,000; $3M to $3,016,000; $3.5M to
     $3,518,500); a listing priced inside one gets a one-page net sheet and a free courtesy note to its agent (one per
-    listing ever, one per agent per 30 days, none to a lead e-mailed in 30 days). Supply is thin: harvested listings stop at
-    $900K and agents mostly price under the line.
+    listing ever, one per agent per 30 days, none to a lead e-mailed in 30 days). Supply: s7 runs its own daily $1M+ pass
+    first (`engine/streams/s7_highvalue_harvest.py`: homeharvest for_sale `price_min` / `price_max` bands around every dead
+    zone in 45 high-value towns, two queries a town, provider throttle and `ProviderBlocked` honored, ≤ 12 minutes / 100
+    queries, only where the stale harvest ran in the last 3 days, dead-zone listings stored with their agents through the
+    stale agent's helpers and retired when they leave). Touch 1 = greeting + 2 sentences with the fee arithmetic ("at
+    $1,007,198 your seller crosses New Jersey's graduated transfer-fee line and pays about $10,163 more ... Want the 1-page
+    net sheet showing both prices?"); the net sheet is the held sample with a no-charge note; agents become kind
+    `listing_agent` targets; none to an agent in deal talks or already in another stream's sequence.
   - **s8 contract fallout** (`s8_contract_fallout.py`, hourly 8-8): pending / contingent -> for_sale transitions (snapshot in
     swarm_state `s8_listing_status`) and under-contract / backup replies 14-60 days old with the listing still live; a
     non-commercial note in the agent's thread ("my offer of $X still stands" only when our written offer <= today's final,
@@ -1260,7 +1317,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     own county (else New Jersey), no "$" ("including 12 Elm St in Elizabeth (bought for 1.2 million dollars in March
     2026)"; 1031 intermediaries hear about a long-held listing); the feed for that scope, named row first (Table B first
     for intermediaries), is rendered and its one-page masked sample (rows 1-2 in full, property + entity / brokerage
-    hidden after) waits for their yes; the second touch is one sentence in the same thread.
+    hidden after) waits for their yes; follow-ups are the outbox's nudges.
     Pitched to cost-seg firms, 1031 intermediaries, real-estate CPAs, $500/month.
   - **s10 pre-MLS distress** (`s10_pre_mls_distress.py`, daily): lis pendens, tax certificates / delinquencies, estates and
     sheriff sales with a fresh adjournment (snapshot `s10_adjournments`) on unlisted properties; adjournments left = 5 -
@@ -1279,11 +1336,13 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     agent per 14 days (`s10:agent:<email>:<iso-week>`). Touch 1: "Hi <First>, we pulled N new foreclosure filings and
     sheriff sales in <Town> this month that aren't on the MLS, including <Street>. Want the docket sheet, either to talk
     with the owners about listing or to work with us on the investor side?"; Touch 2 = the sheet's masked sample + "$250
-    a month per town, flat, no referral fee and nothing tied to a listing or sale (N.J.S.A. 45:15-3)"; one one-sentence
-    follow-up in that thread. Run log: agent_targets / agent_pitches / agent_sheets (counts).
-  - **B2B targets** (`config/b2b_targets.yaml`, 121 firms, 75 with a published e-mail, each with its source page): tax-appeal
-    and surplus attorneys, hard-money lenders, cost-seg firms, 1031 intermediaries, CPAs, oil-tank / roofing / HVAC / GC /
-    dumpster companies, investor-focused brokerages. Measured on the Nov 2 snapshot (forced run, 43 s): s1 101 convertible
+    a month per town (`agent_price_monthly`, 99 in settings), flat, no referral fee and nothing tied to a listing or sale
+    (N.J.S.A. 45:15-3)"; follow-ups are the outbox's nudges; an agent already in another stream's sequence is skipped. Run log: agent_targets / agent_pitches / agent_sheets (counts).
+  - **B2B targets** (`config/b2b_targets.yaml`, 448 firms, 402 with a published e-mail, each with the page it is printed
+    on; +327 from research agents on 2026-11-10): 78 hard-money lenders + 8 mortgage brokers, 53 oil-tank firms, 51 HVAC, 47
+    roofers, 33 rehab GCs, 31 dumpster firms, 44 builders / developers (seeded to s13), 34 1031 intermediaries, 15 cost-seg
+    firms, 17 CPAs, 15 tax-appeal and 7 surplus attorneys, 8 investor brokerages, 7 transaction coordinators (unseeded: no
+    product for them). Measured on the Nov 2 snapshot (forced run, 43 s): s1 101 convertible
     of 1,449 listed; s2 4 digests; s3 257 rows / 8 PDFs; s4 97 triggers / 11 PDFs; s5 22 entities; s6 19 packets of 1,795
     high-tax parcels; s7 0 in a dead zone; s9 119 triggers; s10 123 rows.
   - **First live day (2026-11-09), fixed the same afternoon**:
