@@ -1087,7 +1087,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - a short yes to our "mind if I check back in about 30 days?" ("Sure, you can absolutely", `rn.is_checkin_ok`,
     only when our last answer asked to check back: `gmail_autopilot.asked_to_check_back`) is dismissed and the check-in
     stands; no Touch 2 goes out by itself once the agent gave a number on the house (`earlier_counter`); the answer
-    greets the person who wrote (a colleague the agent handed the thread to), not the card's agent; "Prob 550" /
+    greets the person who wrote (a colleague the agent handed the thread to, or a teammate writing from an address we
+    don't have: their display name, `gmail_autopilot.writer_contact`, never saved by itself), not the card's agent;
+    the ask-first note answers "interested in showing it?" too (photos / video first); "Prob 550" /
     "around 480" / a bare "550" read as thousands, never "stated plainly" (2026-11-04: Geri, Juliet);
     "Full price" / "seller wants asking" / "firm on list price" is their number = the ask, stated plainly
     (`reply_negotiator.full_price_asked`; not after "below" / "under" / "not", never "what's the asking price?");

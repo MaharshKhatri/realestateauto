@@ -706,6 +706,36 @@ def _drop_email(session: Session, contact: Contact, why: str) -> None:
         session.flush()
 
 
+_NOT_A_PERSON = re.compile(r"\b(realty|realtors?|real estate|team|group|office|properties|homes|inc|llc|associates|"
+                           r"brokerage|re/?max|info|admin|support|no-?reply|notifications?|mailer|sales)\b", re.I)
+
+
+def writer_contact(lead: Lead, from_email: str | None, from_name: str | None,
+                   card: Contact | None = None) -> Contact | None:
+    """Who the answer greets: the person who wrote. Their own contact on the lead when we have it; else, for a teammate
+    writing from an address we don't have (2026-11-10: Tonya answered for Vincent on 26 Plains Gap Road and the reply
+    opened "Hi Vincent"), an unsaved copy of the card's agent carrying the sender's display name; else the card's agent.
+    The copy is never added to the session: the reply row and the follow-ups stay on the card's agent."""
+    addr = (from_email or "").strip().lower()
+    known = next((c for c in lead.contacts if c.email and c.email.strip().lower() == addr), None) if addr else None
+    if known is not None:
+        return known
+    card = card or ao.agent_contact(lead)
+    name = " ".join((from_name or "").replace('"', " ").split())
+    if "," in name:                                       # "Moreen, Tonya" -> "Tonya Moreen"
+        last, _, first = name.partition(",")
+        name = f"{first.strip()} {last.strip()}".strip()
+    words = name.split()
+    if card is None or not addr or not 2 <= len(words) <= 4 or _NOT_A_PERSON.search(name) \
+            or not all(re.fullmatch(r"[A-Za-z][A-Za-z.'-]*", w) for w in words):
+        return card
+    if name.isupper() or name.islower():
+        name = name.title()
+    if card.name and hc.first_name(card.name).lower() == hc.first_name(name).lower():
+        return card
+    return Contact(lead_id=card.lead_id, contact_type=card.contact_type, name=name, email=addr, company=card.company)
+
+
 def handle(session: Session, mail: Mail, known: Known, now: datetime | None = None) -> InboundReply | None:
     """Store one matched message and act on it. Raises IntegrityError when another process got it first."""
     from engine import reply_negotiator as rn
@@ -776,7 +806,8 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
         row.headline = "OK TO CHECK BACK: nothing to answer (the check-in date stands)"
         row.note = "they agreed to our check-in: nothing to answer, no call; the follow-up already set stays"
         return row
-    an = rn.analyze(session, lead, mail.text, now=now, agent=agent)
+    an = rn.analyze(session, lead, mail.text, now=now,
+                    agent=writer_contact(lead, mail.from_email, mail.from_name, card=agent))
     inter = rn.record(session, lead, an, mail.text, now=now)
     if voice:
         inter.channel = "sms_in" if method == "voice_text" else "voicemail"     # not an e-mail thread to answer in
@@ -975,7 +1006,8 @@ def _send_auto(rid: int, *, now: datetime | None, smtp_factory: Any) -> bool:
             Interaction.lead_id == lead.id, Interaction.occurred_at > (row.received_at or row.created_at),
             Interaction.id != row.interaction_id,
             Interaction.outcome.in_((*ao.TOUCH_OUTCOMES, ao.REPLY_OUTCOME, ao.PHONE_YES_OUTCOME))).limit(1))
-        writer = s.get(Contact, row.contact_id) if row.contact_id else None
+        writer = writer_contact(lead, row.from_email, row.from_name,
+                                card=s.get(Contact, row.contact_id) if row.contact_id else None)
         an = rn.analyze(s, lead, row.body_text or "", now=now, agent=writer)
         block = ("something happened on this lead after the reply" if newer else
                  auto_touch2_block(s, lead, an, row.match_method, row.body_text or ""))
@@ -1357,7 +1389,8 @@ def refresh_open_replies(session: Session, now: datetime | None = None, *, promo
             continue
         text = strip_quoted(row.body_text)
         an = rn.analyze(session, lead, text, now=now,
-                        agent=session.get(Contact, row.contact_id) if row.contact_id else None)
+                        agent=writer_contact(lead, row.from_email, row.from_name,
+                                             card=session.get(Contact, row.contact_id) if row.contact_id else None))
         # (the drafted answer too: after a re-price the same "still available" must not keep yesterday's number)
         same = an.headline == row.headline and an.parsed.counter_amount == row.counter_amount and text == row.body_text \
             and sorted(an.parsed.intents) == sorted(row.intents_json or []) \

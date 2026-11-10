@@ -346,7 +346,11 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
         paragraphs = [first_line + "What would the seller need to net for a clean, as-is cash sale with a quick close? "
                       + ("" if "ASKS_ROLE" in flags else
                          "I'm an investor buying for myself or a partner investor, with no buyer's agent. ")
-                      + "If it's a number I can do, I'll send the written offer the same day."]
+                      + "If it's a number I can do, I'll send the written offer the same day."
+                      # "would you be interested in showing it?" (2026-11-10, 26 Plains Gap Road): answered here too
+                      + (" As for seeing it, a few interior photos or a short video would help first, and it can be "
+                         "walked during the inspection period once we agree on a price." if "ASKS_SHOWING" in flags
+                         else "")]
         terms = ["No price from me yet: I'd rather hear the seller's number than send one that misses.",
                  "Cash, as-is, no mortgage or appraisal contingency; attorney review and an inspection period."]
     else:

@@ -728,3 +728,49 @@ def test_no_automatic_touch2_once_an_offer_is_out(live):
     db.expire_all()
     row = db.query(InboundReply).filter_by(message_id="<agent-9@broker.test>").one()
     assert row.status == "needs_approval" and "an offer is already out" in row.note
+
+
+def test_a_teammate_writing_from_a_new_address_is_greeted_by_her_own_name(live):
+    """2026-11-10, 26 Plains Gap Road: we wrote to the listing agent; his teammate answered from her own address
+    ("still available ... would you be interested in showing it?") and the drafted answer opened "Hi Vincent"."""
+    db = live
+    lead = listed(db)
+    opener(db, lead)
+    street = lead.property.street_address.title()
+    body = ("Good morning! This property is still available. It does need a good amount of work. "
+            "Please let me know if you would be interested in showing it.")
+    fake = FakeIMAP({21: mail(21, body, frm="Tonya Sample <tsample.team@mail.test>", subject=street)})
+    gm.set_imap_factory(lambda: fake)
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=45), smtp_factory=FakeSMTP)
+    db.expire_all()
+    row = db.query(InboundReply).one()
+    text = (row.analysis_json or {}).get("reply_text") or ""
+    assert row.match_method == "address" and text.startswith("Hi Tonya,"), text[:60]
+    assert "As for seeing it" in text
+    assert row.contact_id is not None                                               # the row stays on the card's agent
+    assert db.query(Contact).filter(Contact.email == "tsample.team@mail.test").count() == 0   # nothing saved by itself
+    card = gm.writer_contact(lead, "office@mail.test", "Sample Realty Team")
+    assert card is not None and card.name != "Sample Realty Team"                   # an office name greets the agent
+
+
+def test_the_ask_first_note_answers_a_showing_question(db):
+    """The no-price "what would the seller need to net?" note answers "interested in showing it?" as well."""
+    import engine.agent_outreach as ao
+    import engine.agent_outreach as mod
+    lead = listed(db)
+    db.commit()
+    real = mod.offer_prices
+    try:
+        mod.offer_prices = lambda *a, **k: (None, None)
+        import engine.offer_math as om
+        real_firm = om.firm_offer
+        om.firm_offer = lambda *a, **k: om.FirmOffer("ask_first", final=300000, buyer_max=305000, ask=380000,
+                                                    opening=290000, reasons=["the gap"])
+        try:
+            p = ao.build_packet(lead, generate_loi=False, session=db, reply_flags={"AVAILABLE", "ASKS_SHOWING"})
+        finally:
+            om.firm_offer = real_firm
+    finally:
+        mod.offer_prices = real
+    assert p.kind == "ask_first" and "What would the seller need to net" in p.email_body
+    assert "As for seeing it, a few interior photos or a short video would help first" in p.email_body
