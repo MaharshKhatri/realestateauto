@@ -404,6 +404,15 @@ def test_back_on_the_market_is_available_not_under_contract():
     assert "UNDER_CONTRACT" in rn.parse_reply("It is now under contract again").intents
 
 
+def test_signed_offer_finishing_attorney_review_is_under_contract():
+    # 2026-11-10, 787-789 Clinton Ave: read as an unclassified question
+    text = ("Hello, How are you. Right now we have a signed offer. The owner is working on items on his end so that we "
+            "can complete attorney review.")
+    intents = rn.parse_reply(text).intents
+    assert "UNDER_CONTRACT" in intents and "AVAILABLE" not in intents
+    assert "UNDER_CONTRACT" not in rn.parse_reply("Please send a signed offer and I'll present it").intents
+
+
 def test_a_number_youre_looking_to_come_in_at_asks_for_our_offer():
     # 2026-11-10, 54 N 4th St: the agent asked for our backup number and the reply sat as an unclassified question
     text = ("Ok I understand but I can't reach out to you if I don't know a number you're looking to come in at. "

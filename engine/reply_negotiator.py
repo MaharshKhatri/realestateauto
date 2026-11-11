@@ -160,7 +160,11 @@ PHRASES: dict[str, list[str]] = {
                        r"\barip(?:'?d|'?ed|ped)?\b", r"attorney review in progress",
                        # "Just started review" (Nov 6, 2360 Colonial Dr) answers our "or already in attorney review?"
                        r"\b(?:started|starting|began|begun|entered|went into|going into) (?:attorney )?review\b",
-                       r"\b(?:it'?s|it is|house is|property is|now|currently|already) in review\b(?!\s+(?:of|with|by))"],
+                       r"\b(?:it'?s|it is|house is|property is|now|currently|already) in review\b(?!\s+(?:of|with|by))",
+                       # "Right now we have a signed offer ... so that we can complete attorney review" (2026-11-10,
+                       # 787-789 Clinton Ave)
+                       r"\b(?:we|seller|sellers|owner|they) (?:have|has|got|accepted|received) a signed (?:offer|contract)\b",
+                       r"\b(?:complete|finish|finishing|completing|get through|wrap up) (?:the )?attorney review\b"],
     "POF_REQUEST": [r"proof of funds", r"\bpof\b", r"bank statement", r"verif(y|ication of) (your )?funds", r"show (me |us )?(the )?funds",
                     r"funds letter", r"pre-?qual", r"pre-?approval", r"where('s| is) the money coming from", r"source of funds"],
     "HIGHEST_AND_BEST": [r"highest and best", r"best and final", r"multiple offers", r"other offers?", r"bidding war",
