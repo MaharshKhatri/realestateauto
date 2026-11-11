@@ -404,6 +404,17 @@ def test_back_on_the_market_is_available_not_under_contract():
     assert "UNDER_CONTRACT" in rn.parse_reply("It is now under contract again").intents
 
 
+def test_escrow_too_low_is_a_deposit_point_not_a_no():
+    # 2026-11-11, 1102 4th Ave: read as a REJECT and answered "my ceiling is $X ... if the seller's thinking changes"
+    text = ("Good morning. We are currently working with the tenant to vacate the home.\nWe may need a later closing date. "
+            "TBD. Also, the escrow amount is too low.\nIf you are interested in negotiating these 2 items, we can move on "
+            "to\nnegotiating the price. Please let me know.")
+    assert "REJECT" not in rn.parse_reply(text).intents
+    assert "REJECT" not in rn.parse_reply("Your deposit is too low").intents
+    assert "REJECT" in rn.parse_reply("Your offer is too low.").intents
+    assert "REJECT" in rn.parse_reply("The deposit is fine but the price is too low").intents
+
+
 def test_signed_offer_finishing_attorney_review_is_under_contract():
     # 2026-11-10, 787-789 Clinton Ave: read as an unclassified question
     text = ("Hello, How are you. Right now we have a signed offer. The owner is working on items on his end so that we "

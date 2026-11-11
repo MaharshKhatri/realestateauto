@@ -1065,7 +1065,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     buyer fell thru" (2026-11-10, 263 Stiles St), unless it's conditional ("if it comes back on the market"). "I can't reach out to you
     if I don't know a number you're looking to come in at" (2026-11-10, 54 N 4th St) asks for our offer, like "what's your number?".
     "We have a signed offer ... so that we can complete attorney review" (2026-11-10, 787-789 Clinton Ave) is under contract
-    ("send a signed offer" is not). "We have a few offers" with nothing of
+    ("send a signed offer" is not). "The escrow amount is too low" (2026-11-11, 1102 4th Ave) is a deposit point, not a
+    price no (`_NOT_PRICE_LOW`); it had been answered "my ceiling is $X ... if the seller's thinking changes". "We have a few offers" with nothing of
     ours in writing gets a written best and final only on a firm number: an ask-first house or one with a certainty
     issue (no living area, old comps) gets "facts first" (the one fact, or the seller's net), no number (4 Richard Ter).
     "It is still aviilable" / "availble" (typos) read as available (2026-11-06, 492 Booth Ct had waited as a question).

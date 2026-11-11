@@ -205,6 +205,8 @@ PHRASES: dict[str, list[str]] = {
                  r"what('s| is) your (company|name)", r"tell me more"],
 }
 _COMPILED = {k: [re.compile(p, re.I) for p in v] for k, v in PHRASES.items()}
+# "the escrow amount is too low" (2026-11-11, 1102 4th Ave) is about the deposit, not our price: a terms point, never a no
+_NOT_PRICE_LOW = re.compile(r"\b(?:escrow|deposit|earnest|emd|good[\s-]+faith|down\s+payment|binder)\b(?:(?!\b(?:price|offer|number|but)\b)[^.!?\n]){0,30}$", re.I)
 _AVAIL_NOT_HOUSE = re.compile(r"\b(?:credits?|repairs?|concessions?|funds?|financing|parking|incentives?|rebates?|"
                               r"discounts?|warrant(?:y|ies)|inspections?|appointments?|times?|slots?)\b[^.!?\n]{0,25}$",
                               re.I)
@@ -344,6 +346,11 @@ def parse_reply(text: str) -> ParsedReply:
                 # the house: skip "available" when its own words are about money, repairs or terms
                 m = next((x for x in p.finditer(scrubbed)
                           if not _AVAIL_NOT_HOUSE.search(scrubbed[max(0, x.start() - 40):x.start()])), None)
+            if m and intent == "REJECT" and re.search(r"too low", m.group(0), re.I):
+                m = next((x for x in p.finditer(scrubbed)
+                          if not _NOT_PRICE_LOW.search(scrubbed[max(0, x.start() - 50):x.start()])), None)
+                if m is None:
+                    out.notes.append("'too low' is about the deposit / escrow, not the price")
             if not m:
                 continue
             if intent == "AVAILABLE" and re.search(r"back|fell|fallen", m.group(0), re.I) and re.search(
