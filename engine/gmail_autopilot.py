@@ -244,6 +244,22 @@ def body_text(msg: Message) -> str:
     return _html_to_text(content) if part.get_content_subtype() == "html" else str(content)
 
 
+_DSN_ACTION = re.compile(r"(?im)^\s*Action:\s*(failed|delayed|delivered|relayed|expanded)\b")
+_DELAY_WORDS = re.compile(r"\(delay\)|delivery incomplete|delivery delayed|delayed mail|will (?:keep )?retry|"
+                          r"warning: message .{0,40}delayed|still trying", re.I)
+
+
+def delay_only(flat: str, subject: str = "") -> bool:
+    """A delivery-status notice that only says delivery is delayed (Gmail / the remote server is still retrying)."""
+    actions = {a.lower() for a in _DSN_ACTION.findall(flat or "")}
+    if actions:
+        return "failed" not in actions and "delayed" in actions
+    return bool(_DELAY_WORDS.search(subject or "")) or (bool(_DELAY_WORDS.search((flat or "")[:4000]))
+                                                         and not re.search(r"(?i)\b(?:couldn'?t|could not|wasn'?t|"
+                                                                           r"not) (?:be )?delivered\b|address not "
+                                                                           r"found|permanent", (flat or "")[:4000]))
+
+
 def parse_message(raw: bytes, uid: int, uidvalidity: int = 0) -> Mail:
     mail = parse_headers(raw, uid, uidvalidity)
     msg = message_from_bytes(raw, policy=policy.default)
@@ -255,6 +271,11 @@ def parse_message(raw: bytes, uid: int, uidvalidity: int = 0) -> Mail:
             r"(?im)^\s*(?:Final|Original)-Recipient:\s*rfc822;\s*<?([^\s<>;]+@[^\s<>;]+)>?", flat)})
         from engine import cold_guard
         mail.block_code = cold_guard.block_code(flat[:20000])
+        if delay_only(flat, mail.subject):
+            # "Delivery incomplete ... Gmail will retry for 47 more hours" (2026-11-11: two of these were counted as
+            # bounces, the targets closed and cold mail paused at "5 bounces"). Not a bounce: Gmail is still trying, and
+            # a real failure later arrives as its own notice. A block code it carries still counts (cold_guard).
+            mail.bounced_ids, mail.bounced_addresses = [], []
         return mail
     mail.text = strip_quoted(body_text(msg))
     return mail

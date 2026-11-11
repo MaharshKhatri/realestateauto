@@ -616,6 +616,27 @@ def record_bounce(session: Session, email: str, *, sent: bool = True) -> None:
             cold_guard.log_bounce(session, addr)    # 3 in 48 h, or > 2% in a week, pause cold mail (cold_guard)
 
 
+def unbounce(session: Session, email: str) -> bool:
+    """Undo a bounce recorded by mistake (a "delivery delayed" notice): the address may get mail again, its bounce
+    leaves the cold-mail count, and a firm target closed only by that bounce goes back to CONTACTED."""
+    from db.models import FirmTarget, SwarmState
+    from engine import cold_guard
+    addr = (email or "").strip().lower()
+    row = session.get(SwarmState, BOUNCED_KEY)
+    emails = list(((row.value_json if row else None) or {}).get("emails") or [])
+    changed = addr in emails
+    if changed:
+        row.value_json = {"emails": [e for e in emails if e != addr]}
+    changed = bool(cold_guard.unlog_bounce(session, addr)) or changed
+    t = session.scalar(select(FirmTarget).where(func.lower(FirmTarget.email) == addr))
+    if t is not None and t.stage == "LOST" and "bounced" in (t.notes or ""):
+        t.stage = "CONTACTED"
+        t.notes = ((t.notes or "") + "\nbounce undone: it was a delivery delay").strip()
+        changed = True
+    session.flush()
+    return changed
+
+
 def deliver(packet: AgentPacket, *, session: Session, now: datetime | None = None, smtp_factory: Any = None,
             in_reply_to: str | None = None, references: list[str] | None = None, engaged: bool = False) -> str:
     """Send one personalized e-mail over SMTP (Gmail app password), inside the rolling 24-hour limit.

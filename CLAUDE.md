@@ -1104,7 +1104,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     after the last block they go on tomorrow's sheet by themselves;
   - a plain thank-you ("Sounds good! Thank you!", `reply_negotiator.is_ack`) after a no-price note is dismissed with
     nothing to answer and no call; after a priced offer it is read like any reply (it may be an acceptance);
-  - a short yes to our "mind if I check back in about 30 days?" ("Sure, you can absolutely", `rn.is_checkin_ok`,
+  - a short yes to our "mind if I check back in about 30 days?" ("Sure, you can absolutely", "Sure. Talk to you soon", `rn.is_checkin_ok`,
     only when our last answer asked to check back: `gmail_autopilot.asked_to_check_back`) is dismissed and the check-in
     stands; no Touch 2 goes out by itself once the agent gave a number on the house (`earlier_counter`); the answer
     greets the person who wrote (a colleague the agent handed the thread to, or a teammate writing from an address we
@@ -1238,7 +1238,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
       `bounce_pause_rate`, `bounce_window_days`) pause every cold e-mail (B2B, nudges, listing-agent openers) until it
       drops; a sealed note `{"cold_guard": "reset"}` restarts the count (2026-11-10: the operator cleared the 3-bounce
       pause). Gmail `550 5.7.1 ... unsolicited`, `421 4.7.28`, `550 5.7.28` or `550 5.4.5` on a send or in a bounce still
-      pauses cold mail 7 days (`cold_pause`), and a reset never clears it. Replies always go. 0 B2B replies to
+      pauses cold mail 7 days (`cold_pause`), and a reset never clears it. A "Delivery Status Notification (Delay)" /
+      "Delivery incomplete ... Gmail will retry" (DSN `Action: delayed`, no `failed`) is not a bounce
+      (`gmail_autopilot.delay_only`; 2026-11-11: two delays had closed targets and tripped the pause); a bounce logged by
+      mistake is undone with a sealed note `{"unbounce": [e-mails]}` (`agent_outreach.unbounce`). Replies always go. 0 B2B replies to
       25+ first touches in 5 business days = "probably the spam folder: seed test" in the status.
     - **Copy**: every price "plus NJ sales tax" (N.J.S.A. 54:32B-3(b)(12); the operator registers NJ-REG before the
       first invoice); never "worth", "ARV", "equity", "over-assessed", "savings" in an e-mail; never pay tied to a deal,

@@ -868,3 +868,34 @@ def test_a_sealed_note_marks_a_vip_agent(live):
     assert out["note_done"] == 1 and not out.get("note_errors"), out
     live.expire_all()
     assert vip.vip_emails(live) == {"olga@sample.test"}
+
+
+def test_a_delivery_delay_notice_is_not_a_bounce(live):
+    """2026-11-11: "Delivery incomplete ... Gmail will retry for 47 more hours" was counted as a bounce (target closed,
+    address banned, cold mail paused at "5 bounces"). Only a failure is a bounce."""
+    delay = EmailMessage()
+    delay["From"], delay["Subject"] = "Mail Delivery Subsystem <mailer-daemon@googlemail.com>", \
+        "Delivery Status Notification (Delay)"
+    delay["Message-ID"] = "<dsn-d@google.test>"
+    delay.set_content("Delivery incomplete\nThere was a temporary problem delivering your message to info@slow.test. "
+                      "Gmail will retry for 47 more hours.\n\nFinal-Recipient: rfc822; info@slow.test\nAction: delayed\n"
+                      "Status: 4.4.1\n\nMessage-ID: <ours-d@example.test>")
+    d = gm.parse_message(delay.as_bytes(policy=policy.SMTP), 5)
+    assert d.bounce and d.bounced_addresses == [] and d.bounced_ids == []
+    fail = EmailMessage()
+    fail["From"], fail["Subject"] = "Mail Delivery Subsystem <mailer-daemon@googlemail.com>", \
+        "Delivery Status Notification (Failure)"
+    fail["Message-ID"] = "<dsn-f@google.test>"
+    fail.set_content("Message not delivered\n\nFinal-Recipient: rfc822; info@slow.test\nAction: failed\nStatus: 5.4.4")
+    assert gm.parse_message(fail.as_bytes(policy=policy.SMTP), 6).bounced_addresses == ["info@slow.test"]
+    assert gm.delay_only("", "Delivery Status Notification (Delay)")
+    assert not gm.delay_only("Address not found. Your message wasn't delivered", "Delivery Status Notification")
+    gm.set_imap_factory(lambda: FakeIMAP({1: delay.as_bytes(policy=policy.SMTP)}, uidvalidity=77))
+    gm.poll_gmail_replies(now=T0 + timedelta(minutes=50), smtp_factory=FakeSMTP)
+    from db.models import utcnow
+    from engine import agent_outreach as ao
+    from engine import cold_guard
+    db = live
+    db.expire_all()
+    assert "info@slow.test" not in ao.bounced_emails(db)
+    assert cold_guard.bounces_since(db, utcnow() - timedelta(days=1)) == []

@@ -567,3 +567,10 @@ def test_offer_of_other_listings_is_taken_up(db, operator):
     body = a.reply_text.split("---")[0]
     assert a.verdict == "RED" and "please send me the others" in body and hc.lint(a.reply_text) == []
     assert any("VIP" in x for x in a.actions)
+
+
+def test_talk_to_you_soon_is_a_yes_to_our_check_in():
+    """2026-11-11, 2507 Columbia Ave: "Sure. Talk to you soon." after our "mind if I check back in about 30 days?" sat
+    waiting as a question."""
+    assert rn.is_checkin_ok("Sure. Talk to you soon.") and rn.is_checkin_ok("Talk soon!")
+    assert not rn.is_checkin_ok("Talk to you about the price soon?") and not rn.is_checkin_ok("Sure, they want 290")

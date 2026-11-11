@@ -102,6 +102,16 @@ def log_bounce(session: Session, email: str, now: datetime | None = None) -> Non
     _save(session, BOUNCE_LOG_KEY, {"items": log[-500:]})
 
 
+def unlog_bounce(session: Session, email: str) -> int:
+    """Take an address out of the bounce log (it was logged by mistake: a delay notice, not a bounce)."""
+    addr = (email or "").strip().lower()
+    items = list(_state(session, BOUNCE_LOG_KEY).get("items") or [])
+    keep = [i for i in items if not (i and str(i[0]).lower() == addr)]
+    if len(keep) != len(items):
+        _save(session, BOUNCE_LOG_KEY, {"items": keep})
+    return len(items) - len(keep)
+
+
 def bounces_since(session: Session, since: datetime, *, strict: bool = False) -> list[str]:
     out = []
     for item in _state(session, BOUNCE_LOG_KEY).get("items") or []:

@@ -268,3 +268,25 @@ def test_a_sealed_note_resets_the_bounce_pause(live, quick):
     assert out["note_done"] == 1 and not out.get("note_errors"), out
     db.expire_all()
     assert cold_guard.paused(db) is None
+
+
+def test_a_sealed_note_undoes_a_bounce_logged_by_mistake(live, quick):
+    """Delay notices counted as bounces before 2026-11-11: {"unbounce": [...]} takes them back out."""
+    from engine import agent_outreach as ao
+    from engine import cloud_desk
+    db = live
+    t = target(db, email="info@slow.example", kind="hvac", stream="s4")
+    t.stage, t.notes = "LOST", "bounced 2026-11-11"
+    for i in range(4):
+        ao.record_bounce(db, f"gone{i}@firm.example")
+    ao.record_bounce(db, "info@slow.example")
+    db.commit()
+    assert cold_guard.paused(db)
+    key = "k" * 32
+    out = cloud_desk.apply_note(cloud_desk.seal_note([{"unbounce": ["info@slow.example"]}],
+                                                     cloud_desk.public_hex(key)), key)
+    assert out["note_done"] == 1 and not out.get("note_errors"), out
+    db.expire_all()
+    assert cold_guard.paused(db) is None and "info@slow.example" not in ao.bounced_emails(db)
+    assert "gone0@firm.example" in ao.bounced_emails(db)
+    assert db.get(FirmTarget, t.id).stage == "CONTACTED"

@@ -553,6 +553,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
       the LOI attached at it (`offer_math.note_price`); a house that may not get a number in writing (HOLD, no living
       area, old comps, retail, FRFPA, offered above today's final) is refused and nothing is sent;
     - "cold_guard": "reset" (no "lead"): start the bounce count over (engine/cold_guard.reset);
+    - "unbounce": "<e-mail>" or a list (no "lead"): a bounce logged by mistake (a delivery-delay notice) is undone
+      (agent_outreach.unbounce: off the bounced list and the cold-mail count, a target it closed reopened);
     - "vip_agent": "<e-mail>" (+ "remove"): a VIP pocket-listing agent (engine/vip_agents.py);
     - "daniels_law" + "done" (no "lead"): the operator looked at that Daniel's Law request; "suppress_address" /
       "suppress_phone": a home address / phone the request named that the parser missed (source daniels_law);
@@ -585,6 +587,18 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
             from engine import vip_agents
             with session_scope() as s:
                 vip_agents.set_vip(s, str(item["vip_agent"]), remove=bool(item.get("remove")))
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
+            errors.append(type(exc).__name__)
+        items = [i for i in items if i is not item]
+    for item in [i for i in items if isinstance(i, dict) and i.get("unbounce") and not i.get("lead")
+                 and not i.get("street")]:
+        # {"unbounce": "<e-mail>" | [...]}: delay notices counted as bounces before 2026-11-11 (engine/agent_outreach)
+        try:
+            emails = item["unbounce"] if isinstance(item["unbounce"], list) else [item["unbounce"]]
+            with session_scope() as s:
+                for e in emails:
+                    ao.unbounce(s, str(e))
             done += 1
         except Exception as exc:                   # noqa: BLE001 - reported by name only
             errors.append(type(exc).__name__)

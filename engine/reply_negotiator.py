@@ -604,6 +604,9 @@ def is_ack(text: str) -> bool:
 _CHECKIN_OK = re.compile(r"^(?:(?:sure(?: thing)?|yes|yeah|yep|absolutely|of course|definitely|certainly|ok(?:ay)?|"
                          r"fine|that'?s fine|that works|no problem|np|please do|feel free|you can|you may|go ahead|"
                          r"by all means|will do|sounds good|sounds great|great|perfect|thanks?(?: you)?|thank you|"
+                         # "Sure. Talk to you soon." (Geri, 2026-11-11, 2507 Columbia Ave)
+                         r"(?:talk|speak|chat)(?: to| with)?(?: you)?(?: soon| then| later| in a few weeks)|"
+                         r"sounds like a plan|no worries|"
                          r"appreciate it|(?:please )?(?:do )?(?:check|reach out|follow up)(?: back)?(?: with me)?"
                          r"(?: then| anytime| any time)?)[\s!.,]*)+$", re.I)
 
