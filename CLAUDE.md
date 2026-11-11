@@ -839,6 +839,11 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - **State:** `data/cloud/state.enc` in the Actions cache: database + settings.local.yaml + token.json +
     credentials.json, AES-256-GCM under HKDF(DESK_KEY). It is restored with prefix `desk-state-` and saved under a new
     key every run.
+    - A cache-service failure is not a lost cache (learned 2026-11-11: "Failed to GetCacheEntryDownloadURL" read as a
+      miss, the desk started from the previous night's backup and re-sent five e-mails it had sent that day). A miss is
+      retried once; the backup is used only when `gh cache list` shows no `desk-state-` entry at all, otherwise the run
+      sends and saves nothing. Task `forget` + input `state` = a run id drops that run's saved state (one that started
+      from a stale backup), so the next restore picks the newest good one.
     - The repository is public: runs print one JSON line of counts (stderr to /dev/null). No message text,
       addresses or names ever reach the log.
   - **Handoff, no command:** the first run with no state mails itself "[njw-cloud] ready for the handoff" with its

@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "run | refresh | recalibrate | sheet (rebuild the blocks nobody called yet) | firmup (live re-value of today's call-sheet houses) | stats (pipeline counts) | value (price unvalued listings) | digest (weekly deal digests for flippers, mailed to you) | agents (flipper-connected agents report only) | firm (10-stream status counts) | firm-run (run every stream now) | approve | dismiss | offer | note"
+        description: "run | refresh | recalibrate | sheet (rebuild the blocks nobody called yet) | firmup (live re-value of today's call-sheet houses) | stats (pipeline counts) | value (price unvalued listings) | digest (weekly deal digests for flippers, mailed to you) | agents (flipper-connected agents report only) | firm (10-stream status counts) | firm-run (run every stream now) | approve | dismiss | offer | note | forget (drop one run's saved state, then run)"
         default: run
       reply:
         description: "with approve / dismiss: the reply #"
@@ -23,6 +23,9 @@ on:
         default: ""
       note:
         description: "with note: a sealed note from a Claude chat (ciphertext only)"
+        default: ""
+      state:
+        description: "with forget: the run id whose saved state is dropped (a run that started from a stale backup)"
         default: ""
 
 permissions:
@@ -72,34 +75,74 @@ jobs:
       - name: Install
         if: steps.cfg.outputs.ok == 'true'
         run: pip install -q -e .
+      # 2026-11-11 3:22 PM: GitHub's cache service failed ("Failed to GetCacheEntryDownloadURL ... upstream c...") and the
+      # restore read as "no cache", so the desk started from the previous night's Gmail backup and re-sent five e-mails
+      # it had already sent that day. A miss is retried once, and the backup is used only when GitHub positively lists
+      # no saved state at all (a cache evicted after 7 days); otherwise this run does nothing and saves nothing.
+      - name: Drop one run's saved state (task forget)
+        id: forget
+        if: steps.cfg.outputs.ok == 'true' && github.event.inputs.task == 'forget'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.event.inputs.state }}
+        run: |
+          case "$RUN" in (''|*[!0-9]*) echo "forget needs the run id (digits only)"; exit 1;; esac
+          keys=$(gh cache list -R "$GITHUB_REPOSITORY" --key "desk-state-$RUN-" --limit 10 --json key --jq '.[].key')
+          [ -n "$keys" ] || { echo "no saved state for run $RUN"; exit 1; }
+          for k in $keys; do gh cache delete "$k" -R "$GITHUB_REPOSITORY"; echo "dropped $k"; done
       - name: Restore the desk's encrypted state
+        id: restore
         if: steps.cfg.outputs.ok == 'true'
         uses: actions/cache/restore@v4
         with:
           path: data/cloud
           key: desk-state-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: desk-state-
-      - name: Run the desk
+      - name: Restore again if GitHub's cache service failed
+        id: restore2
+        if: steps.cfg.outputs.ok == 'true' && steps.restore.outputs.cache-matched-key == ''
+        uses: actions/cache/restore@v4
+        with:
+          path: data/cloud
+          key: desk-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: desk-state-
+      - name: Saved state reachable?
+        id: state
         if: steps.cfg.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MATCHED: ${{ steps.restore.outputs.cache-matched-key }}${{ steps.restore2.outputs.cache-matched-key }}
+        run: |
+          if [ -n "$MATCHED" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          n=$(gh cache list -R "$GITHUB_REPOSITORY" --key desk-state- --limit 5 --json key --jq length 2>/dev/null) || n="?"
+          if [ "$n" = "0" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"      # no saved state anywhere: the desk restores its newest backup
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo '{"state": "skipped", "why": "saved state unreachable (GitHub cache service); nothing sent"}'
+          fi
+      - name: Run the desk
+        if: steps.cfg.outputs.ok == 'true' && steps.state.outputs.ok == 'true'
         env:
           TASK: ${{ github.event.inputs.task || 'run' }}
           REPLY: ${{ github.event.inputs.reply }}
           LEAD: ${{ github.event.inputs.lead }}
           NOTE: ${{ github.event.inputs.note }}
         run: |
+          if [ "$TASK" = "forget" ]; then TASK=run; fi
           set -- --task "$TASK"
           if [ -n "$REPLY" ]; then set -- "$@" --approve "$REPLY"; fi
           if [ -n "$LEAD" ]; then set -- "$@" --lead "$LEAD"; fi
           if [ -n "$NOTE" ]; then set -- "$@" --note "$NOTE"; fi
           python manage.py cloud --run "$@" 2>/dev/null
       - name: Save the desk's encrypted state
-        if: always() && steps.cfg.outputs.ok == 'true' && hashFiles('data/cloud/state.enc') != ''
+        if: always() && steps.cfg.outputs.ok == 'true' && steps.state.outputs.ok == 'true' && hashFiles('data/cloud/state.enc') != ''
         uses: actions/cache/save@v4
         with:
           path: data/cloud
           key: desk-state-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Start the next run in a few minutes
-        if: always() && steps.cfg.outputs.ok == 'true'
+        if: always() && steps.cfg.outputs.ok == 'true' && steps.forget.outcome != 'failure'   # a failed forget stops here
         env:
           GH_TOKEN: ${{ github.token }}
           STARTED: ${{ steps.clock.outputs.started }}
