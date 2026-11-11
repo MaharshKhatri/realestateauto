@@ -40,7 +40,9 @@ NO_PRICE_VERDICTS = {"PASS", "FRFPA_BLOCKED", "EQUITY_RESCUE_REFERRAL", "SHORT_S
 INTENTS = ("COUNTER", "ACCEPT", "REJECT", "AVAILABLE", "UNDER_CONTRACT", "POF_REQUEST", "HIGHEST_AND_BEST", "OIL_TANK",
            "TENANTS", "CO", "SHORT_SALE", "ESTATE", "OPT_OUT", "QUESTION",
            # what an agent adds to "it's available" (2026-11-02 live replies); Touch 2 answers each in its first line
-           "ASKS_ROLE", "ASKS_SHOWING", "CALL_ME", "BACKUP", "EXPIRED")
+           "ASKS_ROLE", "ASKS_SHOWING", "CALL_ME", "BACKUP", "EXPIRED",
+           # "Price is firm. but might have some other things for you" (2026-11-11, 158 W 8th St): a source of more houses
+           "OTHER_LISTINGS")
 TOUCH2_FLAGS = ("ASKS_ROLE", "ASKS_SHOWING", "CALL_ME", "BACKUP")
 
 # -- amounts ------------------------------------------------------------------------------------------
@@ -201,6 +203,12 @@ PHRASES: dict[str, list[str]] = {
                 # "The house was withdrawn" (Asher, Nov 5): pulled off the market, not sold (it was read as under
                 # contract and got "congratulations")
                 r"\bwithdr[ae]wn?\b", r"taken off the market", r"took it off the market"],
+    "OTHER_LISTINGS": [r"\b(?:have|has|got|get) (?:some |a few |a couple(?: of)? |several |more |any )?other "
+                       r"(?:things|listings?|propert(?:y|ies)|houses?|homes?|deals?|ones|options)\b",
+                       r"\b(?:something|anything) (?:else )?(?:coming up )?for you\b", r"\bothers? for you\b",
+                       r"\bkeep you in mind\b", r"\bpocket listings?\b",
+                       r"\b(?:send|pass along|forward|shoot) you (?:others|other (?:listings?|propert(?:y|ies)|deals|ones)|"
+                       r"anything (?:else|that comes))"],
     "QUESTION": [r"\?", r"who are you", r"are you (an |a )?(agent|realtor|broker|investor|wholesaler)", r"how (do|does) (this|that) work",
                  r"what('s| is) your (company|name)", r"tell me more"],
 }
@@ -1061,6 +1069,11 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
             an.actions.insert(0, "They asked for a call: the written numbers go first, then call them at the follow-up time "
                                  "(it is on your calendar).")
         return an
+    others = (["And yes, please send me the others: I buy houses that need work, as-is, and with the address and price "
+               "I'll get back to you the same day."] if "OTHER_LISTINGS" in intents else [])
+    if others:
+        an.actions.insert(0, "They offered other listings: mark them as a VIP agent (sealed note {\"vip_agent\": "
+                             "<their e-mail>}) so the addresses they send are priced.")
     ask = nums.get("ask")
     if "REJECT" in intents and not nums.get("last_offer") and ask and \
             adj_walk < float(ncfg.get("state_ceiling_min_pct", 0.80)) * float(ask):
@@ -1069,7 +1082,7 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         an.verdict, an.headline = "RED", f"NOT NOW: NO NUMBER, CHECK BACK IN {days} DAYS"
         sentences = ["Understood, and thanks for the quick answer.",
                      f"If the seller's thinking changes I can close cash, as-is, with no financing contingency; mind if I "
-                     f"check back in about {days} days?"]
+                     f"check back in about {days} days?"] + others
         an.reply_text, an.style = _compose(an.reply_subject, first, sentences, hc.footer_lines(op), op, hc.DETAILS)
         an.sms_text = f"Hi {first}, it's {me}. Understood on {st}; OK if I check back in a few weeks?" + sms_tail
         an.actions = [f"No number sent; check-in set for {days} days."] + an.actions
@@ -1081,10 +1094,12 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
         sentences = ["Understood, and thanks for the quick answer.",
                      f"For what it's worth my ceiling is {hc.money(adj_walk)} cash, as-is, with no financing contingency.",
                      "If the seller's thinking changes I'm glad to put it in writing."]
+        if others:
+            sentences[-1:] = others
         if _backup_context(session, lead, intents):
             sentences = ["Understood, thanks for letting me know.",
                          f"If the current deal falls through, my ceiling is {hc.money(adj_walk)} cash, as-is, with no "
-                         "financing or appraisal contingency, and I can move fast."]
+                         "financing or appraisal contingency, and I can move fast."] + others
             an.headline = f"BACKUP AT {hc.money(adj_walk)}: they turned it down for now"
         priced_reply(adj_walk, sentences, [])
         an.sms_text = f"Hi {first}, it's {me}. Understood on {st}; my ceiling stays {hc.money(adj_walk)} cash, as-is, if anything changes." + sms_tail

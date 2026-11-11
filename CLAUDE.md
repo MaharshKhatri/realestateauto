@@ -1061,6 +1061,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - "We just arip'd it" (ARIP = attorney review in progress) reads as under contract, and "feel free to show for
     backup" / "as a backup" as BACKUP (which wins, so the backup offer can go out). 2026-11-06, 5 Linden St.
     "Are you interested in a tour?" is ASKS_SHOWING (photos / video first), not an open question.
+    "Price is firm. but might have some other things for you" (2026-11-11, 158 W 8th St) is OTHER_LISTINGS: the "not now"
+    / hold answer adds "yes, please send me the others ... the same day" and the actions say to mark the agent VIP; a
+    "still available" that also offers other listings waits for a person (not in `AUTO_OK_INTENTS`).
     "Just started review" / "currently in review" is under contract (it answers our opener's "or already in attorney
     review?"); "your offer is in review with the seller" is not. "I anticipate it not being anything the seller would
     consider" / "won't even consider" is a no. A call slot set by a bounce is titled "📞 Call <agent> about <street>

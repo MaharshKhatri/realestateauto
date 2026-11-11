@@ -550,3 +550,20 @@ def test_under_contract_answer_claims_a_number_only_when_one_was_sent(db, operat
     lead.offer_amount = 245300
     b = rn.analyze(db, lead, "Sellers just accepted an offer.")
     assert "my number is still good" in b.reply_text
+
+
+def test_offer_of_other_listings_is_taken_up(db, operator):
+    """2026-11-11, 158 W 8th St: "This probably wont work then. Price is firm. but might have some other things for you"
+    got only "mind if I check back in about 30 days?". An agent offering more houses gets a yes, send them."""
+    text = "This probably wont work then. Price is firm. but might have some other things for you"
+    assert "OTHER_LISTINGS" in rn.parse_reply(text).intents
+    for t in ("I'll keep you in mind if anything comes up", "I have a few other listings that need work",
+              "I might have something else for you next month"):
+        assert "OTHER_LISTINGS" in rn.parse_reply(t).intents, t
+    for t in ("We have other offers on it", "I have a few others interested", "Other buyers are looking at it",
+              "Still available"):
+        assert "OTHER_LISTINGS" not in rn.parse_reply(t).intents, t
+    a = rn.analyze(db, listed(db), text, now=datetime(2026, 10, 20, 9, 0))
+    body = a.reply_text.split("---")[0]
+    assert a.verdict == "RED" and "please send me the others" in body and hc.lint(a.reply_text) == []
+    assert any("VIP" in x for x in a.actions)
