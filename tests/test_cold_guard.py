@@ -91,8 +91,9 @@ def test_a_streams_own_repitch_gives_way_to_the_nudges(live):
 
 
 # -- ramp --------------------------------------------------------------------------------------------------------------
-def test_first_touches_ramp_by_week(live):
+def test_first_touches_ramp_by_week(live, monkeypatch):
     db = live
+    monkeypatch.setitem(settings(), "research_firm", {**settings()["research_firm"], "ramp": [20, 30]})
     assert cold_guard.first_touch_cap(db, 30, date(2026, 11, 10)) == 20       # nothing sent yet: week 1
     t = target(db)
     _sent_pitch(db, t, 2)

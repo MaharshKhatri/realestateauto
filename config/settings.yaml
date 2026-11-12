@@ -397,8 +397,8 @@ research_firm:
                                      # at full ramp (operator, 2026-11-10: stay on the personal Gmail at $0 with 2-sentence
                                      # plain-text openers, no attachments on Touch 1); with the 15 listing-agent openers
                                      # that is ~45 cold first touches a day.
-  ramp: [20, 30]                     # first touches a day by week since the first B2B pitch (2026-11-09): 20 this week,
-                                     # 30 from week 2 (engine/cold_guard.py); [] = the caps from day 1
+  ramp: [30]                         # first touches a day by week since the first B2B pitch (2026-11-09), e.g. [20, 30]
+                                     # (engine/cold_guard.py); [] = the caps from day 1. Operator 2026-11-12: 30 a day now
   bounce_pause_count: 5              # operator 2026-11-10: pause cold mail only when 5+ bounces ...
   bounce_pause_rate: 0.08            # ... AND > 8% of the window's cold sends (dead domains are skipped first, never sent)
   bounce_window_days: 7

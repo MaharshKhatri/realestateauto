@@ -1232,7 +1232,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
       the payment link (`payment_link(s)`, empty until the operator makes a Stripe Payment Link) and a TRIAL / PAYING
       target gets the full weekly report by itself (`deliver`). A reply is filed under the stream of the message it
       answers, and a yes releases only that stream's sample.
-    - **Volume** (`engine/cold_guard.py`): `ramp` [20, 30] first touches a day by week since the first B2B pitch
+    - **Volume** (`engine/cold_guard.py`): `ramp` first touches a day by week since the first B2B pitch ([30] since 2026-11-12, the operator's yes; was [20, 30])
       (2026-11-09), never above p2 + p3; one cold send every 8-15 minutes at random (`cold_gap_minutes`); no attorney /
       CPA / cost-seg / 1031 cold mail after 6 PM or on a Friday afternoon (`professional_last_hour`).
     - **Stop rules** (operator 2026-11-10): every e-mail's domain is checked in DNS before it goes
