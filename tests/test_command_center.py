@@ -393,3 +393,22 @@ def test_phase6_endpoints_reply_structure_skiptrace_and_first_touch(db, client, 
     assert t["saved"]["best_phone"] == "(973) 555-0101" and t["ready_to_call"] and t["stage"] == "SKIP_TRACE"
     assert client.post("/api/leads/999999/skiptrace-paste", json={"text": text}).status_code == 404
     assert all(x["lead_id"] != owner.id for x in client.get("/api/skiptrace/queue").json()["rows"])
+
+
+def test_a_later_reply_never_gets_the_opening_touch2_again(db, setup_paths):
+    """2026-11-12, 181 Central Ave: opener, her "available", our max, her "no"; eight days later the follow-up came due and
+    the morning batch sent "Thanks for getting back to me ... what would the seller need to net?" ("we went thru this")."""
+    operator_setup.save(GOOD)
+    lead = deal(db)
+    ap.send(db, lead.id, "mailto", now=datetime(2026, 10, 20, 9, 0))
+    db.add(Interaction(lead_id=lead.id, channel="email_in", outcome="AGENT_REPLIED", notes="still available",
+                       occurred_at=datetime(2026, 10, 20, 12, 0)))
+    db.add(Interaction(lead_id=lead.id, channel="email_gmail", outcome="AGENT_FOLLOWUP_SENT", notes="my max is ...",
+                       occurred_at=datetime(2026, 10, 20, 13, 0)))
+    db.add(Interaction(lead_id=lead.id, channel="email_in", outcome="AGENT_REPLIED", notes="two offers over 5, so no",
+                       occurred_at=datetime(2026, 10, 20, 14, 0)))
+    lead.next_followup_at = datetime(2026, 10, 28, 10, 0)
+    db.flush()
+    assert ap.build_card(db, lead, now=datetime(2026, 10, 28, 11, 0)) is None
+    from engine import agent_outreach as ao
+    assert ao.past_touch2(db, lead)

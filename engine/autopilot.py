@@ -234,6 +234,10 @@ def build_card(session: Session, lead: Lead, now: datetime | None = None) -> dic
     except ValueError:
         return None
     if last == "reply" and packet.kind != "opener":
+        if ao.past_touch2(session, lead):
+            # The thread is past the opener (our answer went out after their first reply): its latest message belongs to
+            # the reply desk (Action Needed / the chat), never to the batch's opening Touch 2.
+            return None
         return _card(session, lead, packet, "touch2", lf)             # they answered the opener: Touch 2
     if due and lead.last_contact_at:
         base = ao.build_opener(lead) if last == "opener" else packet   # unanswered opener: the one-line nudge

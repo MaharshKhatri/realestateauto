@@ -1033,6 +1033,10 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     TODAY"), and due follow-ups are ranked conversations first (the agent replied or a call reached them), then oldest
     due (`call_sheet._talked`): 2026-11-09, 19 of 100 rows were skips while 19 fresh follow-ups and three promised
     call-backs got separate 10:00 events;
+  - Touch 2 ("Thanks for getting back to me on ...") answers only the agent's FIRST reply: once any e-mail of ours went out
+    after it (`agent_outreach.past_touch2`), a later reply's card is never the batch's opening Touch 2 (`autopilot.build_card`
+    returns None; the reply desk / the chat owns it). 2026-11-12, 181 Central Ave: our max, her "no", and eight days later
+    the 10:30 batch sent "what would the seller need to net?" ("Hi we went thru this already");
   - the ask-first note ("what would the seller need to net?") goes out once per lead (`asked_net_before`): an agent who
     answers "please submit an offer in writing" waits for a number or the one fact the number needs (2026-11-05, Tracy);
   - a lead's fact question (beds / baths / sqft, rent roll, unit sales + HOA) goes out once: `asked_facts_before` keeps

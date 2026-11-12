@@ -446,6 +446,20 @@ def last_touch(session: Session, lead: Lead) -> str | None:
         "AGENT_FOLLOWUP_SENT": "followup"}.get(inter.outcome)
 
 
+def past_touch2(session: Session, lead: Lead) -> bool:
+    """The conversation went past the opener: one of our e-mails to the agent went out after their first answer.
+
+    Touch 2 ("Thanks for getting back to me on ...") answers the agent's FIRST reply. 2026-11-12, 181 Central Ave: the
+    agent had asked our max, been told it, and said no; eight days later her follow-up came due and the morning batch
+    sent the opening "what would the seller need to net?" note again ("Hi we went thru this already")."""
+    first = session.scalar(select(func.min(Interaction.occurred_at)).where(
+        Interaction.lead_id == lead.id, Interaction.outcome == REPLY_OUTCOME))
+    if first is None:
+        return False
+    return bool(session.scalar(select(func.count(Interaction.id)).where(
+        Interaction.lead_id == lead.id, Interaction.outcome.in_(TOUCH_OUTCOMES), Interaction.occurred_at > first)))
+
+
 def build_opener(lead: Lead, agent: Contact | None = None) -> AgentPacket:
     """Touch 1: the two-line availability question. No price, no links, no attachment, no formatting.
 
