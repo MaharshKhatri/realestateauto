@@ -291,3 +291,13 @@ def test_a_sealed_note_undoes_a_bounce_logged_by_mistake(live, quick):
     assert cold_guard.paused(db) is None and "info@slow.example" not in ao.bounced_emails(db)
     assert "gone0@firm.example" in ao.bounced_emails(db)
     assert db.get(FirmTarget, t.id).stage == "CONTACTED"
+
+
+def test_the_public_log_names_the_kind_of_pause_only():
+    from engine import swarm_firm
+    assert swarm_firm.pause_kind("cold e-mail paused until 2026-11-20T10:00 (5.7.1)") == "gmail_block"
+    assert swarm_firm.pause_kind("6 bounces to 60 cold e-mails (10%) in 7 days: cold e-mail waits") == "bounces"
+    st = {"mrr": 0, "sent_24h": 0, "waiting": 0, "warm": 0, "streams": [],
+          "cold_paused": "6 bounces to 60 cold e-mails (10%) in 7 days"}
+    out = swarm_firm.flat(st)
+    assert out["cold_paused"] == "bounces" and "60" not in str(out)

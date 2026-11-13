@@ -291,6 +291,11 @@ def status(session: Any, now: datetime | None = None) -> dict[str, Any]:
             "first_touch_cap": cold_guard.first_touch_cap(session, ceiling)}
 
 
+def pause_kind(reason: str) -> str:
+    """'gmail_block' for a Gmail warning code pause, 'bounces' for the bounce-rate rule (cold_guard.paused)."""
+    return "gmail_block" if str(reason).startswith("cold e-mail paused until") else "bounces"
+
+
 def flat(st: dict[str, Any]) -> dict[str, Any]:
     """Counts only, for the public run log: {"s3_found": 12, ...}."""
     out: dict[str, Any] = {"firm_mrr": int(st["mrr"]), "firm_sent_24h": st["sent_24h"],
@@ -298,7 +303,9 @@ def flat(st: dict[str, Any]) -> dict[str, Any]:
     if st.get("first_touch_cap") is not None:
         out["firm_touch_cap"] = st["first_touch_cap"]
     if st.get("cold_paused"):
-        out["cold_paused"] = 1                           # the reason stays off the public log (it may name a count)
+        # the kind only (no counts, no addresses): a Gmail spam / rate code stops cold mail for 7 days, the bounce rule
+        # until the rate drops, so the check-in knows which fix applies
+        out["cold_paused"] = pause_kind(st["cold_paused"])
     if st.get("quiet_inbox"):
         out["quiet_inbox"] = 1
     for r in st["streams"]:
