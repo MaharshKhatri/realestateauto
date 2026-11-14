@@ -40,3 +40,9 @@ def test_cold_candidates_are_clone_deals_only_best_first(db, monkeypatch):
     db.commit()
     ids = [ld.id for ld in ao.candidates(db, 10)]
     assert ids[0] == good.id and low.id not in ids
+
+
+def test_an_offer_at_or_above_the_ask_is_a_comps_check_not_the_best_score(db):
+    hi = _listed(db, ask=429000, buyer_max=460000, text="Needs work.")
+    s = ls.score(db, hi)
+    assert any("check the comps" in k for k in s.parts) and s.parts[next(k for k in s.parts if "check" in k)] == 12

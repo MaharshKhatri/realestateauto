@@ -97,7 +97,11 @@ def score(session: Session, lead: Lead) -> CloneScore:
     lo, hi = (float(x) for x in (c.get("corridor") or [0.78, 0.90]))
     parts: dict[str, float] = {}
     if r is not None:
-        if r >= hi:
+        if r >= 0.98:
+            # our number at or above the ask usually means the comps are off (2026-11-14 audit: the 90%+ band had 3
+            # houses and 0 replies); the desk checks before stating a number, so it ranks like "just under"
+            parts[f"offer at {r:.0%} of ask (check the comps)"] = w["near"]
+        elif r >= hi:
             parts["offer at 90%+ of ask"] = w["high"]
         elif r >= lo:
             parts[f"offer at {r:.0%} of ask (corridor)"] = w["corridor"] + 5 * (r - lo) / max(hi - lo, 0.01)
