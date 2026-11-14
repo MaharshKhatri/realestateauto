@@ -586,7 +586,8 @@ def flipper_agents(session: Session, limit: int = 50, today: date | None = None)
             a = agents.setdefault(c.email.lower(), {"name": postal_title(c.name) if c.name else "", "company":
                                                     clean(c.company) if c.company else "", "email": c.email.lower(),
                                                     "phone": "", "score": 0.0, "resales": 0, "fixers": 0,
-                                                    "listings": 0, "towns": Counter(), "warm": False})
+                                                    "listings": 0, "towns": Counter(), "counties": Counter(),
+                                                    "warm": False})
             if c.phone and not a["phone"] and not is_fax_contact(c) and not (
                     set(dnc_sources(session, c.phone)) & {"internal", "daniels_law"}):
                 a["phone"] = c.phone
@@ -596,6 +597,7 @@ def flipper_agents(session: Session, limit: int = 50, today: date | None = None)
             a["resale_pts"] = a.get("resale_pts", 0.0) + 5.0 * resale
             a["town_pts"] = a.get("town_pts", 0.0) + (0.5 if fixer else 0.15) * fams
             a["towns"][postal_title(muni_base(p.municipality)) or ""] += 1
+            a["counties"][(p.county or "").strip().title()] += 1
     for e, a in agents.items():
         # volume alone (a team / office inbox with 80 listings) can't outrank a flip resale: town points cap at 12
         a["score"] = a.pop("resale_pts", 0.0) + min(a.pop("town_pts", 0.0), 12.0)
@@ -604,6 +606,7 @@ def flipper_agents(session: Session, limit: int = 50, today: date | None = None)
     rows = sorted(agents.values(), key=lambda a: (-a["score"], -a["resales"], a["email"]))[:limit]
     for a in rows:
         a["towns"] = ", ".join(t for t, _ in a["towns"].most_common(3) if t)
+        a["counties"] = [c for c, _ in a["counties"].most_common() if c]
         a["score"] = round(a["score"], 1)
     return rows
 

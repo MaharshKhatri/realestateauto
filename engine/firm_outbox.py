@@ -235,8 +235,10 @@ def _pitch_block(session: Session, target: FirmTarget, now: datetime | None) -> 
 # Cold kinds carry the solicitation line and List-Unsubscribe. A "buyer_note" (s1: the buy-box question to cash buyers
 # while our offers are live) is its own conversation: it counts against the first-touch caps but never starts or uses
 # up a target's data-product sequence (`touches`).
-FIRST_TOUCH_KINDS = ("pitch", "buyer_note")
-COLD_KINDS = ("pitch", "followup", "buyer_note")
+# A "partner_note" (engine/partner_blast.py, 2026-11-14) is the operator's own short note to a county's buyers and
+# investor agents: cold like a buyer note, but it may go any day 8 AM-8 PM and 45-90 seconds apart.
+FIRST_TOUCH_KINDS = ("pitch", "buyer_note", "partner_note")
+COLD_KINDS = ("pitch", "followup", "buyer_note", "partner_note")
 
 
 # -- the in-thread sequence ---------------------------------------------------------------------------------------
@@ -369,10 +371,10 @@ def caps() -> dict[int, int]:
             PRIORITY_SPECIALTY: int(c.get("p3", 10))}
 
 
-def in_business_hours(now: datetime | None = None) -> bool:
+def in_business_hours(now: datetime | None = None, *, any_day: bool = False) -> bool:
     t = _now(now)
     a, b = (int(x) for x in cfg().get("business_hours", [8, 20]))
-    return t.weekday() < 5 and a <= t.hour < b
+    return (any_day or t.weekday() < 5) and a <= t.hour < b
 
 
 def footer(op: dict[str, str], commercial: bool) -> str:
@@ -396,7 +398,7 @@ def compose(row: FirmOutbox, op: dict[str, str], message_id: str, user: str) -> 
     if row.in_reply_to:
         msg["In-Reply-To"] = row.in_reply_to
         msg["References"] = row.in_reply_to
-    if row.kind in ("pitch", "followup", "sample", "buyer_note"):
+    if row.kind in ("pitch", "followup", "sample", "buyer_note", "partner_note"):
         # one-click opt-out in the mail client (Gmail's sender rules; CAN-SPAM opt-out); an "unsubscribe" reply is
         # read as an opt-out by classify()
         msg["List-Unsubscribe"] = f"<mailto:{user}?subject=unsubscribe>"
@@ -448,6 +450,9 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
     per_run = int(limit if limit is not None else cfg().get("per_run", 6))
     cap = caps()
     biz, replies_ok = in_business_hours(now), in_send_hours(now)
+    biz_any = in_business_hours(now, any_day=True)
+    pg = cfg().get("partner_gap_seconds", [45, 90])
+    partner_gap = timedelta(seconds=random.uniform(float(pg[0]), float(pg[-1])))
     user = os.environ["SMTP_USER"].strip()
     password = clean_app_password(os.environ["SMTP_APP_PASSWORD"])
     op = hc.operator()
@@ -487,13 +492,22 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
             last_cold = s.scalar(select(func.max(FirmOutbox.sent_at)).where(
                 FirmOutbox.status == "sent", FirmOutbox.priority > PRIORITY_REPLY))
             cold_ok = biz and not held and not (last_cold and utcnow() - last_cold < cold_gap)
+            # the operator's partner notes: any day, 45-90 s apart, inside the day's first-touch ceiling
+            last_partner = s.scalar(select(func.max(FirmOutbox.sent_at)).where(
+                FirmOutbox.status == "sent", FirmOutbox.kind == "partner_note"))
+            partner_ok = (biz_any and not held and used[PRIORITY_PITCH] + used[PRIORITY_SPECIALTY]
+                          < cap[PRIORITY_PITCH] + cap[PRIORITY_SPECIALTY]
+                          and not (last_partner and utcnow() - last_partner < partner_gap * 0.9))
             conds = []
+            if partner_ok:
+                conds.append(FirmOutbox.kind == "partner_note")
             if replies_ok and used[PRIORITY_REPLY] < cap[PRIORITY_REPLY]:
                 conds.append(FirmOutbox.priority == PRIORITY_REPLY)
             if cold_ok:
                 pitch_ps = [p for p in (PRIORITY_PITCH, PRIORITY_SPECIALTY) if used[p] < cap[p]]
                 if pitch_ps:
-                    conds.append(FirmOutbox.kind.in_(FIRST_TOUCH_KINDS) & FirmOutbox.priority.in_(pitch_ps))
+                    conds.append(FirmOutbox.kind.in_(FIRST_TOUCH_KINDS) & (FirmOutbox.kind != "partner_note")
+                                 & FirmOutbox.priority.in_(pitch_ps))
                 if nudges_used < nudge_cap:
                     conds.append(FirmOutbox.kind.in_(("followup", "notice")) & (FirmOutbox.priority > PRIORITY_REPLY))
             if not conds:
@@ -525,7 +539,7 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
                 continue
             mid = ao.new_message_id()
             msg = compose(row, op, mid, user)
-            rid = row.id
+            rid, sent_kind = row.id, row.kind
         try:
             with (smtp_factory or ao.smtp_connection)() as smtp:
                 smtp.login(user, password)
@@ -555,7 +569,8 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
                     t.stage = "CONTACTED"            # a buyer note (s1) leaves `touches` alone: no data sequence
         out["sent"] += 1
         if pace and out["sent"] < per_run:
-            time.sleep(random.uniform(*gap))
+            # a partner note waits its own 45-90 s inside the run, so a run can send the next one
+            time.sleep(partner_gap.total_seconds() if sent_kind == "partner_note" else random.uniform(*gap))
     return out
 
 

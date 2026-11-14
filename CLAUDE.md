@@ -182,6 +182,8 @@ engine/
                                 every recipient domain, bounce pause (5+ AND > 8% in 7 days, resettable), Gmail block
                                 codes → 7-day pause, quiet-inbox check
   firm_outbox.py / swarm_firm.py / streams/ ← the research firm (see "The 10-stream research firm")
+  partner_blast.py            ← the operator's own short note to a county's best buyers + investor agents (sealed note
+                                `partner_blast`, preview to the operator's inbox, any day 8-8, 45-90 s apart)
   clipboard_skiptrace.py      ← Fast Skip-Trace Mode: queue (exempt estates → vacant sheriff → lis pendens → absentee),
                                 parse pasted people-search pages (never fetched), rank, DNC scrub, save, READY flip
   operator_setup.py           ← My Setup: validate + write settings.local.yaml and .env (password never returned)
@@ -1260,6 +1262,22 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     - **Agents never get our numbers**: a listing agent's digest (s2 `audience="agent"`) shows listing / public-record
       facts only (no ARV, repairs, max buy, room: a value for a licensee is a CMA, REC Bulletin 13-05); a buyer's own
       digest keeps them as screening arithmetic for their own bid (N.J.S.A. 45:14F-21(c)).
+  - **Partner notes** (2026-11-14, `engine/partner_blast.py`; the operator needs a co-buyer for the Asbury Park
+    deposit by Tuesday): a sealed note item `{"partner_blast": {"county", "limit", "subject", "buyer_body",
+    "agent_body", "key", "preview", "recent_days", "exclude", "buyer_share"}}` picks the county's best cash buyers /
+    flippers (firm targets whose area is the county, `s1.target_counties`) and then the listing agents closest to the
+    flippers there (`deal_desk.flipper_agents`, which now lists each agent's `counties`), about half each. Never: a
+    stop-listed / bounced / closed address, an agent in deal talks, the listing agents of our live offers or anyone
+    at their brokerage's own domain, an open reply, a target already in a conversation (stage past CONTACTED), anyone
+    e-mailed in `recent_days` (3), anyone this `key` already reached. Each gets the operator's own words (greeted by
+    first name when a person, signed with the first name), queued as `kind="partner_note"` (stream s1, cold: ad line,
+    postal address, "no more", List-Unsubscribe, DNS check, bounce pause), sent ANY day 8 AM-8 PM (the operator's
+    call), 45-90 s apart (`partner_gap_seconds`), inside the day's first-touch ceiling; its other queued first touches
+    step aside ("partner note sent instead"). `preview: true` queues nothing and mails the list to the operator's own
+    inbox ("[njw-blast] <date> <county> preview") for Claude to check in Gmail; the run log has counts only
+    (`blast_picked` / `blast_buyers` / `blast_agents` / `blast_queued` / `blast_preview_mailed`). `firm_target` items in
+    the same note are applied first, so researched firms are candidates. Copy rule: no address, no house's price, a
+    rounded band only (N.J.S.A. 45:15-3), and never a claim of a partner or proof of funds we don't have (CFA).
   - **B2B replies**: the inbox check (`gmail_autopilot.poll_gmail_replies`) downloads a message matched to a pitch's
     Message-ID, or from a pitched address that isn't in a lead thread, into `firm_replies` (`firm_outbox.handle_reply`):
     `classify` -> opt_out (target OPTED_OUT at once) / not_interested (LOST) / interested (INTERESTED, a warm action) /

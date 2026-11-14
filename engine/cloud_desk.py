@@ -705,6 +705,26 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         except Exception as exc:                   # noqa: BLE001 - reported by name only
             errors.append(type(exc).__name__)
         items = [i for i in items if i is not item]
+    blast: dict[str, int] = {}
+    for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("partner_blast"), dict)]:
+        # The operator's own short note to a county's best buyers and investor agents (engine/partner_blast.py),
+        # after any firm_target items above (so researched firms are candidates). "preview" mails the list to the
+        # operator's own inbox and queues nothing; the public log gets counts only.
+        try:
+            from engine import partner_blast as pb
+            spec = dict(item["partner_blast"])
+            with session_scope() as s:
+                res = pb.queue(s, spec, now=now)
+            text = res.pop("preview_text", None)
+            if text is not None:
+                res["blast_preview_mailed"] = int(pb.mail_preview(text, str(spec.get("county") or ""),
+                                                                  now or datetime.now(), smtp_factory))
+            for k, v in res.items():
+                blast[k] = blast.get(k, 0) + int(v)
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
+            errors.append(type(exc).__name__)
+        items = [i for i in items if i is not item]
     codes = [i for i in items if isinstance(i, dict) and i.get("code")]
     if codes:
         # Call-block results ("A07 vm", "A04 340"): resolved on that day's frozen call sheet.
@@ -803,7 +823,7 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
             done += 1
         except Exception as exc:                   # noqa: BLE001 - one bad item never stops the rest
             errors.append(type(exc).__name__)
-    out: dict[str, Any] = {"note_done": done}
+    out: dict[str, Any] = {"note_done": done, **blast}
     if facts:
         out["facts_saved"], out["now_firm"] = facts, firmed
     if priced:
