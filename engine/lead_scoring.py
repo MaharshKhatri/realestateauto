@@ -6,8 +6,9 @@ of the ask), so the daily cold e-mail goes to them first and to nothing that can
 The price never changes here: the offer is still the desk's one firm number (`offer_math`, buyer max - $10K, never
 above 90% of the ask). This only reads where that number lands and what the house is:
 
-- the corridor: our offer (buyer max - the target fee) at 78-90% of the ask is where sellers engaged; under
-  `clone.min_offer_ratio` (78%) a cold opener is a lowball the seller won't answer, so it isn't sent;
+- the corridor: our offer (buyer max - the target fee) at 75-94% of the ask (operator 2026-11-14); under it a cold
+  opener is a lowball the seller won't answer (72% only on a day with fewer than 15 corridor candidates); above it
+  our comps are probably off; asks only between $180K and $900K (what local flippers fund);
 - the house: 2-4 units, tenants (retail buyers can't get an owner-occupant loan with a lease in place), estate /
   probate words, a listed foreclosure, 75+ / 120+ days on the market, a price cut, fixer words, a town where investors
   buy (`clone.investor_towns`), the living area on record (a firm number can go out on the first reply);
@@ -67,7 +68,7 @@ def _town(p: Property) -> str:
     return (p.city or re.sub(r"(?i)\s+(city|twp|township|boro|borough|town)$", "", p.municipality or "")).strip().title()
 
 
-def score(session: Session, lead: Lead) -> CloneScore:
+def score(session: Session, lead: Lead, *, floor: float | None = None) -> CloneScore:
     from engine import listing_facts
     from engine import offer_math as om
     from engine.fast_track import is_listed_foreclosure
@@ -94,15 +95,13 @@ def score(session: Session, lead: Lead) -> CloneScore:
     w = {"corridor": 30, "high": 35, "near": 12, "multi": 15, "big": 5, "tenants": 10, "estate": 10,
          "foreclosure": 10, "dom120": 12, "dom75": 8, "cut": 8, "fixer": 10, "town": 8, "sqft": 4,
          **dict(c.get("weights") or {})}
-    lo, hi = (float(x) for x in (c.get("corridor") or [0.78, 0.90]))
+    lo, hi = (float(x) for x in (c.get("corridor") or [0.75, 0.94]))
     parts: dict[str, float] = {}
     if r is not None:
-        if r >= 0.98:
+        if r > hi:
             # our number at or above the ask usually means the comps are off (2026-11-14 audit: the 90%+ band had 3
             # houses and 0 replies); the desk checks before stating a number, so it ranks like "just under"
             parts[f"offer at {r:.0%} of ask (check the comps)"] = w["near"]
-        elif r >= hi:
-            parts["offer at 90%+ of ask"] = w["high"]
         elif r >= lo:
             parts[f"offer at {r:.0%} of ask (corridor)"] = w["corridor"] + 5 * (r - lo) / max(hi - lo, 0.01)
         elif r >= lo - 0.06:
@@ -134,16 +133,42 @@ def score(session: Session, lead: Lead) -> CloneScore:
     out.facts = {"street": (p.street_address or "").title(), "town": _town(p), "county": (p.county or "").title(),
                  "units": units, "ask": ask, "dom": dom, "cut": cut, "condition": cond, "rent_total": rents,
                  "offer": round(r * ask, -2) if r else None}
-    floor = float(c.get("min_offer_ratio", lo))
+    floor = float(floor if floor is not None else c.get("min_offer_ratio", lo))
+    top = float(c.get("max_offer_ratio", hi))
+    lo_ask, hi_ask = float(c.get("min_ask", 0) or 0), float(c.get("max_ask", 0) or 0)
     if cond == "retail":
         out.why_not = "retail / renovated listing"
     elif listing_off_market(p):
         out.why_not = "off the market"
+    elif (lo_ask and ask < lo_ask) or (hi_ask and ask > hi_ask):
+        out.why_not = f"asking {ask:,.0f} is outside ${lo_ask / 1000:.0f}K-${hi_ask / 1000:.0f}K"
     elif r is None or r < floor:
         out.why_not = f"our offer would be {r:.0%} of the ask (under {floor:.0%})" if r else "no offer number"
+    elif r > top:
+        out.why_not = f"our numbers are {r:.0%} of the ask: check the comps before any opener"
     else:
         out.eligible = True
     return out
+
+
+def eligible(session: Session, leads: list[Lead]) -> list[CloneScore]:
+    """Clone deals among `leads`, best first: the 75-94% corridor, plus 72-75% only on a day with fewer than
+    `fallback_when` corridor candidates (those rank after every corridor deal)."""
+    c = cfg()
+    fb = float(c.get("fallback_ratio", c.get("min_offer_ratio", 0.75)))
+    main_floor = float(c.get("min_offer_ratio", 0.75))
+    main, spare = [], []
+    for lead in leads:
+        try:
+            s = score(session, lead, floor=min(fb, main_floor))
+        except Exception:                                   # noqa: BLE001 - an odd record is skipped, never sent
+            continue
+        if not s.eligible:
+            continue
+        (main if (s.ratio or 0) >= main_floor else spare).append(s)
+    main.sort(key=lambda s: (-s.score, -(s.ratio or 0), s.lead_id))
+    spare.sort(key=lambda s: (-s.score, -(s.ratio or 0), s.lead_id))
+    return main + (spare if len(main) < int(c.get("fallback_when", 15)) else [])
 
 
 def listed_leads(session: Session) -> list[Lead]:
@@ -158,15 +183,5 @@ def listed_leads(session: Session) -> list[Lead]:
 
 def rank(session: Session, limit: int = 15, *, uncontacted_only: bool = True) -> list[CloneScore]:
     """The best clone deals, eligible ones only, highest score first (never e-mailed yet, by default)."""
-    out = []
-    for lead in listed_leads(session):
-        if uncontacted_only and lead.last_contact_at:
-            continue
-        try:
-            s = score(session, lead)
-        except Exception:                                   # noqa: BLE001 - one odd record never stops the ranking
-            continue
-        if s.eligible:
-            out.append(s)
-    out.sort(key=lambda s: (-s.score, -(s.ratio or 0), s.lead_id))
-    return out[:limit]
+    leads = [ld for ld in listed_leads(session) if not (uncontacted_only and ld.last_contact_at)]
+    return eligible(session, leads)[:limit]

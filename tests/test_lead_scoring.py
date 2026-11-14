@@ -22,7 +22,7 @@ def test_the_asbury_profile_scores_high_and_lowballs_are_out(db):
     from engine.offer_math import fees
     assert a.eligible and abs(a.ratio - (485900 - fees()[0]) / 535000) < 0.001 and a.score >= 70
     assert {"2 units", "tenants / rents", "estate / probate", "fixer words", "investor town (Asbury Park)"} <= set(a.parts)
-    assert not b.eligible and "under 78%" in b.why_not
+    assert not b.eligible and "under 75%" in b.why_not
     assert not c.eligible and c.why_not == "retail / renovated listing"
     assert [s.lead_id for s in ls.rank(db, 5)] == [clone.id]
 
@@ -46,3 +46,21 @@ def test_an_offer_at_or_above_the_ask_is_a_comps_check_not_the_best_score(db):
     hi = _listed(db, ask=429000, buyer_max=460000, text="Needs work.")
     s = ls.score(db, hi)
     assert any("check the comps" in k for k in s.parts) and s.parts[next(k for k in s.parts if "check" in k)] == 12
+
+
+def test_asks_outside_180k_900k_and_the_72_percent_fallback(db, monkeypatch):
+    """Operator 2026-11-14: $180K-$900K asks only; corridor 75-94%; 72-75% only on a day with fewer than
+    `fallback_when` corridor candidates."""
+    from core.config import settings
+    from engine.offer_math import fees
+    fee = fees()[0]
+    big = _listed(db, ask=1900000, buyer_max=1760000 + fee, text="Estate, as-is.")
+    small = _listed(db, ask=150000, buyer_max=130000 + fee, text="Needs work.")
+    main = _listed(db, ask=500000, buyer_max=400000 + fee, text="Needs work.")          # 80%
+    spare = _listed(db, ask=500000, buyer_max=365000 + fee, text="Needs work.")         # 73%
+    assert "outside $180K-$900K" in ls.score(db, big).why_not
+    assert "outside $180K-$900K" in ls.score(db, small).why_not
+    monkeypatch.setitem(settings(), "clone", {**settings()["clone"], "fallback_when": 1})
+    assert [s.lead_id for s in ls.eligible(db, [main, spare])] == [main.id]               # a full day: no fallback
+    monkeypatch.setitem(settings(), "clone", {**settings()["clone"], "fallback_when": 2})
+    assert [s.lead_id for s in ls.eligible(db, [main, spare])] == [main.id, spare.id]     # a thin day: 72% joins, last

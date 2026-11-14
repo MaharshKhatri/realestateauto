@@ -467,8 +467,13 @@ clone:
   # shaped like the deals that said yes (1102 4th Ave: 89% of ask, tenant-occupied 2-family; 1534 Asbury Ave; 1708 Heck
   # Ave: 88%). The price is still offer_math's one firm number; this decides who gets a cold e-mail and in what order.
   enabled: true
-  min_offer_ratio: 0.78            # our offer (buyer max - target fee) under 78% of the ask: no cold opener
-  corridor: [0.78, 0.90]
+  min_offer_ratio: 0.75            # our offer (buyer max - target fee) under 75% of the ask: no cold opener
+  max_offer_ratio: 0.94            # above 94% of the ask our comps are probably off: check them before any opener
+  fallback_ratio: 0.72             # ...down to 72% only on days with fewer than `fallback_when` candidates at 75-94%
+  fallback_when: 15
+  corridor: [0.75, 0.94]           # operator 2026-11-14
+  min_ask: 180000                  # $180K-$900K asks: what local flippers fund (a $1.9M estate isn't a clone)
+  max_ask: 900000
   investor_towns: [Asbury Park, Neptune, Neptune City, Long Branch, Keansburg, New Brunswick, Edison, Plainfield,
                    Rahway, Linden, Elizabeth, Garfield, Paterson, Passaic, Irvington, Newark, East Orange, Orange,
                    Jersey City, Bayonne, Perth Amboy, Trenton, Union, Hillside, Roselle, Woodbridge, Carteret, Sayreville]

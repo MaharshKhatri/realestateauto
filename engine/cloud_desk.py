@@ -706,6 +706,9 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
             errors.append(type(exc).__name__)
         items = [i for i in items if i is not item]
     blast: dict[str, int] = {}
+    # briefs run last, after any facts in the same note were saved and the house re-valued
+    briefs = [i for i in items if isinstance(i, dict) and i.get("brief")]
+    items = [i for i in items if not (isinstance(i, dict) and i.get("brief"))]
     for item in [i for i in items if isinstance(i, dict) and isinstance(i.get("partner_blast"), dict)]:
         # The operator's own short note to a county's best buyers and investor agents (engine/partner_blast.py),
         # after any firm_target items above (so researched firms are candidates). "preview" mails the list to the
@@ -773,6 +776,17 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                     c.company = c.company or (base.company if base else None)
                     c.confidence_score = max(float(c.confidence_score or 0), 0.95)
                     s.flush()
+                if item.get("offer_on_table"):
+                    # An offer already made (by e-mail or on a call) that the desk's record lacks (2026-11-14, 1708 Heck
+                    # Ave: $397,400 with Connie): kept as the written offer, never lowered, and the lead is negotiating.
+                    amt = float(str(item["offer_on_table"]).replace(",", "").replace("$", ""))
+                    if not lead.offer_amount or amt > float(lead.offer_amount):
+                        lead.offer_amount = amt
+                    if str(lead.status_stage or "") not in ("UNDER_CONTRACT", "ASSIGNED", "CLOSED", "DEAD"):
+                        lead.status_stage = "NEGOTIATING"
+                    if (item.get("notes") or "").strip() and not item.get("call"):
+                        stamp = gm.now_eastern(now).strftime("%Y-%m-%d")
+                        lead.notes = f"{lead.notes or ''}\n{stamp}: {str(item['notes'])[:600]}".strip()[-4000:]
                 if item.get("sqft") or item.get("beds") or item.get("baths"):
                     # Facts an agent gave us (2026-11-06: "2 beds, 2 full baths" by e-mail, the size on a call): most
                     # "agree to nothing" rows wait only on the living area. Saved on the property and the house is
@@ -807,8 +821,12 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                         price = float(price.replace(",", ""))
                     gm.send_custom_reply(s, lead_id, text, price=price, now=now,
                                          smtp_factory=smtp_factory, to=new_email or None, allow_over_walkaway=over)
-                if (item.get("close_replies") or "").strip():
-                    gm.close_open_replies(s, lead_id, "closed from the chat: " + str(item["close_replies"])[:120])
+                close = item.get("close_replies")
+                if close:
+                    # a reason string, or true (2026-11-14: a boolean here crashed after the reply had gone out, which
+                    # rolled back the record of a sent e-mail)
+                    why_closed = close.strip() if isinstance(close, str) else "settled"
+                    gm.close_open_replies(s, lead_id, "closed from the chat: " + why_closed[:120])
                 if item.get("followup_at") and not item.get("call"):
                     # A reply with no call: the next touch is this date (a 30-day check-in the agent agreed to).
                     lead.next_followup_at = datetime.fromisoformat(item["followup_at"]).replace(tzinfo=None)
@@ -822,6 +840,20 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
                                  followup_at=when, debrief={"source": "chat_note"})
             done += 1
         except Exception as exc:                   # noqa: BLE001 - one bad item never stops the rest
+            errors.append(type(exc).__name__)
+    for item in briefs:
+        # A house's full numbers for a call (2026-11-14, 4 Richard Ter before the operator calls the agent's partner):
+        # the brief names agents and streets, so it goes to the operator's own inbox ("[njw-brief] <street>").
+        try:
+            from engine import ceo_audit
+            with session_scope() as s:
+                lead_id = gm.resolve_lead(s, str(item["brief"]))
+                text = ceo_audit.brief(s, s.get(Lead, lead_id))
+            if ceo_audit.mail(text, now or datetime.now(), smtp_factory,
+                              subject=f"[njw-brief] {str(item['brief'])[:60]}"):
+                blast["briefs_mailed"] = blast.get("briefs_mailed", 0) + 1
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
             errors.append(type(exc).__name__)
     out: dict[str, Any] = {"note_done": done, **blast}
     if facts:

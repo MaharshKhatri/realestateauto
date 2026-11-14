@@ -170,16 +170,8 @@ def candidates(session: Session, top: int = 50) -> list[Lead]:
         # best clone first. Due follow-ups and agent replies reach the deck through their own lists, so a lead in a
         # conversation is always answered; this list is only cold touches.
         from engine import lead_scoring
-        scored = []
-        for lead in leads:
-            try:
-                cs = lead_scoring.score(session, lead)
-            except Exception:                              # noqa: BLE001 - an odd record is skipped, never sent
-                continue
-            if cs.eligible:
-                scored.append((cs.score, lead))
-        scored.sort(key=lambda x: (-x[0], -(x[1].priority_rank_score or 0)))
-        return [lead for _, lead in scored][:top]
+        by_id = {ld.id: ld for ld in leads}
+        return [by_id[cs.lead_id] for cs in lead_scoring.eligible(session, leads)][:top]
 
     def rank(lead: Lead) -> tuple:
         gap = listing_gap(lead)

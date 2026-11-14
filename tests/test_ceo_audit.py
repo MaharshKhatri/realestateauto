@@ -93,3 +93,29 @@ def test_a_reply_answered_an_hour_later_is_not_dropped_and_another_buyers_accept
     rows = {r.lead_id: r for r in ca.lead_rows(db)}
     assert ca.dropped(db, list(rows.values()), utcnow()) == []
     assert rows[other.id].outcome == "dead"
+
+
+def test_a_note_records_an_offer_saves_facts_then_mails_the_brief(db, tmp_path, monkeypatch):
+    """2026-11-14: 1708 Heck Ave's $397,400 recorded as the offer on the table; 4 Richard Ter's 1,784 sq ft saved and
+    re-valued before its brief goes out; a true close_replies no longer crashes after a sent reply."""
+    from engine import cloud_desk as cd
+    from engine import offer_math as om
+    heck = _lead(db, ask=450000, offer=None, intents=("AVAILABLE",))
+    rich = _lead(db, ask=495000, offer=None, intents=("ASKS_SHOWING",))
+    db.commit()
+    monkeypatch.setenv("SMTP_USER", "jordan@example.test")
+    monkeypatch.setenv("SMTP_APP_PASSWORD", "p")
+    sent = []
+    monkeypatch.setattr(cd, "_send_self_files", lambda *a, **k: sent.append((a[2], a[3])))
+    monkeypatch.setattr(om, "firm_up", lambda s, lead, **k: om.FirmOffer(tier="firm", offer=420000, final=425000))
+    hs, rs = heck.property.street_address, rich.property.street_address
+    key = "k" * 32
+    note = cd.seal_note([{"street": hs, "offer_on_table": "397,400", "notes": "seller wants a walkthrough",
+                          "followup_at": "2026-11-16T09:30:00", "close_replies": True},
+                         {"brief": rs}, {"street": rs, "sqft": 1784, "beds": 4, "baths": 2.5}], cd.public_hex(key))
+    out = cd.apply_note(note, key)
+    assert out["note_done"] == 3 and out["briefs_mailed"] == 1 and "note_errors" not in out, out
+    db.expire_all()
+    assert heck.offer_amount == 397400 and heck.status_stage == "NEGOTIATING" and "walkthrough" in heck.notes
+    assert rich.property.sqft == 1784 and sent and sent[0][0].startswith("[njw-brief] ")
+    assert "1784 sq ft" in sent[0][1]                                     # the brief ran after the facts were saved

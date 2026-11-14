@@ -1492,9 +1492,16 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     reply to openers, 17 warm, all price agreements at 82-89% of the ask, 0 warm under 65%; living area on record
     54% vs 38% reply; subscription pitches 1 reply in ~72 sends; s1 buyer notes 2 replies in 20.
   - **Clone score** (`engine/lead_scoring.py`, settings `clone:`): cold listing-agent openers go only where our offer
-    (buyer max - target fee) is at least `min_offer_ratio` (78%) of the ask, never to retail or off-market listings,
-    best score first (corridor 78-90%, 2-4 units, tenants / rents, estate, listed foreclosure, 75+ / 120+ days, price
-    cut, fixer words, `investor_towns`, living area on record), in `agent_outreach.candidates`. The price is untouched.
+    (buyer max - target fee) is 75-94% of the ask (`min_offer_ratio` / `max_offer_ratio`; above it the comps are
+    probably off), 72% only on a day with fewer than `fallback_when` (15) corridor candidates (`lead_scoring.eligible`,
+    ranked after them), asks $180K-$900K (`min_ask` / `max_ask`: what local flippers fund), never retail or off-market,
+    best score first (2-4 units, tenants / rents, estate, listed foreclosure, 75+ / 120+ days, price cut, fixer words,
+    `investor_towns`, living area on record), in `agent_outreach.candidates`. The price is untouched.
+  - **Note items** (2026-11-14): `"offer_on_table": N` on a lead item records an offer already made (e-mail or call) as
+    the written offer (never lowered) and sets the lead NEGOTIATING ("notes" kept on the lead; the audit counts it
+    warm); `{"brief": "<street>"}` mails the house's facts, listing, valuation, comps, firm offer and thread to the
+    operator ("[njw-brief] ..."), after any facts in the same note were saved and re-valued; `close_replies` takes
+    `true` as well as a reason (a boolean had crashed after the reply went out, rolling back the record of a sent e-mail).
   - **Listing facts** (`engine/listing_facts.py`): the living area ("approx 2,400 sq ft", "each unit is 1,100 sq ft"
     x units; never a lot, garage, basement or commercial area, never an estimate) and rents the listing states; a
     stated area is saved (`sqft_source` "listing_text") and the valuation flagged `revalue`, which `offer_math.trickle`

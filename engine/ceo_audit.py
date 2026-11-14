@@ -101,7 +101,7 @@ def _units(n: int) -> str:
 
 
 def classify(intents: set[str], latest: set[str], counter: float | None, offer: float | None, accepted: bool,
-             presenting: bool, replies: int) -> tuple[str, list[str]]:
+             presenting: bool, replies: int, stage: str = "") -> tuple[str, list[str]]:
     """accepted > (the latest reply closes the door) dead > warm > engaged > silent."""
     why: list[str] = []
     if accepted:
@@ -111,6 +111,8 @@ def classify(intents: set[str], latest: set[str], counter: float | None, offer: 
     if latest & DEAD_INTENTS:
         return "dead", sorted(latest & DEAD_INTENTS)
     warm = intents & WARM_INTENTS
+    if stage == "NEGOTIATING" and not warm:
+        warm = {"negotiating (offer on the table)"}
     if warm or presenting or close:
         why = sorted(warm) + (["presenting / forwarding our offer"] if presenting else []) + \
             ([f"counter within 15% ({counter:,.0f})"] if close else [])
@@ -162,7 +164,8 @@ def lead_rows(session: Session, today: datetime | None = None) -> list[Row]:
         offer = float(lead.offer_amount) if lead.offer_amount else None
         ratio = (offer or final) / ask if ask and (offer or final) else None
         v = p.current_valuation
-        outcome, why = classify(intents, latest, counter, offer, accepted, presenting, len(reps))
+        outcome, why = classify(intents, latest, counter, offer, accepted, presenting, len(reps),
+                                str(lead.status_stage or ""))
         agent = next((c.name or c.email or "" for c in lead.contacts if c.contact_type == "LISTING_AGENT"), "")
         rows.append(Row(
             lead_id=lead.id, street=(p.street_address or "").title(), town=(p.city or p.municipality or "").title(),
@@ -304,12 +307,67 @@ def build(session: Session, now: datetime | None = None) -> tuple[str, dict[str,
     return "\n".join(lines), counts
 
 
-def mail(text: str, now: datetime, smtp_factory: Any = None) -> bool:
+def mail(text: str, now: datetime, smtp_factory: Any = None, subject: str | None = None) -> bool:
     import os
 
     from engine.cloud_desk import _send_self_files
     user, pw = os.environ.get("SMTP_USER", "").strip(), os.environ.get("SMTP_APP_PASSWORD", "")
     if not user or not pw:
         return False
-    _send_self_files(user, pw, f"[njw-audit] {now:%Y-%m-%d %H:%M}", text, [], smtp_factory)
+    _send_self_files(user, pw, subject or f"[njw-audit] {now:%Y-%m-%d %H:%M}", text, [], smtp_factory)
     return True
+
+
+def _m(x: Any) -> str:
+    return f"${float(x):,.0f}" if x else "?"
+
+
+def brief(session: Session, lead: Lead) -> str:
+    """One house's numbers for a call: the facts, the listing, our valuation, comps, the firm offer and the thread."""
+    from engine import offer_math as om
+    from engine.underwriter import asking_price
+    p = lead.property
+    v = p.current_valuation
+    a = (v.assumptions_json or {}) if v else {}
+    q = a.get("quant") or {}
+    lst = om.listing_for(session, lead)
+    ask = asking_price(p) or (lst.list_price if lst is not None else None)
+    f = om.firm_offer(lead, session)
+    lines = [f"{(p.street_address or '').title()}, {(p.city or p.municipality or '').title()} ({(p.county or '').title()})",
+             f"  units {p.dwellings or 1}; beds {p.beds or (lst.beds if lst else None) or '?'}; baths "
+             f"{p.baths or (lst.baths if lst else None) or '?'}; living area {p.sqft or (lst.sqft if lst else None) or '?'} "
+             f"sq ft ({p.sqft_source or ('listing' if lst is not None and lst.sqft else 'not on record')}); built "
+             f"{p.year_built or '?'}; lot {p.lot_size or '?'}; taxes {_m(p.annual_taxes)}/yr",
+             f"  ask {_m(ask)}; {lst.days_on_market if lst is not None and lst.days_on_market is not None else '?'} days on "
+             f"market{'; price cut' if lst is not None and lst.price_reduced else ''}",
+             "", "Our numbers:",
+             f"  after-repair value {_m(v.arv_estimate if v else None)}; as-is {_m(getattr(v, 'as_is_value', None))}; "
+             f"repairs {_m(a.get('rehab_estimate') or q.get('rehab'))}; confidence {getattr(v, 'confidence_score', '?')}",
+             f"  investor ceiling (buyer max) {_m(f.buyer_max)}; our offer {_m(f.offer or f.opening)}; best and final "
+             f"{_m(f.final)} ({f.tier}{', ' + str(round((f.reach or 0) * 100)) + '% of ask' if f.reach else ''})",
+             f"  written offer on record: {_m(lead.offer_amount)}"]
+    if f.reasons:
+        lines.append("  not a firm number yet because: " + "; ".join(f.reasons[:4]))
+    comps = sorted((c for c in (v.comps_json or []) if c.get("sold_price")) if v else [],
+                   key=lambda c: -float(c.get("time_adjusted_price") or c.get("sold_price") or 0))
+    if comps:
+        lines += ["", "Comparable sales:"]
+        for c in comps[:8]:
+            lines.append(f"  {c.get('address') or '?'}: {_m(c.get('sold_price'))} on {c.get('sold_date') or '?'}"
+                         f"{', ' + str(c.get('sqft')) + ' sq ft' if c.get('sqft') else ''}"
+                         f"{', ' + str(round(float(c.get('distance_mi')), 2)) + ' mi' if c.get('distance_mi') else ''}"
+                         f"{', ' + str(c.get('bucket')) if c.get('bucket') else ''}")
+    agent = next((c for c in lead.contacts if c.contact_type == "LISTING_AGENT"), None)
+    if agent is not None:
+        lines += ["", f"Listing agent: {agent.name or ''} {('(' + agent.company + ')') if agent.company else ''} "
+                      f"{agent.email or ''} {agent.phone or ''}".rstrip()]
+    reps = sorted((r for r in session.scalars(select(InboundReply).where(InboundReply.lead_id == lead.id))
+                   if r.status not in NOT_REPLIES), key=lambda r: r.created_at or datetime.min)[-5:]
+    if reps:
+        lines += ["", "Their replies (newest last):"]
+        for r in reps:
+            lines.append(f"  {r.created_at:%b %d}: {', '.join(r.intents_json or []) or 'reply'}"
+                         f"{' (their number ' + _m(r.counter_amount) + ')' if r.counter_amount else ''}; {r.headline or ''}")
+    if lst is not None and lst.description:
+        lines += ["", "Listing says: " + " ".join(lst.description.split())[:500]]
+    return "\n".join(lines)
