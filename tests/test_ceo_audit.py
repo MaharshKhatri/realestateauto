@@ -18,8 +18,9 @@ def _lead(db, *, units=1, ask=500000, offer=None, intents=(), counter=None, outc
         ld.offer_amount = offer
     add_contact(db, ld, contact_type=ContactType.LISTING_AGENT, name="Pat Agent", phone=None,
                 email=f"pat{ld.id}@broker.example")
+    from engine.gmail_autopilot import now_eastern                 # interactions are stored in naive Eastern time
     db.add(Interaction(lead_id=ld.id, channel="email", outcome=outcome or "OFFER_SENT_TO_AGENT",
-                       occurred_at=utcnow() - timedelta(hours=hours_ago + 2)))
+                       occurred_at=now_eastern() - timedelta(hours=hours_ago + 2)))
     if intents or counter:
         db.add(InboundReply(message_id=f"<r{ld.id}@b>", lead_id=ld.id, from_email=f"pat{ld.id}@broker.example",
                             status="dismissed", intents_json=list(intents), counter_amount=counter,
@@ -76,3 +77,19 @@ def test_the_desk_task_mails_the_report_and_logs_counts(db, tmp_path, monkeypatc
     out = cd._work("audit", approve_id=None, **kw)
     assert "audit_error" not in out and out["audit_leads"] == 1 and out["audit_mailed"] == 1
     assert sent and sent[0].startswith("[njw-audit] ")
+
+
+def test_a_reply_answered_an_hour_later_is_not_dropped_and_another_buyers_accept_is_dead(live):
+    """Our sends are stored in Eastern time, replies in UTC: a 9:00 ET reply answered at 10:00 ET is answered."""
+    db = live
+    ld = _lead(db, ask=500000, offer=440000, intents=("AVAILABLE",), hours_ago=30)
+    reply = db.query(InboundReply).filter_by(lead_id=ld.id).one()
+    from engine.gmail_autopilot import now_eastern
+    from datetime import timezone
+    sent_e = now_eastern(reply.created_at.replace(tzinfo=timezone.utc)) + timedelta(hours=1)
+    db.add(Interaction(lead_id=ld.id, channel="email_smtp", outcome="AGENT_FOLLOWUP_SENT", occurred_at=sent_e))
+    other = _lead(db, ask=737000, offer=486600, intents=("ACCEPT", "UNDER_CONTRACT"))
+    db.commit()
+    rows = {r.lead_id: r for r in ca.lead_rows(db)}
+    assert ca.dropped(db, list(rows.values()), utcnow()) == []
+    assert rows[other.id].outcome == "dead"

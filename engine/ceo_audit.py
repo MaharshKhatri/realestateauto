@@ -39,6 +39,17 @@ ESTATE_WORDS = re.compile(r"(?i)\b(estate sale|estate|probate|executor|heirs?)\b
 WON = ("UNDER_CONTRACT", "ASSIGNED", "CLOSED_WON")
 
 
+def _eastern(r: InboundReply) -> datetime | None:
+    """When the reply came in, naive Eastern (the convention interactions are stored in; created_at is UTC)."""
+    if r.received_at:
+        return r.received_at
+    if r.created_at is None:
+        return None
+    from engine.gmail_autopilot import now_eastern
+    from datetime import timezone
+    return now_eastern(r.created_at.replace(tzinfo=timezone.utc))
+
+
 @dataclass
 class Row:
     lead_id: int
@@ -131,8 +142,9 @@ def lead_rows(session: Session, today: datetime | None = None) -> list[Row]:
         intents = {i for r in reps for i in (r.intents_json or [])}
         latest = set(reps[-1].intents_json or []) if reps else set()
         counter = next((r.counter_amount for r in reversed(reps) if r.counter_amount), None)
-        accepted = any(i.outcome == "OFFER_ACCEPTED" for i in acts) or "ACCEPT" in intents or \
-            str(lead.status_stage or "") in WON
+        # "accepted the offer ... under contract" in one reply is another buyer's offer (2026-11-13, 86-88 N 8th St)
+        accepted = any(i.outcome == "OFFER_ACCEPTED" for i in acts) or str(lead.status_stage or "") in WON or any(
+            "ACCEPT" in (r.intents_json or []) and "UNDER_CONTRACT" not in (r.intents_json or []) for r in reps)
         presenting = any(i.outcome == "AGENT_WILL_PRESENT_LOI" for i in acts) or any(
             "forward" in str((r.analysis_json or {}).get("notes") or "").lower() for r in reps)
         try:
@@ -164,7 +176,7 @@ def lead_rows(session: Session, today: datetime | None = None) -> list[Row]:
             openers=sum(i.outcome == "AGENT_OPENER_SENT" for i in outs),
             offers=sum(i.outcome == "OFFER_SENT_TO_AGENT" for i in outs), replies=len(reps), intents=sorted(intents),
             counter=counter, outcome=outcome, first_touch=outs[0].occurred_at if outs else None,
-            last_out=outs[-1].occurred_at if outs else None, last_in=reps[-1].created_at if reps else None,
+            last_out=outs[-1].occurred_at if outs else None, last_in=_eastern(reps[-1]) if reps else None,
             agent=agent, why=why))
     return rows
 
@@ -207,12 +219,16 @@ def stream_roi(session: Session) -> list[tuple[str, str, int, int, int]]:
 def dropped(session: Session, rows: list[Row], now: datetime) -> list[str]:
     """Threads where the agent wrote last (6+ hours ago) and nothing of ours went out since, and replies still
     waiting on a person for 12+ hours."""
+    from datetime import timezone
+
+    from engine.gmail_autopilot import now_eastern
+    now_e = now_eastern(now.replace(tzinfo=timezone.utc) if now.tzinfo is None else now)
     out = []
     for r in rows:
         if r.outcome in ("dead",) or not r.last_in:
             continue
-        if (r.last_out is None or r.last_in > r.last_out) and r.last_in < now - timedelta(hours=6):
-            out.append(f"#{r.lead_id} {r.street}, {r.town}: the agent wrote {r.last_in:%b %d %H:%M} UTC, nothing sent "
+        if (r.last_out is None or r.last_in > r.last_out) and r.last_in < now_e - timedelta(hours=6):
+            out.append(f"#{r.lead_id} {r.street}, {r.town}: the agent wrote {r.last_in:%b %d %H:%M} ET, nothing sent "
                        f"since ({', '.join(r.intents) or 'reply'})")
     for rep in session.scalars(select(InboundReply).where(
             InboundReply.status.in_(("needs_approval", "auto_queued")), InboundReply.created_at < now - timedelta(hours=12))):
