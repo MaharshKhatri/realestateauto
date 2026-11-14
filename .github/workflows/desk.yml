@@ -52,6 +52,8 @@ jobs:
       CALL_SHEET: "off"            # PAUSED 2026-11-09: no daily call sheet / call blocks ("on" restores them)
       FIRM: "on"                   # 2026-11-09: the 10-stream research firm (engine/swarm_firm.py); "off" pauses it
       OPENER_WAVES: "9:00,10:30,12:00,13:30,15:00,16:30,18:00"   # 7 waves: each sends its share of what is left
+      OPENER_DAYS: "0-6"           # 2026-11-14 (operator): listing-agent openers every day, weekends too ("agents work all
+                                   # weekend"); B2B cold mail stays weekdays 8 AM-8 PM
     steps:
       - name: Start the clock
         id: clock

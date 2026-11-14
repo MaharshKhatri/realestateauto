@@ -1013,6 +1013,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
   - `DAILY_OPENERS` 35;
   - the refresh's run-all may take 80 minutes before 7 AM and 40 in the day (job timeout 100); a cut-off is not a
     failure (agents commit as they go; the state is saved in `finally`) and the rest of the run still happens;
+  - listing-agent openers go out on the days in `OPENER_DAYS` (desk.yml "0-6" since 2026-11-14, the operator: "agents work
+    all weekend"; default Monday-Friday, `gmail_autopilot.opener_days`); B2B cold mail stays weekdays. A sealed note's
+    `{"firm_reply": "<their e-mail>"}` answers that prospect's newest reply (the id isn't visible in Gmail);
   - three opener waves (`OPENER_WAVES` 10:30, 14:00, 16:30); each sends its share of what is LEFT of the day's
     `DAILY_OPENERS` (swarm_state `sent_total`), so a short morning supply is made up after the calls and the firm-up;
   - a call-sheet lead is held from e-mail only until it is dialed: a reported no-answer / voicemail

@@ -422,6 +422,13 @@ def test_the_daemon_sends_one_paced_batch_per_weekday_after_its_start_time(live,
     assert gm.daily_openers(15, at="10:30", now=mon)["sent"] == 3 and calls == [15]
     assert gm.daily_openers(15, at="10:30", now=mon + timedelta(hours=2)) is None      # once a day
     assert gm.daily_openers(15, at="10:30", now=datetime(2026, 11, 14, 11, 0, tzinfo=TZ)) is None   # Saturday
+    # 2026-11-14: the operator opened weekends to listing-agent openers on the cloud desk (OPENER_DAYS)
+    monkeypatch.setenv("OPENER_DAYS", "0-6")
+    assert gm.opener_days() == set(range(7))
+    monkeypatch.setenv("OPENER_DAYS", "0,1,2,3,4,5")
+    assert 5 in gm.opener_days() and 6 not in gm.opener_days()
+    monkeypatch.delenv("OPENER_DAYS")
+    assert gm.opener_days() == {0, 1, 2, 3, 4}
     assert gm.daily_openers(15, at="10:30", now=datetime(2026, 11, 10, 21, 0, tzinfo=TZ)) is None   # after send hours
     assert gm.daily_openers(15, at="10:30", now=datetime(2026, 11, 10, 10, 31, tzinfo=TZ))["sent"] == 3
     assert calls == [15, 15]

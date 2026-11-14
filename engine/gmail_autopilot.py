@@ -1896,6 +1896,23 @@ def resolve_reply(session: Session, ref: Any) -> int:
 DAILY_KEY = "daemon_daily_openers"
 
 
+def opener_days() -> set[int]:
+    """Weekdays (Monday = 0) the cold opener batch may go out: OPENER_DAYS ("0-5", "0,1,2,3,4,5,6") on the cloud desk,
+    else `outreach.opener_days`, else Monday-Friday. 2026-11-14: the operator opened Saturday and Sunday to listing-agent
+    openers ("agents work all weekend"); B2B cold mail stays weekdays (firm_outbox business hours)."""
+    raw = os.environ.get("OPENER_DAYS") or (settings().get("outreach") or {}).get("opener_days")
+    days: set[int] = set()
+    for part in (raw if isinstance(raw, list) else str(raw or "").split(",")):
+        part = str(part).strip()
+        if "-" in part:
+            a, _, b = part.partition("-")
+            if a.strip().isdigit() and b.strip().isdigit():
+                days |= set(range(int(a), int(b) + 1))
+        elif part.isdigit():
+            days.add(int(part))
+    return {d for d in days if 0 <= d <= 6} or {0, 1, 2, 3, 4}
+
+
 def daily_openers(limit: int, *, at: str = "10:30", now: datetime | None = None, smtp_factory: Any = None,
                   sleep: Callable[[float], Any] | None = None, background: bool = False) -> dict[str, Any] | None:
     """The weekday cold batch (opt-in: `install-daemon --daily-openers N`; the cloud desk: DAILY_OPENERS). After each
@@ -1913,7 +1930,7 @@ def daily_openers(limit: int, *, at: str = "10:30", now: datetime | None = None,
             continue
         waves.append((hh, mm))
     waves = sorted(set(waves)) or [(10, 30)]
-    if limit <= 0 or t.weekday() >= 5 or not in_send_hours(now):
+    if limit <= 0 or t.weekday() not in opener_days() or not in_send_hours(now):
         return None
     from engine import cold_guard
     with session_scope() as s:

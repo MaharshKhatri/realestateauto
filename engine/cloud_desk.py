@@ -667,12 +667,23 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
         try:
             from engine import firm_outbox as fo
             with session_scope() as s:
-                if item.get("firm_reply"):
+                reply_id = item.get("firm_reply")
+                if reply_id and "@" in str(reply_id):
+                    # {"firm_reply": "<their e-mail>"}: the newest open reply from that address (Claude reads the reply
+                    # in Gmail, where the desk's id isn't visible)
+                    from sqlalchemy import func, select
+                    from db.models import FirmReply
+                    reply_id = s.scalar(select(FirmReply.id).where(
+                        func.lower(FirmReply.from_email) == str(reply_id).strip().lower())
+                        .order_by(FirmReply.status != "new", FirmReply.received_at.desc(), FirmReply.id.desc()).limit(1))
+                    if reply_id is None:
+                        raise ValueError("no firm reply from that address")
+                if reply_id:
                     if (item.get("reply") or "").strip():
-                        fo.answer_reply(s, int(item["firm_reply"]), str(item["reply"]), stage=item.get("stage"), now=now)
+                        fo.answer_reply(s, int(reply_id), str(item["reply"]), stage=item.get("stage"), now=now)
                     else:
                         from db.models import FirmReply, FirmTarget
-                        r = s.get(FirmReply, int(item["firm_reply"]))
+                        r = s.get(FirmReply, int(reply_id))
                         if r is None:
                             raise ValueError("no such firm reply")
                         r.status = "closed"

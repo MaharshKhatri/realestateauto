@@ -434,3 +434,21 @@ def test_cold_first_touches_are_spaced_but_replies_are_not(live, monkeypatch):
     assert r["sent"] == 2                         # the reply + one cold pitch; the second pitch waits for the gap
     db.expire_all()
     assert db.query(FirmOutbox).filter_by(key="g2").one().status == "queued"
+
+
+def test_a_sealed_note_finds_the_firm_reply_by_its_e_mail(live):
+    """2026-11-14: Claude reads a prospect's reply in Gmail, where the desk's reply id isn't shown (Ken at Coldwell
+    Banker asked which Monmouth towns): {"firm_reply": "<their e-mail>"} answers their newest reply."""
+    db = live
+    from engine import cloud_desk as cd
+    t = target(db)
+    fo.handle_reply(db, type("M", (), {"message_id": "<k@f>", "in_reply_to": None, "references": [],
+                                       "from_email": t.email.upper(), "subject": "Re: As-is houses",
+                                       "text": "What towns?", "received": None, "auto_reply": False})(), t.id, TUE)
+    db.commit()
+    key = "k" * 32
+    note = cd.seal_note([{"firm_reply": t.email, "reply": "Asbury Park right now."},
+                         {"firm_reply": "nobody@nowhere.example", "reply": "x"}], cd.public_hex(key))
+    assert cd.apply_note(note, key) == {"note_done": 1, "note_errors": "ValueError"}
+    db.expire_all()
+    assert db.query(FirmOutbox).filter_by(kind="reply").one().in_reply_to == "<k@f>"
