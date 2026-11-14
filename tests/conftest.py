@@ -41,6 +41,18 @@ def _classic_offer_gates(monkeypatch, request):
 
 
 @pytest.fixture(autouse=True)
+def _pre_ceo_engine(monkeypatch):
+    """The deck, outbox and stream tests were written before the 2026-11-14 CEO re-architecture (clone-only cold
+    openers, frozen subscription streams, the 14-a-day partner ramp, automatic partner notes); those have their own
+    tests, which set the live values themselves."""
+    from core.config import settings
+    monkeypatch.setitem(settings(), "clone", {**(settings().get("clone") or {}), "enabled": False})
+    monkeypatch.setitem(settings(), "partner_auto", {**(settings().get("partner_auto") or {}), "enabled": False})
+    monkeypatch.setitem(settings(), "research_firm", {**settings()["research_firm"], "frozen_streams": [],
+                                                      "ramp": [30]})
+
+
+@pytest.fixture(autouse=True)
 def _full_calendar(monkeypatch):
     """The calendar tests were written for the full event set; the 2026-11-09 clean "firm" mode has its own tests."""
     from core.config import settings

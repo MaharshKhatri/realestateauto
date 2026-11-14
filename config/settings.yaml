@@ -397,8 +397,15 @@ research_firm:
                                      # at full ramp (operator, 2026-11-10: stay on the personal Gmail at $0 with 2-sentence
                                      # plain-text openers, no attachments on Touch 1); with the 15 listing-agent openers
                                      # that is ~45 cold first touches a day.
-  ramp: [30]                         # first touches a day by week since the first B2B pitch (2026-11-09), e.g. [20, 30]
-                                     # (engine/cold_guard.py); [] = the caps from day 1. Operator 2026-11-12: 30 a day now
+  ramp: [14]                         # first touches a day by week since the first B2B pitch (2026-11-09), e.g. [20, 30]
+                                     # (engine/cold_guard.py); [] = the caps from day 1. Operator 2026-11-12: 30 a day;
+                                     # 2026-11-14 CEO split: 40 cold a day = 26 listing-agent openers (Flywheel A,
+                                     # desk.yml DAILY_OPENERS) + 14 money-partner / buyer notes (Flywheel B, here)
+  frozen_streams: [s2, s3, s4, s5, s6, s7, s9, s10, s11, s12, s13]
+                                     # 2026-11-14 (operator): ~90 cold subscription pitches, 0 replies. Their products
+                                     # still build and paying clients still get them, replies are still answered, but
+                                     # no new cold pitch or nudge goes out. s1 (buyer / partner notes) and s8 (fallout
+                                     # notes to agents we already talked to) stay on. [] unfreezes everything.
   bounce_pause_count: 5              # operator 2026-11-10: pause cold mail only when 5+ bounces ...
   bounce_pause_rate: 0.08            # ... AND > 8% of the window's cold sends (dead domains are skipped first, never sent)
   bounce_window_days: 7
@@ -454,3 +461,24 @@ research_firm:
     s13: {enabled: true, price_monthly: 249, price_all: 499, pitches_per_run: 2, report_rows: 40, all_rows: 400,
           min_rows: 3, min_land_share: 0.6, max_year_built: 1960, max_listing_age_days: 30,
           price_text: "$249 a month for one county or $499 for all eleven"}
+
+clone:
+  # engine/lead_scoring.py (2026-11-14, the operator's CEO directive): cold listing-agent openers go only to listings
+  # shaped like the deals that said yes (1102 4th Ave: 89% of ask, tenant-occupied 2-family; 1534 Asbury Ave; 1708 Heck
+  # Ave: 88%). The price is still offer_math's one firm number; this decides who gets a cold e-mail and in what order.
+  enabled: true
+  min_offer_ratio: 0.78            # our offer (buyer max - target fee) under 78% of the ask: no cold opener
+  corridor: [0.78, 0.90]
+  investor_towns: [Asbury Park, Neptune, Neptune City, Long Branch, Keansburg, New Brunswick, Edison, Plainfield,
+                   Rahway, Linden, Elizabeth, Garfield, Paterson, Passaic, Irvington, Newark, East Orange, Orange,
+                   Jersey City, Bayonne, Perth Amboy, Trenton, Union, Hillside, Roselle, Woodbridge, Carteret, Sayreville]
+
+partner_auto:
+  # engine/partner_blast.py auto trigger (2026-11-14): the moment a listing agent accepts our price, counters within
+  # $25,000 of our final, or asks for proof of funds on a house we can price, the desk e-mails that county's best
+  # buyers and investor agents for a co-buyer (one blast per house, county + product + a rounded band, never the address).
+  enabled: true
+  limit: 10
+  counter_within: 25000
+  max_per_day: 2
+  recipient_gap_days: 14           # one partner note per address per 14 days, whatever the house

@@ -589,3 +589,36 @@ def test_passed_on_your_offer_is_forwarding_not_a_no(db, operator):
         assert "REJECT" in rn.parse_reply(t).intents, t
     a = rn.analyze(db, listed(db), text)
     assert "ceiling" not in a.reply_text.lower() and "comes with the signed contract" in a.reply_text
+
+
+def test_accepted_the_offer_next_to_under_contract_is_another_buyers_offer():
+    """2026-11-13, 86-88 N 8th St: "THEY ACCEPTED $481,600: LOCK UP NOW" was another buyer's accepted offer."""
+    p = rn.parse_reply("The seller accepted the offer of $481,600 and we are under contract.")
+    assert "ACCEPT" not in p.intents and "UNDER_CONTRACT" in p.intents
+    assert "ACCEPT" in rn.parse_reply("Seller accepted your offer! We're under contract once you sign.").intents
+    assert "ACCEPT" in rn.parse_reply("Seller accepted your offer!").intents
+
+
+def test_tenant_occupied_answers_give_two_options(db, operator):
+    """2026-11-14 (1102 4th Ave): a tenant-occupied house gets both structures in writing, vacant at our number or the
+    lease assumed for less; the body stays three sentences and the lint stays clean."""
+    lead = listed(db)
+    a = rn.analyze(db, lead, "Seller would take 285k. It is tenant occupied, lease through June.",
+                   now=datetime(2026, 10, 20, 9, 0))
+    assert rn.tenant_in_place_price(285000) == 267000            # 6% (17,100) beats the $15K minimum
+    assert rn.tenant_in_place_price(200000) == 185000            # the $15K minimum
+    assert "Two options: $285,000 with the property delivered vacant at closing, or $267,000" in a.reply_text
+    assert a.style == []
+    plain = rn.analyze(db, listed(db), "Seller would take 285k if you can close fast.", now=datetime(2026, 10, 20, 9, 0))
+    assert "Two options" not in plain.reply_text
+
+
+@pytest.mark.parametrize("text", [
+    "no, this will not work, thank you.",
+    "He Feel it is not offer he is looking. Thanks",
+    "I don't believe this would be a suitable property for a flipper as the seller is not looking for a sale to a flipper.",
+    "He would not go much below that.",
+])
+def test_the_noes_the_audit_found(text):
+    """2026-11-14 forensic audit: these four replies were noes, but read as plain replies (left as 'dropped')."""
+    assert "REJECT" in rn.parse_reply(text).intents

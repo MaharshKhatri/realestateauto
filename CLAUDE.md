@@ -183,7 +183,10 @@ engine/
                                 codes → 7-day pause, quiet-inbox check
   firm_outbox.py / swarm_firm.py / streams/ ← the research firm (see "The 10-stream research firm")
   partner_blast.py            ← the operator's own short note to a county's best buyers + investor agents (sealed note
-                                `partner_blast`, preview to the operator's inbox, any day 8-8, 45-90 s apart)
+                                `partner_blast`, preview to the operator's inbox, any day 8-8, 45-90 s apart); auto_run
+  ceo_audit.py                ← forensic audit of every e-mailed house (desk task `audit`, report to the operator)
+  lead_scoring.py             ← the clone score: which listings get a cold opener (offer at 78%+ of ask, best first)
+  listing_facts.py            ← living area + rents the listing itself states → property sqft + live re-value
   clipboard_skiptrace.py      ← Fast Skip-Trace Mode: queue (exempt estates → vacant sheriff → lis pendens → absentee),
                                 parse pasted people-search pages (never fetched), rank, DNC scrub, save, READY flip
   operator_setup.py           ← My Setup: validate + write settings.local.yaml and .env (password never returned)
@@ -1480,6 +1483,37 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     a ✅ event of at most 5 warm actions (an agent accepted; a B2B prospect said yes). Follow-up / call-back / reply /
     sheriff-sale / call-block / daily-goal / today's-ten events are no longer desired, so their future copies leave the
     calendar on the next full sync. Tests pin the old full mode (`conftest._full_calendar`).
+- **The CEO re-architecture** (2026-11-14, the operator's master directive after 3 weeks of live data):
+  - **Forensic audit** (`engine/ceo_audit.py`, desk task `audit`): every house the desk e-mailed, classed accepted /
+    warm / dead / engaged / silent from the stored replies; rates by offer-to-ask band, units, condition, tenants,
+    estate, days on market, price cut, county, living area on record; opener and Touch-2 progression; firm-stream sends
+    vs replies; dropped threads (agent wrote last; sends are naive Eastern, replies UTC: compared in one zone); the top
+    15 clone deals. Mailed to the operator ("[njw-audit] ..."); the log has counts only. First run (152 houses): 50%
+    reply to openers, 17 warm, all price agreements at 82-89% of the ask, 0 warm under 65%; living area on record
+    54% vs 38% reply; subscription pitches 1 reply in ~72 sends; s1 buyer notes 2 replies in 20.
+  - **Clone score** (`engine/lead_scoring.py`, settings `clone:`): cold listing-agent openers go only where our offer
+    (buyer max - target fee) is at least `min_offer_ratio` (78%) of the ask, never to retail or off-market listings,
+    best score first (corridor 78-90%, 2-4 units, tenants / rents, estate, listed foreclosure, 75+ / 120+ days, price
+    cut, fixer words, `investor_towns`, living area on record), in `agent_outreach.candidates`. The price is untouched.
+  - **Listing facts** (`engine/listing_facts.py`): the living area ("approx 2,400 sq ft", "each unit is 1,100 sq ft"
+    x units; never a lot, garage, basement or commercial area, never an estimate) and rents the listing states; a
+    stated area is saved (`sqft_source` "listing_text") and the valuation flagged `revalue`, which `offer_math.trickle`
+    re-values live (no pre-flight HOLD). Run in every daytime desk run before the trickle.
+  - **Frozen streams** (`research_firm.frozen_streams`: s2-s7, s9-s13): no new cold pitch or nudge (`firm_outbox.frozen`);
+    replies, released samples and paid deliveries still go. Daily cold budget 40 = 26 listing-agent openers
+    (desk.yml `DAILY_OPENERS`) + 14 partner / buyer notes (`research_firm.ramp` [14]).
+  - **Auto partner notes** (`partner_blast.auto_run`, settings `partner_auto:`): a reply that accepts, a counter within
+    $25K of our final, or a proof-of-funds ask on a house we can price queues one partner-note blast for its county
+    (county, product, a rounded $50K+ band: never the address or our number), once per house, 2 a day, no county blasted
+    in the last 7 days, one partner note per address per 14 days.
+  - **Two options on tenant-occupied houses** (`reply_negotiator.tenant_option_line`, `negotiation.tenant_in_place_*`):
+    every priced answer and Touch 2 on a house with tenants (the agent said so, or the listing says tenant-occupied /
+    states rents) adds "Two options: $A delivered vacant at closing, or $B with the lease(s) in place" (B = A less the
+    larger of 6% and $15K, down to $1,000) in the Offer Summary. Vacant is the seller's to deliver (Anti-Eviction Act).
+  - **Reader fixes from the audit**: "accepted the offer ... under contract" is another buyer's offer (86-88 N 8th St);
+    "will not work", "not (the) offer he is looking (for)", "not looking for a sale to a flipper", "would not go much
+    below" are noes.
+  - Tests pin the pre-CEO behavior for the shared fixtures (`conftest._pre_ceo_engine`); the new rules have their own.
 - **Tests never touch Gmail**: tests/conftest.py points IMAP at a closed local port (WHOLESALING_IMAP_HOST / _PORT),
   and tests/test_gmail_autopilot.py serves messages from a fake IMAP connection and records sends on a fake SMTP.
 

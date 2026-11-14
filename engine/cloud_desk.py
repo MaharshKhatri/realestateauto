@@ -924,6 +924,16 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
         # re-underwrite are valued live in each run (small budget, daily cap; engine/offer_math.py::trickle).
         from engine.offer_math import trickle
         try:
+            # the living area / rents the listing itself states (engine/listing_facts.py): a stated area is saved
+            # and queued for the live re-value below, so a "send your offer" reply finds a firm number ready
+            from engine import listing_facts
+            with session_scope() as s:
+                lf = listing_facts.enrich(s)
+            if lf.get("sqft_found"):
+                out["sqft_found"] = lf["sqft_found"]
+        except Exception:                          # noqa: BLE001 - never stops the inbox or the sends
+            out["facts_error"] = 1
+        try:
             with session_scope() as s:
                 out.update(trickle(s))
         except Exception:                          # noqa: BLE001 - never stops the inbox or the sends
@@ -1024,6 +1034,14 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
             if gm.in_send_hours(now):
                 a = gm.auto_approve(now=now, smtp_factory=smtp_factory)
                 out["auto_answered"] = len(a["sent"])
+                # a house that just turned warm (accepted / close on price / proof of funds asked): line up a co-buyer
+                # in that county the same hour (engine/partner_blast.py; the firm outbox sends it)
+                try:
+                    from engine import partner_blast
+                    with session_scope() as s:
+                        out.update({k: v for k, v in partner_blast.auto_run(s, now).items() if v})
+                except Exception as exc:          # noqa: BLE001 - reported by name only (public log)
+                    out["auto_blast_error"] = type(exc).__name__
                 d = gm.daily_openers(int(os.environ.get("DAILY_OPENERS", "30")),
                                      at=os.environ.get("OPENER_WAVES", "10:30,14:00,16:30"), now=now,
                                      smtp_factory=smtp_factory, background=False)

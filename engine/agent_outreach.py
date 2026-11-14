@@ -163,6 +163,23 @@ def candidates(session: Session, top: int = 50) -> list[Lead]:
             .join(Valuation, (Valuation.property_id == Property.id) & Valuation.is_current.is_(True))
             .where(Lead.status_stage.notin_(["DEAD", "DO_NOT_CONTACT", "CLOSED"])))
     leads = [lead for lead in dict.fromkeys(session.scalars(stmt)) if eligible(lead)[0]]
+    clone = settings().get("clone") or {}
+    if clone.get("enabled"):
+        # 2026-11-14 (the operator's CEO directive): cold openers only on listings shaped like the deals that said yes
+        # (engine/lead_scoring.py: our offer at 78%+ of the ask; units, tenants, estate, days, cut, fixer, town),
+        # best clone first. Due follow-ups and agent replies reach the deck through their own lists, so a lead in a
+        # conversation is always answered; this list is only cold touches.
+        from engine import lead_scoring
+        scored = []
+        for lead in leads:
+            try:
+                cs = lead_scoring.score(session, lead)
+            except Exception:                              # noqa: BLE001 - an odd record is skipped, never sent
+                continue
+            if cs.eligible:
+                scored.append((cs.score, lead))
+        scored.sort(key=lambda x: (-x[0], -(x[1].priority_rank_score or 0)))
+        return [lead for _, lead in scored][:top]
 
     def rank(lead: Lead) -> tuple:
         gap = listing_gap(lead)
@@ -331,6 +348,11 @@ def build_packet(lead: Lead, agent: Contact | None = None, generate_loi: bool = 
         # One firm number and one set of terms, the same as the attached LOI (2026-11-03 audit: "Option 1" had no
         # inspection and a 21-day close while the LOI said a 10-day inspection and 30 days).
         terms = [f"Offer: {hc.money(anchor)} cash, as-is." + (" A 1-page written offer is attached." if attach else "")]
+        # a tenant-occupied house gets both structures (2026-11-14, 1102 4th Ave): vacant at the offer, or the lease
+        # assumed for less (engine/reply_negotiator.py::tenant_option_line)
+        from engine import reply_negotiator as _rn
+        if anchor and _rn.tenants_in_place(session, lead, set(flags)):
+            terms.append(_rn.tenant_option_line(anchor))
         math = price_math(lead)
         if math:
             terms.append(math)

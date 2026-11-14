@@ -25,3 +25,18 @@ def test_the_asbury_profile_scores_high_and_lowballs_are_out(db):
     assert not b.eligible and "under 78%" in b.why_not
     assert not c.eligible and c.why_not == "retail / renovated listing"
     assert [s.lead_id for s in ls.rank(db, 5)] == [clone.id]
+
+
+def test_cold_candidates_are_clone_deals_only_best_first(db, monkeypatch):
+    from core.config import settings
+    from engine import agent_outreach as ao
+    from tests.factories import add_contact
+    monkeypatch.setitem(settings(), "clone", {**settings()["clone"], "enabled": True})
+    good = _listed(db, ask=535000, buyer_max=485900, units=2, text="Estate sale, tenant occupied 2-family. As-is.")
+    ok = _listed(db, ask=500000, buyer_max=420000, text="Needs work.")
+    low = _listed(db, ask=600000, buyer_max=400000, text="Needs work.")
+    for ld in (good, ok, low):
+        add_contact(db, ld, contact_type="LISTING_AGENT", name="Pat Agent", phone=None, email=f"pat{ld.id}@b.example")
+    db.commit()
+    ids = [ld.id for ld in ao.candidates(db, 10)]
+    assert ids[0] == good.id and low.id not in ids

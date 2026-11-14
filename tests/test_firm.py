@@ -452,3 +452,28 @@ def test_a_sealed_note_finds_the_firm_reply_by_its_e_mail(live):
     assert cd.apply_note(note, key) == {"note_done": 1, "note_errors": "ValueError"}
     db.expire_all()
     assert db.query(FirmOutbox).filter_by(kind="reply").one().in_reply_to == "<k@f>"
+
+
+def test_frozen_streams_send_no_cold_pitch_but_still_answer(live, monkeypatch):
+    """2026-11-14 (operator): the subscription streams got ~90 cold pitches and 0 replies, so they're frozen: no new
+    pitch or nudge, rows already queued wait, and a reply or a released sample still goes out."""
+    db = live
+    monkeypatch.setitem(settings(), "research_firm", {**settings()["research_firm"], "frozen_streams": ["s6"],
+                                                      "caps": {"p1": 150, "p2": 25, "p3": 25}, "ramp": [],
+                                                      "cold_gap_minutes": [0, 0]})
+    law = target(db)
+    assert fo.enqueue(db, pitch(law), TUE).reason.startswith("stream frozen")
+    old = target(db, email="old@law.example", org="Old Law LLC")
+    db.add(FirmOutbox(key="s6:old", stream="s6", kind="pitch", to_email=old.email, subject="s", body="b",
+                      target_id=old.id, priority=PRIORITY_SPECIALTY))
+    db.add(FirmOutbox(key="s6:reply", stream="s6", kind="reply", to_email=old.email, subject="Re: s", body="b",
+                      target_id=old.id, priority=PRIORITY_REPLY))
+    buyer = target(db, email="deals@flips.example", kind="flipper", stream="s1", org="Flips LLC")
+    fo.enqueue(db, Outbound(stream="s1", key="s1:buyers:x", to=buyer.email, subject="As-is houses", body="Hello,\n\nx",
+                            kind="buyer_note", priority=PRIORITY_PITCH, target_id=buyer.id), TUE)
+    db.commit()
+    FakeSMTP.sent = []
+    fo.send_due(now=TUE_ET, smtp_factory=FakeSMTP, pace=False, limit=10)
+    db.expire_all()
+    by = {r.key: r.status for r in db.query(FirmOutbox)}
+    assert by["s6:reply"] == "sent" and by["s1:buyers:x"] == "sent" and by["s6:old"] == "queued"

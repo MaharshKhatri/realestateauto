@@ -70,8 +70,8 @@ def brokerage_key(name: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", "", n.lower())
 
 
-def blocked(session: Session, county: str, now: datetime, recent_days: float, key: str
-            ) -> tuple[set[str], set[str], set[str]]:
+def blocked(session: Session, county: str, now: datetime, recent_days: float, key: str,
+            partner_gap_days: float = 0) -> tuple[set[str], set[str], set[str]]:
     """(addresses, domains, brokerages) this note never goes to: our live-offer agents' own office is out by its
     domain AND by its name (an agent there may write from a gmail.com address)."""
     from engine.streams import s1_acquisitions as s1
@@ -97,12 +97,17 @@ def blocked(session: Session, county: str, now: datetime, recent_days: float, ke
         FirmOutbox.status == "sent", FirmOutbox.sent_at >= since))}
     emails |= {(e or "").lower() for (e,) in session.execute(select(FirmOutbox.to_email).where(
         FirmOutbox.key.like(f"partner:{key}:%")))}
+    if partner_gap_days:
+        # one partner note per address per `recipient_gap_days`, whatever the house (automatic blasts)
+        emails |= {(e or "").lower() for (e,) in session.execute(select(FirmOutbox.to_email).where(
+            FirmOutbox.kind == "partner_note", FirmOutbox.status.in_(("queued", "sent")),
+            FirmOutbox.created_at >= utcnow() - timedelta(days=partner_gap_days)))}
     return {e for e in emails if e}, domains, offices
 
 
 def pick(session: Session, county: str, limit: int, *, now: datetime | None = None, recent_days: float = 3,
          key: str = "blast", exclude: list[str] | None = None, buyer_share: float = 0.5,
-         include: list[str] | None = None) -> list[Candidate]:
+         include: list[str] | None = None, partner_gap_days: float = 0) -> list[Candidate]:
     """The best `limit` buyers and investor agents in the county, buyers first (about `buyer_share` of the list).
     `include` (addresses Claude researched for this note) go first when they pass every rule below."""
     from engine import deal_desk as dd
@@ -110,7 +115,7 @@ def pick(session: Session, county: str, limit: int, *, now: datetime | None = No
     from engine.streams import s1_acquisitions as s1
     now = now or utcnow()
     county = _county(county)
-    no_mail, no_domain, no_office = blocked(session, county, now, recent_days, key)
+    no_mail, no_domain, no_office = blocked(session, county, now, recent_days, key, partner_gap_days)
     no_mail |= {(e or "").strip().lower() for e in exclude or [] if e}
 
     def ok(email: str | None, target: FirmTarget | None = None, office: str | None = None) -> str | None:
@@ -207,7 +212,8 @@ def queue(session: Session, spec: dict[str, Any], now: datetime | None = None) -
         raise ValueError("partner_blast needs county, subject and a body")
     cands = pick(session, county, int(spec.get("limit") or 15), now=now, key=key,
                  recent_days=float(spec.get("recent_days", 3)), exclude=list(spec.get("exclude") or []),
-                 buyer_share=float(spec.get("buyer_share", 0.5)), include=list(spec.get("include") or []))
+                 buyer_share=float(spec.get("buyer_share", 0.5)), include=list(spec.get("include") or []),
+                 partner_gap_days=float(spec.get("partner_gap_days", 0) or 0))
     op_first = hc.operator().get("first") or ""
     out = {"blast_picked": len(cands), "blast_buyers": sum(c.audience == "buyer" for c in cands),
            "blast_agents": sum(c.audience == "agent" for c in cands), "blast_queued": 0}
@@ -257,3 +263,104 @@ def count_open(session: Session) -> int:
     return int(session.scalar(select(func.count(FirmOutbox.id)).where(
         FirmOutbox.kind == "partner_note", FirmOutbox.status == "queued")) or 0)
 
+
+# -- the automatic trigger (2026-11-14, the operator's CEO directive) ---------------------------------------------
+AUTO_KEY = "partner_auto"
+PRODUCT = {1: "single-family", 2: "2-family", 3: "3-family", 4: "4-family"}
+
+
+def auto_cfg() -> dict[str, Any]:
+    from core.config import settings
+    return dict(settings().get("partner_auto") or {})
+
+
+def band(x: float, step: int = 25_000) -> str:
+    """A rounded band around one number, at least $50K wide, never the number itself."""
+    lo = int((x - step) // step) * step
+    hi = -int(-(x + step) // step) * step
+    return f"${lo // 1000}K-${hi // 1000}K" if lo < 1_000_000 else f"${lo / 1e6:.2f}M-${hi / 1e6:.2f}M"
+
+
+def auto_spec(lead: Any, stage: str) -> dict[str, Any] | None:
+    """The note for one warm house: county, product and a rounded band only (never the address or our number)."""
+    p = lead.property
+    county = _county(p.county if p is not None else None)
+    price = float(lead.offer_amount or 0)
+    if not county or not price:
+        return None
+    product = PRODUCT.get(int(p.dwellings or 1), "multi-family")
+    where = {"accepted": "with the seller's yes on price", "close": "where the seller is close on price",
+             "pof": "that I'm negotiating now"}[stage]
+    ask = (f"Would you co-buy with me, funding the deposit/purchase for an attorney-reviewed profit split?")
+    head = f"I have an as-is {product} in {county} County in the {band(price)} range {where}."
+    return {"county": county, "limit": int(auto_cfg().get("limit", 10)), "key": f"auto-{lead.id}",
+            "subject": f"As-is {product} in {county} County", "buyer_body": f"{head} {ask}",
+            "agent_body": f"{head} " + ask.replace("Would you co-buy", "Would you (or an investor client you represent "
+                                                                    "on resales) co-buy"),
+            "partner_gap_days": float(auto_cfg().get("recipient_gap_days", 14))}
+
+
+def warm_stage(session: Session, lead: Any, reply: Any) -> str | None:
+    """accepted / close (their number within `counter_within` of our final) / pof, on a house we can price."""
+    from engine import offer_math as om
+    intents = set(reply.intents_json or [])
+    try:
+        f = om.firm_offer(lead, session)
+    except Exception:                                    # noqa: BLE001 - an unpriceable house gets no blast
+        return None
+    if f.tier == "skip" or not lead.offer_amount:
+        return None
+    if "ACCEPT" in intents and "UNDER_CONTRACT" not in intents:
+        return "accepted"
+    if reply.counter_amount and f.final and float(reply.counter_amount) <= float(f.final) + float(
+            auto_cfg().get("counter_within", 25000)):
+        return "close"
+    if "POF_REQUEST" in intents:
+        return "pof"
+    return None
+
+
+def auto_run(session: Session, now: datetime | None = None) -> dict[str, int]:
+    """Queue partner notes for houses that just turned warm (one blast per house, `max_per_day` a day, no county
+    blasted in the last 7 days). Counts only."""
+    from db.models import InboundReply, Lead, SwarmState
+    c = auto_cfg()
+    if not c.get("enabled"):
+        return {}
+    from engine.gmail_autopilot import now_eastern
+    today = now_eastern(now).date().isoformat()
+    row = session.get(SwarmState, AUTO_KEY)
+    state = dict(row.value_json or {}) if row is not None else {}
+    done = dict(state.get("leads") or {})
+    used_today = sum(1 for d in done.values() if d == today)
+    out = {"auto_blasts": 0, "auto_queued": 0}
+    since = utcnow() - timedelta(days=2)
+    replies = session.scalars(select(InboundReply).where(
+        InboundReply.created_at >= since, InboundReply.lead_id.is_not(None),
+        InboundReply.status.notin_(("bounce", "auto_reply"))).order_by(InboundReply.created_at.desc())).all()
+    for rep in replies:
+        if used_today >= int(c.get("max_per_day", 2)):
+            break
+        if str(rep.lead_id) in done:
+            continue
+        lead = session.get(Lead, rep.lead_id)
+        stage = warm_stage(session, lead, rep) if lead is not None else None
+        spec = auto_spec(lead, stage) if stage else None
+        if spec is None:
+            continue
+        recent = session.scalar(select(FirmOutbox.id).join(FirmTarget, FirmTarget.id == FirmOutbox.target_id).where(
+            FirmOutbox.kind == "partner_note", FirmOutbox.created_at >= utcnow() - timedelta(days=7),
+            FirmTarget.county == spec["county"]).limit(1))
+        done[str(rep.lead_id)] = today                    # decided once per house, blasted or not
+        if recent:
+            continue                                      # that county heard from us this week
+        res = queue(session, spec, now)
+        out["auto_blasts"] += 1
+        out["auto_queued"] += int(res.get("blast_queued", 0))
+        used_today += 1
+    if row is None:
+        row = SwarmState(key=AUTO_KEY, value_json={})
+        session.add(row)
+    row.value_json = {"leads": done}
+    session.flush()
+    return out

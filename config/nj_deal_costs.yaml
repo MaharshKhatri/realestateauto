@@ -94,6 +94,11 @@ negotiation:
   oil_tank_buffer: 3500         # NJDEP UST Fund pays $1,500 for a <=550-gal tank; clean removals run $1.6-3.5K. Every
                                 # offer also says a found tank is removed by the seller or escrowed (price stays)
   tenant_buffer: 9000           # holdover / turnover reserve: 2-3 months of carry and notice time (Anti-Eviction Act)
+  # Two options when tenants are in place (operator 2026-11-14, 1102 4th Ave: $475,900 delivered vacant or $445,000
+  # with the lease assumed): Option B = Option A less the larger of these, rounded down to $1,000. NJ's Anti-Eviction
+  # Act protects the tenant, so "vacant" is the seller's to deliver (a lease ending, the tenant moving); never more.
+  tenant_in_place_pct: 0.06
+  tenant_in_place_min: 15000
   co_buffer: 1500               # smoke / CO / fire-extinguisher certificate (N.J.A.C. 5:70-2.3, ~$100-150) plus small CCO fixes
   counter_fee_floor: 5000       # our one counter is the best and final (= buyer_max - min_fee)
   counter_within_pct: 0.92      # YELLOW only when our counter is at least this share of their number; otherwise hold (RED)

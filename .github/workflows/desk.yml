@@ -46,9 +46,10 @@ jobs:
       SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
       DESK_KEY: ${{ secrets.DESK_KEY }}
       TZ: America/New_York
-      DAILY_OPENERS: "15"          # 2026-11-10: back on for the 15 highest-margin convertible listings a day (2-line
-                                   # availability openers, no attachment) per weekday, shared by the waves below
-                                   # (cap: outreach.daily_email_limit); "0" pauses them
+      DAILY_OPENERS: "26"          # 2026-11-14 CEO split (Flywheel A): up to 26 listing-agent openers a day, only
+                                   # on clone deals (engine/lead_scoring.py: our offer at 78%+ of the ask), best clone
+                                   # first, shared by the waves below; the other 14 cold e-mails a day are money-partner
+                                   # / buyer notes (Flywheel B, research_firm.ramp). "0" pauses them
       CALL_SHEET: "off"            # PAUSED 2026-11-09: no daily call sheet / call blocks ("on" restores them)
       FIRM: "on"                   # 2026-11-09: the 10-stream research firm (engine/swarm_firm.py); "off" pauses it
       OPENER_WAVES: "9:00,10:30,12:00,13:30,15:00,16:30,18:00"   # 7 waves: each sends its share of what is left

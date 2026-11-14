@@ -51,6 +51,15 @@ def _now(now: datetime | None) -> datetime:
 
 
 # -- targets ------------------------------------------------------------------------------------------------------
+def frozen() -> set[str]:
+    """Streams whose cold pitches and nudges are paused (`research_firm.frozen_streams`, 2026-11-14: ~90 subscription
+    pitches, 0 replies). Their replies, released samples and paid deliveries still go."""
+    return {str(x) for x in (cfg().get("frozen_streams") or [])}
+
+
+COLD_PITCH_KINDS = ("pitch", "followup")
+
+
 def norm_email(email: str | None) -> str | None:
     e = (email or "").strip().lower()
     return e if _EMAIL.match(e) else None
@@ -133,6 +142,8 @@ def enqueue(session: Session, ob: Outbound, now: datetime | None = None) -> Firm
         ob.attachments = []
     target = session.get(FirmTarget, ob.target_id) if ob.target_id else None
     why = stop_reason(session, ob.to, target)
+    if why is None and ob.commercial and ob.kind in COLD_PITCH_KINDS and ob.stream in frozen():
+        why = "stream frozen: no cold pitches (research_firm.frozen_streams)"
     if why is None and ob.kind == "pitch" and target is not None:
         why = _pitch_block(session, target, now)
     if why is None and ob.kind == "followup" and target is not None and ob.commercial and \
@@ -299,6 +310,8 @@ def queue_nudges(session: Session, now: datetime | None = None, limit: int = 40)
         pitch = session.scalar(select(FirmOutbox).where(FirmOutbox.target_id == target.id, FirmOutbox.kind == "pitch",
                                                         FirmOutbox.status == "sent").order_by(FirmOutbox.sent_at.desc())
                                .limit(1))
+        if pitch is not None and pitch.stream in frozen():
+            continue                                  # a frozen stream's sequence ends at Touch 1
         if pitch is None or not pitch.message_id:
             continue
         key = f"nudge:{pitch.id}:{step}"
@@ -513,6 +526,9 @@ def send_due(session_factory: Any = None, *, now: datetime | None = None, smtp_f
             if not conds:
                 break
             q = select(FirmOutbox).where(FirmOutbox.status == "queued", or_(*conds))
+            if frozen():
+                # rows queued before a stream was frozen wait too (its replies and samples still go)
+                q = q.where(or_(FirmOutbox.stream.notin_(frozen()), FirmOutbox.kind.notin_(COLD_PITCH_KINDS)))
             if not pro_ok:
                 # no attorney / CPA cold mail after 6 PM or on a Friday afternoon (the playbook's timing rule)
                 pro_ids = select(FirmTarget.id).where(FirmTarget.kind.in_(PROFESSIONAL_KINDS))

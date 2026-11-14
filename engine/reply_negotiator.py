@@ -143,7 +143,13 @@ PHRASES: dict[str, list[str]] = {
                r"send (over )?(the|a|your) (contract|paperwork|agreement|psa)", r"seller (has )?agreed", r"they'?ll take (it|that)",
                r"he'?ll take (it|that)", r"she'?ll take (it|that)", r"that works for (us|them|the seller|me)", r"works for the seller",
                r"you got a deal", r"we'?re good at", r"go ahead and (send|write) (it|the offer)", r"accepted\b(?! an)"],
-    "REJECT": [r"not interested", r"no thanks", r"too low", r"won'?t work", r"\bpass\b", r"insult", r"not even close",
+    "REJECT": [r"not interested", r"no thanks", r"too low", r"won'?t work", r"will not work", r"wouldn'?t work",
+               # 2026-11-14 audit: four noes the reader missed ("no, this will not work", "He feel it is not offer he is
+               # looking", "not looking for a sale to a flipper", "He would not go much below that")
+               r"not (?:the |an? )?offer (?:he|she|they|the sellers?)(?:'?s| is| are| was)? ?looking",
+               r"not looking for a sale to", r"not (?:a )?suitable (?:property )?for a flipper",
+               r"would(?:n'?t| not) go (?:much |any )?(?:below|lower)",
+               r"\bpass\b", r"insult", r"not even close",
                r"no way", r"declined", r"rejected", r"lowball", r"way off", r"not going to work", r"isn'?t going to work",
                r"nowhere near", r"never (?:going to |gonna |would |will )?happen", r"not happening", r"won'?t happen",
                r"no chance", r"not a chance", r"seller (?:won'?t|will not|would never|isn'?t going to) (?:go|take|accept|do)",
@@ -404,6 +410,11 @@ def parse_reply(text: str) -> ParsedReply:
             out.intents.add(intent)
             out.notes.append(f"{intent}: '{m.group(0).strip()}'")
             break
+    if {"ACCEPT", "UNDER_CONTRACT"} <= out.intents and not re.search(r"\byour (offer|number|price)\b", low):
+        # "The seller accepted the offer of $481,600 and we are under contract" (2026-11-13, 86-88 N 8th St): another
+        # buyer's offer, never ours (the desk had headlined "THEY ACCEPTED $481,600: LOCK UP NOW")
+        out.intents.discard("ACCEPT")
+        out.notes.append("'accepted the offer' next to under contract: another buyer's offer")
     if out.counter_amount and ("ACCEPT" not in out.intents or _ASK_WORDS.search(low)):
         out.intents.add("COUNTER")
     # "I was under contract a little over a month ago, but it's back on the market" (2026-11-06, 36 Curtis Ave): the
@@ -555,6 +566,40 @@ def _terms(price: float, f: dict[str, Any], op: dict[str, str], extra: list[str]
              *extra, ao.agent_terms_line(), hc.investor_disclosure(op["company"]),
              *hc.footer_lines(op, 'Reply "no more" and I won\'t send you offers on other listings.')]
     return lines
+
+
+def tenant_in_place_price(price: float) -> float:
+    """Option B on a tenant-occupied house (2026-11-14, the operator's 1102 4th Ave answer: $475,900 delivered vacant
+    or $445,000 with the lease in place): the price less the larger of `tenant_in_place_pct` and `tenant_in_place_min`
+    (holding the lease delays the rehab), rounded down to $1,000. Always below the vacant price, so always inside our
+    numbers."""
+    n = _ncfg()
+    cut = max(float(n.get("tenant_in_place_min", 15000)), float(n.get("tenant_in_place_pct", 0.06)) * float(price))
+    return float(int((float(price) - cut) // 1000) * 1000)
+
+
+def tenant_option_line(price: float) -> str:
+    """The Offer Summary line that gives the seller both structures. "Vacant" is the seller's to deliver (a lease
+    ending, the tenant moving out on their own): NJ's Anti-Eviction Act protects the tenant, so nothing here asks for
+    more than that."""
+    return (f"Two options: {hc.money(price)} with the property delivered vacant at closing, or "
+            f"{hc.money(tenant_in_place_price(price))} if the seller would rather close with the current lease(s) in "
+            "place (the buyer takes over the lease and the security deposits).")
+
+
+def tenants_in_place(session: Session | None, lead: Lead, intents: set[str]) -> bool:
+    """The agent said so, or the listing says tenant-occupied / states rents."""
+    if "TENANTS" in intents:
+        return True
+    try:
+        from engine import listing_facts
+        from engine import offer_math as om
+        from engine.lead_scoring import TENANTS
+        lst = om.listing_for(session, lead)
+        return bool(TENANTS.search(om.listing_text(session, lead) or "")) or bool(
+            listing_facts.parsed(lst).get("rent_total"))
+    except Exception:                                      # noqa: BLE001 - no listing text: no second option
+        return False
 
 
 def _risk_lines(intents: set[str]) -> list[str]:
@@ -836,8 +881,12 @@ def analyze(session: Session, lead: Lead, text: str, *, now: datetime | None = N
     cost_line = (f"about {hc.money(rehab)} of work, {hc.money(taxes)} in taxes and {hc.money(carry)} to carry and finance it "
                  f"for {months} months" if taxes else f"about {hc.money(rehab)} of work plus carrying costs for {months} months")
 
+    tenant_lines = tenants_in_place(session, lead, intents)
+
     def priced_reply(price: float, sentences: list[str], extra: list[str]) -> None:
-        an.reply_text, an.style = _compose(an.reply_subject, first, sentences, _terms(price, f, op, extra + risk_lines), op)
+        two = [tenant_option_line(price)] if tenant_lines else []
+        an.reply_text, an.style = _compose(an.reply_subject, first, sentences,
+                                           _terms(price, f, op, extra + two + risk_lines), op)
 
     # -- a number from them -------------------------------------------------------------------------------------
     if counter:

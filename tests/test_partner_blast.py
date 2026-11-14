@@ -161,3 +161,31 @@ def test_a_sealed_note_previews_or_queues_the_partner_note(live):
                                                        "org": "Coast Flips LLC", "county": "Monmouth"}},
                                       {"partner_blast": SPEC}], cd.public_hex(key)), key)
     assert out["note_done"] == 2 and out["blast_queued"] == 4               # the researched firm is on the list
+
+
+def test_a_house_that_turns_warm_lines_up_a_co_buyer_by_itself(live, monkeypatch):
+    """2026-11-14: accepted / within $25K of our final / proof of funds asked on a house we can price -> one partner
+    note blast for its county (county, product, a rounded band: never the address or our number), once per house."""
+    from core.config import settings
+    from db.models import InboundReply
+    db = live
+    monkeypatch.setitem(settings(), "partner_auto", {**settings()["partner_auto"], "enabled": True})
+    from engine import offer_math as om
+    monkeypatch.setattr(om, "firm_offer", lambda lead, session=None, **k: om.FirmOffer(tier="ask_first", final=470000,
+                                                                                      ask=520000))
+    buyer, agent, _ = _world(db)
+    warm = make_lead(db, sheriff_days=None, stale_listing=True, list_price=520000, dwellings=2,
+                     **{**MON, "lat": 40.224})
+    warm.offer_amount = 455000
+    add_contact(db, warm, contact_type=ContactType.LISTING_AGENT, name="Wes Warm", phone=None, email="wes@warm.example")
+    db.add(InboundReply(message_id="<w@warm>", lead_id=warm.id, from_email="wes@warm.example", status="dismissed",
+                        intents_json=["POF_REQUEST"], created_at=SAT - timedelta(hours=1)))
+    db.commit()
+    out = pb.auto_run(db, SAT_ET)
+    db.commit()
+    assert out["auto_blasts"] == 1 and out["auto_queued"] >= 2
+    rows = db.query(FirmOutbox).filter(FirmOutbox.key.like(f"partner:auto-{warm.id}:%")).all()
+    body = rows[0].body
+    assert "2-family in Monmouth County in the $425K-$500K range that I'm negotiating now" in body
+    assert "455" not in body and "Asbury" not in body and "wes@warm.example" not in [r.to_email for r in rows]
+    assert pb.auto_run(db, SAT_ET)["auto_blasts"] == 0                    # once per house
