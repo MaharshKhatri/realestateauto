@@ -64,14 +64,25 @@ def _county(v: str | None) -> str:
     return re.sub(r"(?i)\s+county$", "", (v or "").strip()).title()
 
 
-def blocked(session: Session, county: str, now: datetime, recent_days: float, key: str) -> tuple[set[str], set[str]]:
-    """(addresses, domains) this note never goes to."""
+def brokerage_key(name: str | None) -> str:
+    """"RE/MAX Gateway - Broker" and "RE/MAX GATEWAY" are one office."""
+    n = re.sub(r"(?i)\s*-\s*broker\s*$", "", (name or "").strip())
+    return re.sub(r"[^a-z0-9]+", "", n.lower())
+
+
+def blocked(session: Session, county: str, now: datetime, recent_days: float, key: str
+            ) -> tuple[set[str], set[str], set[str]]:
+    """(addresses, domains, brokerages) this note never goes to: our live-offer agents' own office is out by its
+    domain AND by its name (an agent there may write from a gmail.com address)."""
     from engine.streams import s1_acquisitions as s1
     from engine.streams.s2_deal_desk_saas import in_deal_talks
     emails = set(in_deal_talks(session, now))
     domains: set[str] = set()
+    offices: set[str] = set()
     for lead in s1.live_offers(session, now):
         for c in lead.contacts:
+            if c.company and brokerage_key(c.company):
+                offices.add(brokerage_key(c.company))
             if c.email:
                 emails.add(c.email.lower())
                 if _domain(c.email) not in FREE_MAIL:
@@ -86,23 +97,27 @@ def blocked(session: Session, county: str, now: datetime, recent_days: float, ke
         FirmOutbox.status == "sent", FirmOutbox.sent_at >= since))}
     emails |= {(e or "").lower() for (e,) in session.execute(select(FirmOutbox.to_email).where(
         FirmOutbox.key.like(f"partner:{key}:%")))}
-    return {e for e in emails if e}, domains
+    return {e for e in emails if e}, domains, offices
 
 
 def pick(session: Session, county: str, limit: int, *, now: datetime | None = None, recent_days: float = 3,
-         key: str = "blast", exclude: list[str] | None = None, buyer_share: float = 0.5) -> list[Candidate]:
-    """The best `limit` buyers and investor agents in the county, buyers first (about `buyer_share` of the list)."""
+         key: str = "blast", exclude: list[str] | None = None, buyer_share: float = 0.5,
+         include: list[str] | None = None) -> list[Candidate]:
+    """The best `limit` buyers and investor agents in the county, buyers first (about `buyer_share` of the list).
+    `include` (addresses Claude researched for this note) go first when they pass every rule below."""
     from engine import deal_desk as dd
     from engine import firm_outbox as fo
     from engine.streams import s1_acquisitions as s1
     now = now or utcnow()
     county = _county(county)
-    no_mail, no_domain = blocked(session, county, now, recent_days, key)
+    no_mail, no_domain, no_office = blocked(session, county, now, recent_days, key)
     no_mail |= {(e or "").strip().lower() for e in exclude or [] if e}
 
-    def ok(email: str | None, target: FirmTarget | None = None) -> str | None:
+    def ok(email: str | None, target: FirmTarget | None = None, office: str | None = None) -> str | None:
         e = fo.norm_email(email)
         if not e or e in no_mail or _domain(e) in no_domain:
+            return None
+        if office and brokerage_key(office) in no_office:
             return None
         if fo.stop_reason(session, e, target):
             return None
@@ -117,7 +132,7 @@ def pick(session: Session, county: str, limit: int, *, now: datetime | None = No
     for t in rows:
         if county not in {_county(c) for c in areas.get(t.id, set())} and _county(t.county) != county:
             continue
-        e = ok(t.email, t)
+        e = ok(t.email, t, t.org)
         if not e:
             continue
         cand = Candidate(email=e, kind=t.kind, audience="buyer" if t.kind in BUYER_KINDS else "agent",
@@ -128,7 +143,7 @@ def pick(session: Session, county: str, limit: int, *, now: datetime | None = No
     for a in dd.flipper_agents(session, limit=5000, today=now.date()):
         if county not in {_county(c) for c in a.get("counties") or []}:
             continue
-        e = ok(a["email"])
+        e = ok(a["email"], office=a.get("company"))
         if not e or e in seen:
             continue
         seen.add(e)
@@ -139,8 +154,13 @@ def pick(session: Session, county: str, limit: int, *, now: datetime | None = No
                                 extra={"phone": a.get("phone") or ""}))
     buyers.sort(key=lambda c: (-c.score, c.email))
     agents.sort(key=lambda c: (-c.score, c.email))
-    n_buy = min(len(buyers), max(0, round(limit * buyer_share)))
-    picked = buyers[:n_buy] + agents[:limit - n_buy]
+    wanted = [e for e in (fo.norm_email(x) for x in include or []) if e]
+    first = [c for e in wanted for c in buyers + agents if c.email == e][:limit]
+    buyers = [c for c in buyers if c not in first]
+    agents = [c for c in agents if c not in first]
+    room = limit - len(first)
+    n_buy = min(len(buyers), max(0, round(room * buyer_share)))
+    picked = first + buyers[:n_buy] + agents[:room - n_buy]
     if len(picked) < limit:                      # fewer agents than their share: fill with the next buyers
         picked += buyers[n_buy:n_buy + limit - len(picked)]
     return picked[:limit]
@@ -187,7 +207,7 @@ def queue(session: Session, spec: dict[str, Any], now: datetime | None = None) -
         raise ValueError("partner_blast needs county, subject and a body")
     cands = pick(session, county, int(spec.get("limit") or 15), now=now, key=key,
                  recent_days=float(spec.get("recent_days", 3)), exclude=list(spec.get("exclude") or []),
-                 buyer_share=float(spec.get("buyer_share", 0.5)))
+                 buyer_share=float(spec.get("buyer_share", 0.5)), include=list(spec.get("include") or []))
     op_first = hc.operator().get("first") or ""
     out = {"blast_picked": len(cands), "blast_buyers": sum(c.audience == "buyer" for c in cands),
            "blast_agents": sum(c.audience == "agent" for c in cands), "blast_queued": 0}

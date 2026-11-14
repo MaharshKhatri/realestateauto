@@ -1268,7 +1268,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     flippers (firm targets whose area is the county, `s1.target_counties`) and then the listing agents closest to the
     flippers there (`deal_desk.flipper_agents`, which now lists each agent's `counties`), about half each. Never: a
     stop-listed / bounced / closed address, an agent in deal talks, the listing agents of our live offers or anyone
-    at their brokerage's own domain, an open reply, a target already in a conversation (stage past CONTACTED), anyone
+    at their brokerage (its own domain, or the same brokerage name for an agent writing from gmail / yahoo), an open
+    reply, a target already in a conversation (stage past CONTACTED), anyone
     e-mailed in `recent_days` (3), anyone this `key` already reached. Each gets the operator's own words (greeted by
     first name when a person, signed with the first name), queued as `kind="partner_note"` (stream s1, cold: ad line,
     postal address, "no more", List-Unsubscribe, DNS check, bounce pause), sent ANY day 8 AM-8 PM (the operator's
@@ -1276,7 +1277,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     step aside ("partner note sent instead"). `preview: true` queues nothing and mails the list to the operator's own
     inbox ("[njw-blast] <date> <county> preview") for Claude to check in Gmail; the run log has counts only
     (`blast_picked` / `blast_buyers` / `blast_agents` / `blast_queued` / `blast_preview_mailed`). `firm_target` items in
-    the same note are applied first, so researched firms are candidates. Copy rule: no address, no house's price, a
+    the same note are applied first, so researched firms are candidates, and `include` (their e-mails) puts them at
+    the front of the list when they pass every rule. Copy rule: no address, no house's price, a
     rounded band only (N.J.S.A. 45:15-3), and never a claim of a partner or proof of funds we don't have (CFA).
   - **B2B replies**: the inbox check (`gmail_autopilot.poll_gmail_replies`) downloads a message matched to a pitch's
     Message-ID, or from a pitched address that isn't in a lead thread, into `firm_replies` (`firm_outbox.handle_reply`):

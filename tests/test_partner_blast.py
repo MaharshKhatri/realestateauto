@@ -35,8 +35,9 @@ def _world(db):
     """Our live offer in Asbury Park (listing agent at listbroker.example) and the county's buyers and agents."""
     ld = make_lead(db, sheriff_days=None, stale_listing=True, list_price=535000, **MON)
     ld.offer_amount = 475900
-    add_contact(db, ld, contact_type=ContactType.LISTING_AGENT, name="Stacy Lister", phone=None,
-                email="stacy@listbroker.example")
+    stacy = add_contact(db, ld, contact_type=ContactType.LISTING_AGENT, name="Stacy Lister", phone=None,
+                        email="stacy@listbroker.example")
+    stacy.company = "Shore Gateway Realty - Broker"
     db.add(InboundReply(message_id="<s1@listbroker.example>", lead_id=ld.id, from_email="stacy@listbroker.example",
                         status="answered", created_at=SAT - timedelta(days=1)))
     other = make_lead(db, sheriff_days=None, stale_listing=True, list_price=420000, **{**MON, "lat": 40.221})
@@ -51,6 +52,10 @@ def _world(db):
     waiting = _target(db, "ken@waiting.example", "investor_agent", name="Ken Waiting", score=30)
     db.add(FirmReply(message_id="<k@waiting>", target_id=waiting.id, stream="s1", from_email="ken@waiting.example",
                      status="new"))
+    mate = make_lead(db, sheriff_days=None, stale_listing=True, list_price=389000, **{**MON, "lat": 40.223})
+    c = add_contact(db, mate, contact_type=ContactType.LISTING_AGENT, name="Al Mate", phone=None,
+                    email="almate@yahoo.com")                     # Stacy's office, writing from yahoo.com
+    c.company = "SHORE GATEWAY REALTY"
     talking = _target(db, "kim@talking.example", "investor_agent", name="Kim Talking", score=30)
     talking.stage = "INTERESTED"                                    # answered already: in a conversation
     lst = make_lead(db, sheriff_days=None, stale_listing=True, list_price=399000, **{**MON, "lat": 40.222})
@@ -77,6 +82,11 @@ def test_the_list_is_the_countys_buyers_then_agents_never_our_deal_agents_or_the
     assert set(emails) == {"deals@shorebuyers.example", "ann@shorerealty.example", "lee@coastrealty.example"}
     # never: another county, the agent on our live offer, her brokerage, an opted-out firm, a reply waiting on us
     assert {c.audience for c in picked if c.email != "deals@shorebuyers.example"} == {"agent"}
+    # researched addresses go first, inside the limit, but never past a rule (Stacy's office stays out)
+    two = pb.pick(db, "Monmouth", 2, now=SAT, key="asbury-1114",
+                  include=["LEE@coastrealty.example", "bob@listbroker.example"])
+    assert len(two) == 2 and two[0].email == "lee@coastrealty.example"
+    assert "bob@listbroker.example" not in [c.email for c in two]
 
 
 def test_a_preview_queues_nothing_and_a_run_queues_one_note_each_in_the_operators_words(live):
