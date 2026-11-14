@@ -120,6 +120,24 @@ def near_ask_asked(text: str) -> bool:
 _ASKS_MAX = re.compile(r"what(?:'s| is|s)? (?:your|ur|the) (?:max(?:imum)?|best|highest|top|ceiling)\b|how high (?:can|could|will|would) "
                        r"you go|best you can do", re.I)
 
+# "I did pass on your offer. Prior to responding my client requests proof of funds." (2026-11-12, 1534 Asbury Ave): the
+# agent forwarded the offer; the bare "pass" read it as a no and the desk sent "my ceiling is $X" instead of the proof-of-
+# funds answer. "pass ... along", "pass it on to", or an agent's "I did / have / just pass(ed) on" next to the client or
+# seller responding / requesting is forwarding; "the seller will pass", "we'll pass on this one" stay a no.
+_PASSED_ALONG = re.compile(r"\bpass(?:ed)?\s+(?:it\s+|this\s+|that\s+|(?:your|the|my)\s+offer\s+)?along\b|"
+                           r"\bpass(?:ed)?\s+(?:it|this|that|(?:your|the)\s+offer)\s+on\s+to\b|"
+                           r"\bpass(?:ed)?\s+on\s+(?:your|the)\s+offer\s+to\b", re.I)
+_PASSED_ON_BY_AGENT = re.compile(r"\b(?:i|we)\s+(?:did|have|had|just|already)\s+pass(?:ed)?\s+on\b|"
+                                 r"\b(?:i|we)'?ve\s+(?:already\s+|just\s+)?passed\s+on\b", re.I)
+_CLIENT_NEXT = re.compile(r"\b(?:client|seller|owner|they|he|she)s?\b[^.!?\n]{0,40}\b(?:request|want|ask|need|respond|"
+                          r"review|consider|get(?:ting)? back|look(?:ing)? at)|prior to respond", re.I)
+
+
+def forwarded_offer(text: str) -> bool:
+    """The agent says they passed the offer on to the seller (not "we pass")."""
+    return bool(_PASSED_ALONG.search(text) or (_PASSED_ON_BY_AGENT.search(text) and _CLIENT_NEXT.search(text)))
+
+
 PHRASES: dict[str, list[str]] = {
     "ACCEPT": [r"accept(s|ed)? (your|the|that) (offer|number|price)", r"we have a deal", r"let'?s do it", r"deal\b.*\bworks",
                r"send (over )?(the|a|your) (contract|paperwork|agreement|psa)", r"seller (has )?agreed", r"they'?ll take (it|that)",
@@ -360,6 +378,9 @@ def parse_reply(text: str) -> ParsedReply:
                 if m is None:
                     out.notes.append("'too low' is about the deposit / escrow, not the price")
             if not m:
+                continue
+            if intent == "REJECT" and m.group(0).strip().lower() == "pass" and forwarded_offer(scrubbed):
+                out.notes.append("'pass on your offer' means they forwarded it to the seller, not a no")
                 continue
             if intent == "AVAILABLE" and re.search(r"back|fell|fallen", m.group(0), re.I) and re.search(
                     r"\b(?:if|when|should|in case|once|unless)\b[^.!?\n]*$",

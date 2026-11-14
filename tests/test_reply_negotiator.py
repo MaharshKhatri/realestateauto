@@ -574,3 +574,18 @@ def test_talk_to_you_soon_is_a_yes_to_our_check_in():
     waiting as a question."""
     assert rn.is_checkin_ok("Sure. Talk to you soon.") and rn.is_checkin_ok("Talk soon!")
     assert not rn.is_checkin_ok("Talk to you about the price soon?") and not rn.is_checkin_ok("Sure, they want 290")
+
+
+def test_passed_on_your_offer_is_forwarding_not_a_no(db, operator):
+    """2026-11-12, 1534 Asbury Ave: "I did pass on your offer. Prior to responding my client requests proof of funds."
+    read as REJECT (the bare "pass") and the desk answered "my ceiling is $X" instead of the proof-of-funds answer."""
+    text = "I did pass on your offer. Prior to responding my client requests proof of funds."
+    p = rn.parse_reply(text)
+    assert "REJECT" not in p.intents and "POF_REQUEST" in p.intents
+    for t in ("I passed it along to the seller.", "I'll pass it on to my client and get back to you",
+              "I passed your offer along", "We have already passed on your offer, the seller is reviewing it"):
+        assert "REJECT" not in rn.parse_reply(t).intents, t
+    for t in ("We'll pass.", "The seller will pass on this one", "I'll pass, thanks", "Pass. Too low."):
+        assert "REJECT" in rn.parse_reply(t).intents, t
+    a = rn.analyze(db, listed(db), text)
+    assert "ceiling" not in a.reply_text.lower() and "comes with the signed contract" in a.reply_text

@@ -1081,6 +1081,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     price no (`_NOT_PRICE_LOW`); it had been answered "my ceiling is $X ... if the seller's thinking changes". "We have a few offers" with nothing of
     ours in writing gets a written best and final only on a firm number: an ask-first house or one with a certainty
     issue (no living area, old comps) gets "facts first" (the one fact, or the seller's net), no number (4 Richard Ter).
+    "I did pass on your offer. Prior to responding my client requests proof of funds" (2026-11-12, 1534 Asbury Ave) is forwarding, not a no (`reply_negotiator.forwarded_offer`: "pass ... along", "pass it on to", an agent's "I did / have pass(ed) on" next to the seller responding / requesting); the bare "pass" had sent "my ceiling is $X" instead of the proof-of-funds answer. "We'll pass" / "the seller will pass on this one" stay a no.
     "It is still aviilable" / "availble" (typos) read as available (2026-11-06, 492 Booth Ct had waited as a question).
     "It is sold as is" is the condition, never SOLD (the desk had congratulated an agent on a contract that
     didn't exist); "the asking price is $549k" / "listing price is 525,000" / "asking is 395, make an offer" is
