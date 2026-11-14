@@ -946,9 +946,10 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
         # The forensic audit (engine/ceo_audit.py): the report names streets and agents, so it goes to the operator's
         # own inbox ("[njw-audit] ..."); the public log gets counts only.
         try:
+            from db.models import utcnow as _utcnow
             from engine import ceo_audit
             with session_scope() as s:
-                text, counts = ceo_audit.build(s, utcnow())
+                text, counts = ceo_audit.build(s, _utcnow())
             out.update(counts)
             out["audit_mailed"] = int(ceo_audit.mail(text, t.replace(tzinfo=None), smtp_factory))
         except Exception as exc:                   # noqa: BLE001 - reported by name only (public log)

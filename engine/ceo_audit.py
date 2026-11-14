@@ -272,10 +272,19 @@ def build(session: Session, now: datetime | None = None) -> tuple[str, dict[str,
         lines.append(f"  {stream:<5}{kind:<14}{n:>5} sent{rep:>5} replies{hot:>4} interested")
     gone = dropped(session, rows, now)
     lines += ["", f"Dropped threads (agent wrote last, nothing sent since): {len(gone)}"] + [f"  {g}" for g in gone]
+    from engine import lead_scoring
+    clones = lead_scoring.rank(session, 15)
+    lines += ["", "Top 15 clone deals not yet e-mailed (engine/lead_scoring.py: our offer at 78%+ of the ask, "
+              "units / tenants / estate / days / cut / fixer / investor town):"]
+    for i, c in enumerate(clones, 1):
+        fa = c.facts
+        lines.append(f"  {i:>2}. #{c.lead_id} {fa.get('street')}, {fa.get('town')} ({fa.get('county')}): score "
+                     f"{c.score:.0f}; ask {fa.get('ask') or 0:,.0f}, our offer ~{fa.get('offer') or 0:,.0f} "
+                     f"({(c.ratio or 0):.0%}); " + ", ".join(c.parts))
     f = funnel(session, now)
     lines += ["", "Pipeline now: " + ", ".join(f"{k} {v}" for k, v in f.items() if isinstance(v, (int, float)))]
     counts = {"audit_leads": len(rows), "audit_warm": by_out.get("warm", 0) + by_out.get("accepted", 0),
-              "audit_dropped": len(gone), "audit_streams": len(roi)}
+              "audit_dropped": len(gone), "audit_streams": len(roi), "audit_clones": len(clones)}
     return "\n".join(lines), counts
 
 

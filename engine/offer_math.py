@@ -424,7 +424,8 @@ def trickle(session: Any, *, limit: int = 3, budget_seconds: float = 40, daily_c
     for lead in session.scalars(select(Lead).where(Lead.property_id.in_(listed),
                                                    Lead.status_stage.notin_(("DEAD", "DO_NOT_CONTACT", "CLOSED")))):
         v = lead.property.current_valuation
-        if v is None or lead.id in tried or not (v.assumptions_json or {}).get("comps_need_refresh"):
+        a = (v.assumptions_json or {}) if v is not None else {}
+        if v is None or lead.id in tried or not (a.get("comps_need_refresh") or a.get("revalue")):
             continue
         todo.append((0 if condition(session, lead) == "fixer" else 1, lead))
     todo.sort(key=lambda x: (x[0], -(x[1].priority_rank_score or 0)))

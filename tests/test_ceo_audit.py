@@ -60,3 +60,19 @@ def test_the_report_names_houses_but_the_log_counts_only(live):
     assert "s6   pitch" in text and "s1   partner_note" in text
     assert counts["audit_leads"] == 2 and counts["audit_warm"] == 1 and counts["audit_dropped"] == 2
     assert all(isinstance(v, int) for v in counts.values())
+
+
+def test_the_desk_task_mails_the_report_and_logs_counts(db, tmp_path, monkeypatch):
+    """2026-11-14: the first live run died on a missing import in the task path; this runs the task itself."""
+    from engine import cloud_desk as cd
+    _lead(db, units=2, ask=535000, offer=475900, intents=("ACCEPT",))
+    db.commit()
+    sent = []
+    monkeypatch.setenv("SMTP_USER", "jordan@example.test")
+    monkeypatch.setenv("SMTP_APP_PASSWORD", "p")
+    monkeypatch.setattr(cd, "_send_self_files", lambda *a, **k: sent.append(a[2]))
+    kw = dict(now=datetime(2026, 11, 14, 7, 0), smtp_factory=None, user="jordan@example.test", pw="p",
+              desk_key="x" * 40, root=tmp_path)
+    out = cd._work("audit", approve_id=None, **kw)
+    assert "audit_error" not in out and out["audit_leads"] == 1 and out["audit_mailed"] == 1
+    assert sent and sent[0].startswith("[njw-audit] ")
