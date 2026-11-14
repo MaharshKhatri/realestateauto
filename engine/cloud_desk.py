@@ -942,6 +942,17 @@ def _work(task: str, *, approve_id: int | None, now: datetime | None, smtp_facto
         r = run_agent("value_new_listings", cap=600, max_minutes=70 if night else 30)
         m = (r.metrics_json or {}) if r is not None else {}
         out.update(new_valued=int(m.get("valued") or 0), unvalued_left=int(m.get("left_for_next_run") or 0))
+    if task == "audit":
+        # The forensic audit (engine/ceo_audit.py): the report names streets and agents, so it goes to the operator's
+        # own inbox ("[njw-audit] ..."); the public log gets counts only.
+        try:
+            from engine import ceo_audit
+            with session_scope() as s:
+                text, counts = ceo_audit.build(s, utcnow())
+            out.update(counts)
+            out["audit_mailed"] = int(ceo_audit.mail(text, t.replace(tzinfo=None), smtp_factory))
+        except Exception as exc:                   # noqa: BLE001 - reported by name only (public log)
+            out["audit_error"] = type(exc).__name__
     if task == "stats":
         # Where the pipeline stands (engine/outreach_stats.py): counts only, safe for the public run log.
         from engine.outreach_stats import flat, funnel

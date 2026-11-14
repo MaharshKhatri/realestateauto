@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "run | refresh | recalibrate | sheet (rebuild the blocks nobody called yet) | firmup (live re-value of today's call-sheet houses) | stats (pipeline counts) | value (price unvalued listings) | digest (weekly deal digests for flippers, mailed to you) | agents (flipper-connected agents report only) | firm (10-stream status counts) | firm-run (run every stream now) | approve | dismiss | offer | note | forget (drop one run's saved state, then run)"
+        description: "run | audit (forensic report mailed to you) | refresh | recalibrate | sheet (rebuild the blocks nobody called yet) | firmup (live re-value of today's call-sheet houses) | stats (pipeline counts) | value (price unvalued listings) | digest (weekly deal digests for flippers, mailed to you) | agents (flipper-connected agents report only) | firm (10-stream status counts) | firm-run (run every stream now) | approve | dismiss | offer | note | forget (drop one run's saved state, then run)"
         default: run
       reply:
         description: "with approve / dismiss: the reply #"
