@@ -255,10 +255,10 @@ def test_pitches_by_kind_two_sentences_no_attachment_stable_keys_and_dry_run(db,
         assert o.attachments == [] and o.sample_attachments == [sample_path(feed)] and sample_path(feed).exists()
         assert o.subject == f"{top} + 2 more entity purchases in Union County"
         assert hc.lint(o.body) == [] and o.body.rstrip().endswith("Alex") and o.body.startswith("Hello,\n\n")
-        assert len(sentences(o.body)) == 2 and touch_words(o.body) <= 60
+        assert len(sentences(o.body)) == 2 and touch_words(o.body) <= 45
         assert "$" not in o.body and top in o.body and "in Elizabeth" in o.body
-        assert ("We pulled 3 recent multi-family and commercial purchases by business entities in Union County from "
-                f"public deed and tax records, including {top} in Elizabeth (bought for 1.2 million dollars in March "
+        assert ("We pulled 3 recent multi-family and commercial purchases by companies in Union County from "
+                f"public deeds, including {top} in Elizabeth (bought for 1.2 million dollars in March "
                 "2026), that may fit cost-segregation or 1031 work.") in o.body
         assert sentences(o.body)[-1] == "Want the property and buyer-entity list?"
         assert "HOLDINGS" not in o.body.upper()                            # no buyer named in Touch 1
@@ -308,8 +308,8 @@ def test_spoken_price_scope_and_singular_copy():
     row = s9.CostSegRow(entity="ELM LLC", town="Linden", county="Union", price=800_000, deed_date=date(2026, 5, 1),
                         kind="2 units (class 2)", source="deed export", keys=(), street="9 PINE ST, LINDEN")
     one = s9.pitch_body("cs", "Union County", 1, row, 8, "Alex")
-    assert ("We pulled a recent multi-family or commercial purchase by a business entity in Union County from public "
-            "deed and tax records, 9 Pine St in Linden (bought for 800,000 dollars in May 2026)") in one
+    assert ("We pulled a recent multi-family or commercial purchase by a company in Union County from public "
+            "deeds, 9 Pine St in Linden (bought for 800,000 dollars in May 2026)") in one
     assert len(sentences(one)) == 2 and "$" not in one and "ELM" not in one
     assert s9.pitch_subject("cs", "Union County", "9 Pine St", 1) == "9 Pine St: an entity purchase in Union County"
     assert s9.pitch_subject("ex", "New Jersey", "9 Pine St", 4) == "9 Pine St + 3 more long-held listings in New Jersey"
@@ -336,11 +336,10 @@ def test_a_1031_intermediary_hears_about_long_held_listings_in_its_county_first(
     by = {o.target_id: o for o in res.outbound}
     o = by[qi.id]
     assert o.subject == "77 Direct St + 3 more long-held listings in Hudson County"
-    assert ("We pulled 4 multi-family and commercial properties listed for sale in Hudson County whose last recorded "
-            "sale was 8 or more years ago, from public listings and tax records, including 77 Direct St in Jersey City "
-            "(last sold in 1999), that may fit 1031 work.") in o.body
+    assert ("We pulled 4 multi-family and commercial listings in Hudson County last sold 8 or more years ago, "
+            "including 77 Direct St in Jersey City (last sold in 1999), that may fit 1031 work.") in o.body
     assert sentences(o.body)[-1] == "Want the property and listing-brokerage list?"
-    assert len(sentences(o.body)) == 2 and touch_words(o.body) <= 60 and "$" not in o.body and hc.lint(o.body) == []
+    assert len(sentences(o.body)) == 2 and touch_words(o.body) <= 45 and "$" not in o.body and hc.lint(o.body) == []
     assert "Quinn" not in o.body and "QUINN" not in o.body                     # listings never name an owner
     # its sample: the Hudson feed, Table B first, the named listing in full, the rest masked
     (sample,) = o.sample_attachments

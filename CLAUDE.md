@@ -1224,7 +1224,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     A failing send retries up to 3 times.
   - **The B2B playbook** (research 2026-11-10, scratch report "b2b_playbook"; the operator stays on the personal Gmail at
     $0 with plain 2-sentence openers, no separate domain):
-    - **One sequence per target** (any stream): Touch 1 from the stream (2 plain sentences naming one real public-record
+    - **One sequence per target** (any stream): Touch 1 from the stream (2 plain sentences, at most 45 words above the
+      sign-off, every stream's test enforces it; e-mails queued before a copy change are rewritten by
+      `firm_outbox.COPY_FIXES` before they go; naming one real public-record
       street, no attachment / link / price), then the outbox's own nudge (`queue_nudges`, `nudge_days` 3: "want me to
       send <SEQUENCE_WORDS noun>? It's one page and free.") and close-the-loop (`close_days` 6 later: "Last note from
       me ... I won't follow up."), both in the prospect's thread, plain text, weekdays only. Streams pick Touch-1 targets
@@ -1276,8 +1278,8 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     with `offer_amount` and an agent reply / OFFER_SENT_TO_AGENT in 21 days, not dead / under contract / off the market;
     with 2+ of them, flipper / investor_agent / investor_friendly_broker targets whose stated county, town (-> county via
     our parcels), own listings or deed family overlap their counties get a 2-sentence buy-box intake ("I'm working on a
-    few as-is houses in <counties> in the <$275K-$650K> range ... what's your buy box (towns, price, rehab level) so I
-    can send you the first one once it's under contract?"). We don't hold those contracts, so no address, no house's
+    few as-is houses in <counties>, <$275K-$650K>, and may have one under contract soon. Do you buy cash there, and
+    what's your buy box (towns, price, rehab level)?"). We don't hold those contracts, so no address, no house's
     price, no spread (N.J.S.A. 45:15-3; no daisy-chaining): the band is rounded outward to $25K, >= $50K wide. Key
     `s1:buyers:<target>:<iso-week>`, `buyers_per_run` 8, one per target per 14 days, 2 ever (the 2nd a one-sentence nudge
     in the thread), kind `buyer_note` (counts against the first-touch caps, carries the solicitation line, never starts or uses
@@ -1330,9 +1332,9 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
     "assessment / sale price", the range and "If the true value were V, the Chapter 123 assessment would be R x V" with V
     blank, the deadline (April 1; Monmouth January 15; May 1 in revaluation towns) and, at the top in body type, "Public-record
     data; not an appraisal, BPO or CMA; no opinion of value" (N.J.S.A. 45:14F). No value, savings or "over-assessed".
-    2-step pitch (2026-11-10): Touch 1 is two sentences, no attachment, no "$" ("We ran Chapter 123 assessment-to-sale
-    ratios across <town> and found N homes paying over 12,000 dollars a year in taxes where ... runs above the common level
-    range, including <street>. Want the comparable-sales packet for it?"); that property's packet (its own sample, nothing
+    2-step pitch (2026-11-10, trimmed to <= 45 words 2026-11-14): Touch 1 is two sentences, no attachment, no "$"
+    ("<street> in <town>, one of N homes there taxed over 12,000 dollars a year, has 5 similar recorded sales nearby, and
+    <town>'s Chapter 123 ratio is X%. Want the comparable-sales packet for it before the April 1 deadline?"); that property's packet (its own sample, nothing
     masked) waits with the price and its deadline for their yes; follow-ups are the outbox's nudges.
     Targets the outbox would skip (week key used, touches used up, inside the gap, a row queued) take no pitch slot.
     Pitched to tax-appeal attorneys: $100 a packet or $500/month.

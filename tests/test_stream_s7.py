@@ -93,7 +93,7 @@ def test_touch_one_is_a_greeting_and_two_plain_sentences_with_the_fee_arithmetic
     body = s7.note_body(c, "12 Sample St", "Pat Agent")
     greet, rest = body.split("\n\n", 1)
     assert greet == "Hi Pat,"
-    assert len(sentences(rest)) == 2 and s7.word_count(rest) <= 60
+    assert len(sentences(rest)) == 2 and s7.word_count(rest) <= 45
     assert hc.lint(body) == [] and "—" not in body and "http" not in body and "attach" not in body.lower()
     assert rest.startswith("Quick heads-up on 12 Sample St: at $1,007,198 your seller crosses New Jersey's graduated "
                            "transfer-fee line and pays about ")

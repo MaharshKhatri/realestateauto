@@ -153,9 +153,9 @@ def test_the_note_goes_only_to_buyer_targets_in_the_live_offer_counties_and_name
         assert ob.sample_body == "" and ob.in_reply_to is None
         assert ob.subject == "As-is houses in Essex and Union counties"
         sents = _sentences(ob.body)
-        assert len(sents) == 2 and hc.word_count(_text(ob.body)) <= 60 and hc.lint(ob.body) == [], sents
-        assert sents[0] == ("I'm working on a couple of as-is houses in Essex and Union counties in the $300K-$600K "
-                            "range and may have one under contract soon.")
+        assert len(sents) == 2 and hc.word_count(_text(ob.body)) <= 45 and hc.lint(ob.body) == [], sents
+        assert sents[0] == ("I'm working on a couple of as-is houses in Essex and Union counties, $300K-$600K, "
+                            "and may have one under contract soon.")
         assert re.findall(r"\$[\d,.]+[KM]?", ob.body) == ["$300K", "$600K"]                # the band, nothing else
         for street in streets:
             assert street.title() not in ob.body and street.upper() not in ob.body.upper()
@@ -163,7 +163,7 @@ def test_the_note_goes_only_to_buyer_targets_in_the_live_offer_counties_and_name
         assert "ARV" not in ob.body and "fee" not in ob.body.lower()
     by = {o.target_id: o for o in r.outbound}
     assert by[flipper.id].body.startswith("Hello,\n\n")
-    assert "Do you buy cash in those areas, and what's your buy box (towns, price, rehab level)" in by[flipper.id].body
+    assert "Do you buy cash there, and what's your buy box (towns, price, rehab level)?" in by[flipper.id].body
     assert by[kim.id].body.startswith("Hi Kim,\n\n") and "Do you or your investor clients buy cash" in by[kim.id].body
     assert by[union.id].body.startswith("Hello,\n\n")
     assert sum(1 for _ in s1.STREAM.run(db, _ctx(tmp_path, buyers_per_run=2)).outbound) == 2

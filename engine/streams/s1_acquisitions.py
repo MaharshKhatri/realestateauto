@@ -249,9 +249,8 @@ def blast_body(t: FirmTarget, book: OfferBook, op: dict[str, str], follow: bool 
                 "once it's under contract?")
     else:
         few = "a few" if book.count >= 3 else "a couple of"
-        text = (f"I'm working on {few} as-is houses in {book.where} in the {book.band} range and may have one "
-                f"under contract soon. {who} buy cash in those areas, and what's {box} (towns, price, rehab level) so "
-                "I can send you the first one once it's under contract?")
+        text = (f"I'm working on {few} as-is houses in {book.where}, {book.band}, and may have one under contract "
+                f"soon. {who} buy cash there, and what's {box} (towns, price, rehab level)?")
     return subject, "\n".join([hello, "", text, "", op.get("first") or ""]).strip()
 
 

@@ -583,7 +583,7 @@ def fit_one_page(case: Case, path: Path, op: dict[str, str], params: dict[str, A
 
 # -- the pitch: the 2-step funnel (2026-11-10) -------------------------------------------------------------------
 def taxes_floor(min_taxes: float) -> str:
-    """The tax screen in words ("12,000"): rounded down to the thousand, so "paying over X" stays true."""
+    """The tax screen in words ("12,000"): rounded down to the thousand, so "taxed over X" stays true."""
     v = float(min_taxes or 0)
     return f"{math.floor(v / 1000) * 1000 if v >= 1000 else v:,.0f}"
 
@@ -610,15 +610,15 @@ def pitch_body(town: str, street: str, n: int, min_taxes: float, first: str, *, 
     street, how many similar recorded sales the packet holds, the town's Chapter 123 ratio, and a yes/no question with
     the filing deadline. No screen result, no "above the range", no value, no "over-assessed", no savings, no "$"."""
     sales = f"{comps} similar recorded sales" if comps > 1 else "similar recorded sales"
-    more = "" if n <= 1 else f", one of {n} homes there paying over {taxes_floor(min_taxes)} dollars a year in taxes,"
+    more = "" if n <= 1 else f", one of {n} homes there taxed over {taxes_floor(min_taxes)} dollars a year,"
     if ratio is not None:
         r = f"{ratio.printed:.2f}%".replace(".00%", "%")
         fact = (f"{town}'s {'official' if ratio.official else 'estimated'} Chapter 123 ratio is {r}")
     else:
         fact = f"{town}'s Chapter 123 ratio is in the packet"
     when = f" before the {deadline:%B} {deadline.day} deadline" if deadline else ""
-    return (f"Hello,\n\n{street} in {town}{more} has {sales} nearby on record, and {fact}. Want the one-page "
-            f"comparable-sales packet for it{when}?\n\n{first}").strip()
+    return (f"Hello,\n\n{street} in {town}{more} has {sales} nearby, and {fact}. Want the comparable-sales packet "
+            f"for it{when}?\n\n{first}").strip()
 
 
 def followup_body(street: str, first: str) -> str:

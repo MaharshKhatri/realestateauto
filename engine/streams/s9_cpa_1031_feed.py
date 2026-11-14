@@ -559,17 +559,16 @@ def pitch_body(lead: str, where: str, n: int, row: CostSegRow | ExchangeRow, hol
     street, town = street_text(row), f" in {row.town}" if row.town else ""
     which = "including " if n > 1 else ""
     if lead == "cs":
-        what = (f"{n} recent multi-family and commercial purchases by business entities" if n > 1
-                else "a recent multi-family or commercial purchase by a business entity")
-        line = (f"We pulled {what} in {where} from public deed and tax records, {which}{street}{town} (bought for "
+        what = (f"{n} recent multi-family and commercial purchases by companies" if n > 1
+                else "a recent multi-family or commercial purchase by a company")
+        line = (f"We pulled {what} in {where} from public deeds, {which}{street}{town} (bought for "
                 f"{spoken_price(row.price)} in {row.deed_date:%B %Y}), that may fit cost-segregation or 1031 work. "
                 "Want the property and buyer-entity list?")
     else:
-        what = (f"{n} multi-family and commercial properties listed for sale" if n > 1
-                else "a multi-family or commercial property listed for sale")
-        line = (f"We pulled {what} in {where} whose last recorded sale was {hold_years} or more years ago, from public "
-                f"listings and tax records, {which}{street}{town} (last sold in {row.last_sale_date.year}), that may "
-                "fit 1031 work. Want the property and listing-brokerage list?")
+        what = (f"{n} multi-family and commercial listings" if n > 1 else "a multi-family or commercial listing")
+        line = (f"We pulled {what} in {where} last sold {hold_years} or more years ago, {which}{street}{town} (last "
+                f"sold in {row.last_sale_date.year}), that may fit 1031 work. Want the property and listing-brokerage "
+                "list?")
     return f"Hello,\n\n{line}\n\n{first}".strip()
 
 

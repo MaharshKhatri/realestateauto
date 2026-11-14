@@ -94,7 +94,7 @@ def _plain_touch(subject: str, body: str) -> None:
     sents = _sentences(body)
     assert len(sents) == 2 and sents[1].endswith("?"), sents
     assert body.splitlines()[0] == "Hello," and body.splitlines()[-1] == "Sam"
-    assert hc.lint(body, max_words=60) == [] and hc.word_count(body) <= 60, (hc.lint(body, max_words=60), body)
+    assert hc.lint(body, max_words=60) == [] and hc.word_count(body) <= 45, (hc.lint(body, max_words=60), body)
     low = (subject + " " + body).lower()
     for bad in ("$", "http", "www.", "free", "!", "attached", "subscription", "ad:", "referral", "guarantee",
                 "a month", "distressed", "borrower"):             # we know they buy houses; not that they borrow

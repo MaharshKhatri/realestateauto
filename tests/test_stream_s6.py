@@ -208,11 +208,11 @@ def test_packet_is_data_only_one_page_no_names_and_the_pitch_is_flat_fee(db, tmp
     assert ob.attachments == [] and ob.sample_attachments == [pdf] and ob.in_reply_to is None
     assert ob.to == t.email and ob.subject == f"Chapter 123 ratios: {street}, Newark"
     assert hc.lint(ob.body) == [] and ob.body.rstrip().endswith("Alex")
-    assert len(sentences(ob.body)) == 2 and touch_words(ob.body) <= 60
+    assert len(sentences(ob.body)) == 2 and touch_words(ob.body) <= 45
     assert ob.body.startswith("Hello,\n\n") and street in ob.body and "Newark" in ob.body
-    assert "$" not in ob.body and "similar recorded sales nearby on record" in ob.body
+    assert "$" not in ob.body and "similar recorded sales nearby, and" in ob.body
     assert "Chapter 123 ratio is" in ob.body and "common level range" not in ob.body   # facts only, no screen result
-    assert sentences(ob.body)[-1] == "Want the one-page comparable-sales packet for it before the April 1 deadline?"
+    assert sentences(ob.body)[-1] == "Want the comparable-sales packet for it before the April 1 deadline?"
     assert "$100 a packet" in ob.sample_body and "$500 a month" in ob.sample_body
     assert "April 1, 2027 filing deadline" in ob.sample_body and street in ob.sample_body
     assert ob.sample_body.endswith('Reply "start" and I\'ll set it up.') and hc.lint(ob.sample_body) == []
@@ -309,9 +309,9 @@ def test_touch1_counts_the_town_names_its_top_property_and_holds_that_packet(db,
     street = street_of(top)
     assert ob.subject == f"Chapter 123 ratios: {street} + 2 more in Newark"
     first, second = sentences(ob.body)
-    assert first.startswith(f"{street} in Newark, one of 3 homes there paying over 12,000 dollars a year in taxes, has ")
-    assert "similar recorded sales nearby on record" in first and "Newark's official Chapter 123 ratio is" in first
-    assert second == "Want the one-page comparable-sales packet for it before the April 1 deadline?"
+    assert first.startswith(f"{street} in Newark, one of 3 homes there taxed over 12,000 dollars a year, has ")
+    assert "similar recorded sales nearby, and" in first and "Newark's official Chapter 123 ratio is" in first
+    assert second == "Want the comparable-sales packet for it before the April 1 deadline?"
     assert street_of(low) not in ob.body and street_of(mid) not in ob.body
     # the held sample is exactly the named property's one-page packet (a one-property packet is its own sample)
     (pdf,) = ob.sample_attachments
@@ -325,11 +325,11 @@ def test_touch1_counts_the_town_names_its_top_property_and_holds_that_packet(db,
 def test_the_tax_screen_in_words_and_singular_copy():
     assert s6.taxes_floor(12_000) == "12,000" and s6.taxes_floor(12_750) == "12,000" and s6.taxes_floor(800) == "800"
     one = s6.pitch_body("Newark", "12 Main St", 1, 12_000, "Alex", comps=4)
-    assert one.startswith("Hello,\n\n12 Main St in Newark has 4 similar recorded sales nearby on record")
-    assert len(sentences(one)) == 2 and touch_words(one) <= 60
+    assert one.startswith("Hello,\n\n12 Main St in Newark has 4 similar recorded sales nearby, and")
+    assert len(sentences(one)) == 2 and touch_words(one) <= 45
     many = s6.pitch_body("West Orange", "4 N. Main St", 9, 15_500, "Alex", comps=5)
-    assert "one of 9 homes there paying over 15,000 dollars a year in taxes" in many
-    assert len(sentences(many)) == 2 and touch_words(many) <= 60
+    assert "one of 9 homes there taxed over 15,000 dollars a year" in many
+    assert len(sentences(many)) == 2 and touch_words(many) <= 45
     import re
     for bad in (r"over-assessed", r"savings", r"above the", r"\brange\b", r"\bvalue\b"):
         assert not re.search(bad, (one + many).lower()), bad

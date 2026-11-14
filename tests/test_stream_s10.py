@@ -278,7 +278,7 @@ def test_an_agent_gets_a_plain_touch1_and_the_masked_town_sheet_waits_as_the_sam
         f"We pulled 5 new foreclosure filings and sheriff sales in Newark this month that aren't on the MLS, including "
         f"{first}.",
         "Want the docket sheet, either to talk with the owners about listing or to work with us on the investor side?"]
-    assert hc.word_count(" ".join(_sentences(o.body))) <= 60 and hc.lint(o.body) == []
+    assert hc.word_count(" ".join(_sentences(o.body))) <= 45 and hc.lint(o.body) == []
     for never in ("$", "234,567", "QUINN", "BIG BANK", "upset", "owe", "free", "http", "attached"):
         assert never not in o.body, never
     # the target: one row per e-mail, created for s10

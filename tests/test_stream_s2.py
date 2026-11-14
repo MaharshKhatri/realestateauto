@@ -98,7 +98,7 @@ def test_agent_touch1_is_two_plain_sentences_with_one_street_and_no_attachment(l
     assert ob.attachments == [] and ob.commercial and ob.in_reply_to is None
     assert ob.body.startswith("Hi Pat,\n\n") and hc.lint(ob.body) == []
     sents = _sentences(ob.body)
-    assert len(sents) == 2 and hc.word_count(_text(ob.body)) <= 60, sents
+    assert len(sents) == 2 and hc.word_count(_text(ob.body)) <= 45, sents
     assert sents[0] == "I saw your 3 fixer listings and 1 investor resale around Newark."
     named = [ld for ld in others if _has_street(ob.body, _street(ld))]
     assert len(named) == 1 and not _has_street(ob.body, _street(own))          # never the agent's own listing
@@ -168,7 +168,7 @@ def test_a_flipper_hears_what_the_deed_records_show_and_a_sheriff_sale_shows_no_
     ob = next(o for o in r.outbound if o.target_id == t.id)
     assert t.kind == "flipper" and ob.attachments == [] and ob.body.startswith("Hello,\n\n")
     sents = _sentences(ob.body)
-    assert len(sents) == 2 and hc.word_count(_text(ob.body)) <= 60 and hc.lint(ob.body) == []
+    assert len(sents) == 2 and hc.word_count(_text(ob.body)) <= 45 and hc.lint(ob.body) == []
     assert sents[0] == "I saw in the public deed records that River Homes LLC has been buying around Newark."
     assert "$" not in ob.body                                              # an upset is a defendant's debt figure
     m = re.search(r"underwrote (.+?) \(sheriff sale (\d\d/\d\d)\) plus 3 other sheriff sales in your towns this week",

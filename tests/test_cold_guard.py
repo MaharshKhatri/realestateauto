@@ -301,3 +301,39 @@ def test_the_public_log_names_the_kind_of_pause_only():
           "cold_paused": "6 bounces to 60 cold e-mails (10%) in 7 days"}
     out = swarm_firm.flat(st)
     assert out["cold_paused"] == "bounces" and "60" not in str(out)
+
+
+def test_queued_first_touches_get_the_45_word_copy(db):
+    """2026-11-14: e-mails queued before the trim are rewritten to the short copy before they go."""
+    from db.models import FirmOutbox
+    from engine import firm_outbox as fo, human_copy as hc
+    old = {
+        "s1": ("Hello,\n\nI'm working on a couple of as-is houses in Essex and Union counties in the $300K-$600K range and "
+               "may have one under contract soon. Do you or your investor clients buy cash in those areas, and what's the "
+               "buy box (towns, price, rehab level) so I can send you the first one once it's under contract?\n\nAlex"),
+        "s6": ("Hello,\n\n4 N. Main St in West Orange, one of 9 homes there paying over 15,000 dollars a year in taxes, has "
+               "5 similar recorded sales nearby on record, and West Orange's Chapter 123 ratio is in the packet. Want the "
+               "one-page comparable-sales packet for it before the April 1 deadline?\n\nAlex"),
+        "s9a": ("Hello,\n\nWe pulled 3 recent multi-family and commercial purchases by business entities in Union County from "
+                "public deed and tax records, including 73 Elm St in Elizabeth (bought for 1.2 million dollars in March "
+                "2026), that may fit cost-segregation or 1031 work. Want the property and buyer-entity list?\n\nAlex"),
+        "s9b": ("Hello,\n\nWe pulled 4 multi-family and commercial properties listed for sale in Hudson County whose last "
+                "recorded sale was 8 or more years ago, from public listings and tax records, including 77 Direct St in "
+                "Jersey City (last sold in 1999), that may fit 1031 work. Want the property and listing-brokerage "
+                "list?\n\nAlex"),
+    }
+    for k, body in old.items():
+        db.add(FirmOutbox(key=f"t:{k}", stream=k[:2], kind="pitch", to_email=f"{k}@x.example", subject="s", body=body))
+    db.flush()
+    assert fo.rewrite_queued(db) == 4 and fo.rewrite_queued(db) == 0
+    for row in db.query(FirmOutbox).all():
+        text = " ".join(p for p in row.body.split("\n\n")[1:-1])
+        assert hc.word_count(text) <= 45, (row.key, hc.word_count(text), text)
+    by = {r.key: r.body for r in db.query(FirmOutbox).all()}
+    assert ("counties, $300K-$600K, and may have one under contract soon. Do you or your investor clients buy cash there, "
+            "and what's the buy box (towns, price, rehab level)?") in by["t:s1"]
+    assert "one of 9 homes there taxed over 15,000 dollars a year, has 5 similar recorded sales nearby, and" in by["t:s6"]
+    assert "Want the comparable-sales packet for it before the April 1 deadline?" in by["t:s6"]
+    assert "purchases by companies in Union County from public deeds, including 73 Elm St" in by["t:s9a"]
+    assert ("4 multi-family and commercial listings in Hudson County last sold 8 or more years ago, including 77 Direct "
+            "St") in by["t:s9b"]

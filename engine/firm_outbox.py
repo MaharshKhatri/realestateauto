@@ -322,8 +322,22 @@ def sent_24h(session: Session, now: datetime | None = None, priority: int | None
 
 # Wording fixes applied to e-mails already waiting in the outbox (a stream's copy changed after it queued them):
 # (pattern, replacement). The outbox never sends the old sentence.
-COPY_FIXES: list[tuple[str, str]] = [
+COPY_FIXES: list[tuple[str, Any]] = [
     (r"and expect to have one under contract soon", "and may have one under contract soon"),
+    # 2026-11-14: every cold first touch under 45 words (s1 buy-box note, s6 tax packet, s9 cost-seg / 1031 feed)
+    (r" in the (\$\S+) range and may have one under contract soon\. (.+?) buy cash in those areas, and what's (.+?) "
+     r"\(towns, price, rehab level\) so I can send you the first one once it's under contract\?",
+     r", \1, and may have one under contract soon. \2 buy cash there, and what's \3 (towns, price, rehab level)?"),
+    (r" paying over ([\d,]+) dollars a year in taxes,", r" taxed over \1 dollars a year,"),
+    (r"similar recorded sales nearby on record, and ", "similar recorded sales nearby, and "),
+    (r"Want the one-page comparable-sales packet for it", "Want the comparable-sales packet for it"),
+    (r"purchases by business entities in ", "purchases by companies in "),
+    (r"purchase by a business entity in ", "purchase by a company in "),
+    (r" from public deed and tax records, ", " from public deeds, "),
+    (r"commercial propert(?:y|ies) listed for sale in (.+?) whose last recorded sale was (\d+) or more years ago, "
+     r"from public listings and tax records, ",
+     lambda m: f"commercial listing{'s' if m.group(0).startswith('commercial properties') else ''} in {m.group(1)} "
+               f"last sold {m.group(2)} or more years ago, "),
 ]
 
 

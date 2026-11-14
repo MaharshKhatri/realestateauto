@@ -253,7 +253,7 @@ def test_touch1_is_two_plain_sentences_with_one_case_and_no_attachment(db, tmp_p
         assert o.subject == f"{street}, Essex County" and not o.subject.lower().startswith("re:")
         assert o.body.startswith("Hello,\n\n") and o.body.rstrip().endswith("\nSam")
         assert len(_sentences(o.body)) == 2, _sentences(o.body)
-        assert hc.word_count(_head(o.body)) <= 60
+        assert hc.word_count(_head(o.body)) <= 45
         assert f"including {street} (sheriff # {sheriff})" in o.body
         assert "1 upcoming Essex County sheriff sale," in o.body       # the true count, and only what the rows are
         assert o.body.rstrip().splitlines()[-3].endswith("e-mailed it over?")
@@ -349,7 +349,7 @@ def test_a_statewide_attorney_hears_about_the_two_largest_counties_in_plain_gram
     tag = s3.week_tag(_ctx(tmp_path).now)
     assert "for 7 upcoming sheriff sales in Union and Essex counties, including " in o.body
     assert o.subject.endswith(" + 6 more in Union and Essex counties") and len(_sentences(o.body)) == 2
-    assert hc.word_count(_head(o.body)) <= 60 and hc.lint(o.body) == [] and o.attachments == []
+    assert hc.word_count(_head(o.body)) <= 45 and hc.lint(o.body) == [] and o.attachments == []
     assert o.sample_attachments == [sample_path(tmp_path / f"s3_surplus_union_{tag}.pdf"),
                                     sample_path(tmp_path / f"s3_surplus_essex_{tag}.pdf")]
     assert o.sample_body.startswith("Here are this week's sheets for Union and Essex counties, attached: the first 2 "
