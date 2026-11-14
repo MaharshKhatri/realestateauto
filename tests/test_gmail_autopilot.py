@@ -899,3 +899,37 @@ def test_a_delivery_delay_notice_is_not_a_bounce(live):
     db.expire_all()
     assert "info@slow.test" not in ao.bounced_emails(db)
     assert cold_guard.bounces_since(db, utcnow() - timedelta(days=1)) == []
+
+
+def test_a_dead_server_or_full_inbox_is_kept_off_lists_but_not_counted(live):
+    """2026-11-13: three company mail servers that never answered (Status 4.4.1 after Gmail's retries) and two full
+    inboxes tripped the cold-mail pause while only five addresses were truly invalid."""
+    def dsn(body, mid):
+        m = EmailMessage()
+        m["From"], m["Subject"] = "Mail Delivery Subsystem <mailer-daemon@googlemail.com>", \
+            "Delivery Status Notification (Failure)"
+        m["Message-ID"] = mid
+        m.set_content(body)
+        return m.as_bytes(policy=policy.SMTP)
+    dead = dsn("Message not delivered\nThe recipient server did not accept our requests to connect.\n"
+               "Final-Recipient: rfc822; info@deadserver.test\nAction: failed\nStatus: 4.4.1", "<d1@g.test>")
+    full = dsn("Recipient inbox full\n552 5.2.2 The recipient's inbox is out of storage space.\n"
+               "Final-Recipient: rfc822; full@inbox.test\nAction: failed\nStatus: 5.2.2", "<d2@g.test>")
+    gone = dsn("Address not found\n550 5.1.1 The email account that you tried to reach does not exist.\n"
+               "Final-Recipient: rfc822; gone@nobody.test\nAction: failed\nStatus: 5.1.1", "<d3@g.test>")
+    assert gm.parse_message(dead, 1).soft_bounce and gm.parse_message(full, 2).soft_bounce
+    g = gm.parse_message(gone, 3)
+    assert not g.soft_bounce and g.bounced_addresses == ["gone@nobody.test"]
+    assert not gm.soft_bounce("550 5.4.1 Recipient address rejected: Access denied\nStatus: 5.4.1")
+    from engine import agent_outreach as ao
+    from engine import cold_guard
+    from db.models import utcnow
+    db = live
+    for raw, uid in ((dead, 1), (full, 2), (gone, 3)):
+        m = gm.parse_message(raw, uid)
+        for a in m.bounced_addresses:
+            ao.record_bounce(db, a, sent=not m.soft_bounce)
+    db.flush()
+    banned = ao.bounced_emails(db)
+    assert {"info@deadserver.test", "full@inbox.test", "gone@nobody.test"} <= set(banned)
+    assert cold_guard.bounces_since(db, utcnow() - timedelta(days=1)) == ["gone@nobody.test"]

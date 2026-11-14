@@ -145,6 +145,7 @@ class Mail:
     bounced_ids: list[str] = field(default_factory=list)
     bounced_addresses: list[str] = field(default_factory=list)
     block_code: str | None = None                  # a bounce carrying Gmail's spam / rate code (engine/cold_guard.py)
+    soft_bounce: bool = False                      # the server never answered / the mailbox is full (not counted)
 
 
 def _ids(value: Any) -> list[str]:
@@ -260,6 +261,25 @@ def delay_only(flat: str, subject: str = "") -> bool:
                                                                            r"found|permanent", (flat or "")[:4000]))
 
 
+_DSN_STATUS = re.compile(r"(?im)^\s*Status:\s*([245])\.(\d{1,3})\.(\d{1,3})")
+_SOFT_WORDS = re.compile(r"did not accept our requests to connect|remote server is misconfigured|"
+                         r"inbox is full|mailbox (?:is )?full|over (?:its |their )?quota", re.I)
+
+
+def soft_bounce(flat: str) -> bool:
+    """A failure no mailbox provider decided: the recipient's mail server never answered (Gmail gave up connecting
+    after its retries: Status 4.4.x, "did not accept our requests to connect", "remote server is misconfigured") or a
+    real mailbox is full (5.2.2). 2026-11-13: three dead company servers and two full inboxes tripped the cold-mail
+    pause while only five addresses were truly invalid. The address still stays off every list; it just doesn't count
+    toward the bounce pause (engine/cold_guard.py). A 5.1.x unknown user, 5.4.1 / 5.7.x refusal or dead domain counts."""
+    statuses = [(c, sub, det) for c, sub, det in _DSN_STATUS.findall(flat or "")]
+    if any(c == "5" and not (sub == "2" and det == "2") for c, sub, det in statuses):
+        return False
+    if any(c == "4" and sub == "4" for c, sub, _ in statuses) or any(c == "5" for c, _, _ in statuses):
+        return True
+    return bool(_SOFT_WORDS.search((flat or "")[:8000]))
+
+
 def parse_message(raw: bytes, uid: int, uidvalidity: int = 0) -> Mail:
     mail = parse_headers(raw, uid, uidvalidity)
     msg = message_from_bytes(raw, policy=policy.default)
@@ -271,6 +291,7 @@ def parse_message(raw: bytes, uid: int, uidvalidity: int = 0) -> Mail:
             r"(?im)^\s*(?:Final|Original)-Recipient:\s*rfc822;\s*<?([^\s<>;]+@[^\s<>;]+)>?", flat)})
         from engine import cold_guard
         mail.block_code = cold_guard.block_code(flat[:20000])
+        mail.soft_bounce = soft_bounce(flat)
         if delay_only(flat, mail.subject):
             # "Delivery incomplete ... Gmail will retry for 47 more hours" (2026-11-11: two of these were counted as
             # bounces, the targets closed and cold mail paused at "5 bounces"). Not a bounce: Gmail is still trying, and
@@ -539,7 +560,7 @@ def firm_bounced(session: Session, mail: Mail) -> int:
     for addr in mail.bounced_addresses or []:
         t = session.scalar(select(FirmTarget).where(FirmTarget.email == addr.lower()))
         if t is not None:
-            ao.record_bounce(session, addr)
+            ao.record_bounce(session, addr, sent=not mail.soft_bounce)
             t.stage, t.notes = "LOST", ((t.notes or "") + f"\nbounced {now_eastern():%Y-%m-%d}").strip()
             n += 1
     return n
@@ -712,11 +733,11 @@ def reply_price(an: Any) -> float | None:
     return None
 
 
-def _drop_email(session: Session, contact: Contact, why: str) -> None:
+def _drop_email(session: Session, contact: Contact, why: str, *, counted: bool = True) -> None:
     """A bounced address comes off the agent's card (kept in the notes); their phone stays."""
     bad, stamp = contact.email, now_eastern().strftime("%Y-%m-%d")
     contact.notes = " | ".join(x for x in (contact.notes, f"{stamp}: e-mail {bad} bounced ({why})") if x)
-    ao.record_bounce(session, bad or "")          # never sent to again, whichever card still carries it
+    ao.record_bounce(session, bad or "", sent=counted)   # never sent to again, whichever card still carries it
     session.flush()
     try:
         with session.begin_nested():
@@ -788,7 +809,7 @@ def handle(session: Session, mail: Mail, known: Known, now: datetime | None = No
         session.add(row)
         session.flush()
         for c in hit:
-            _drop_email(session, c, f"bounce {when:%Y-%m-%d}")
+            _drop_email(session, c, f"bounce {when:%Y-%m-%d}", counted=not mail.soft_bounce)
             lead = session.get(Lead, c.lead_id) if c.lead_id else None
             if lead is not None and c.phone and c.dnc_status != "dnc":
                 from engine import reply_negotiator as rn

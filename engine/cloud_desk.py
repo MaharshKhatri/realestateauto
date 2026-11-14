@@ -555,6 +555,8 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
     - "cold_guard": "reset" (no "lead"): start the bounce count over (engine/cold_guard.reset);
     - "unbounce": "<e-mail>" or a list (no "lead"): a bounce logged by mistake (a delivery-delay notice) is undone
       (agent_outreach.unbounce: off the bounced list and the cold-mail count, a target it closed reopened);
+    - "uncount_bounce": "<e-mail>" or a list (no "lead"): a soft failure (dead server, full inbox) logged before
+      2026-11-14 leaves the cold-mail bounce count; the address stays off every list (cold_guard.unlog_bounce);
     - "vip_agent": "<e-mail>" (+ "remove"): a VIP pocket-listing agent (engine/vip_agents.py);
     - "daniels_law" + "done" (no "lead"): the operator looked at that Daniel's Law request; "suppress_address" /
       "suppress_phone": a home address / phone the request named that the parser missed (source daniels_law);
@@ -599,6 +601,19 @@ def apply_note(blob: str, desk_key: str, *, now: datetime | None = None, smtp_fa
             with session_scope() as s:
                 for e in emails:
                     ao.unbounce(s, str(e))
+            done += 1
+        except Exception as exc:                   # noqa: BLE001 - reported by name only
+            errors.append(type(exc).__name__)
+        items = [i for i in items if i is not item]
+    for item in [i for i in items if isinstance(i, dict) and i.get("uncount_bounce") and not i.get("lead")
+                 and not i.get("street")]:
+        # {"uncount_bounce": [...]}: dead servers / full inboxes counted before gmail_autopilot.soft_bounce existed
+        try:
+            from engine import cold_guard
+            emails = item["uncount_bounce"] if isinstance(item["uncount_bounce"], list) else [item["uncount_bounce"]]
+            with session_scope() as s:
+                for e in emails:
+                    cold_guard.unlog_bounce(s, str(e))
             done += 1
         except Exception as exc:                   # noqa: BLE001 - reported by name only
             errors.append(type(exc).__name__)

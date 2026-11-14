@@ -1246,7 +1246,7 @@ once. Full citations, statute text and open VERIFY items: `docs/recon/legal_rule
       pauses cold mail 7 days (`cold_pause`), and a reset never clears it. A "Delivery Status Notification (Delay)" /
       "Delivery incomplete ... Gmail will retry" (DSN `Action: delayed`, no `failed`) is not a bounce
       (`gmail_autopilot.delay_only`; 2026-11-11: two delays had closed targets and tripped the pause); a bounce logged by
-      mistake is undone with a sealed note `{"unbounce": [e-mails]}` (`agent_outreach.unbounce`). The run log says which (`cold_paused`: "bounces" or "gmail_block", no counts). Replies always go. 0 B2B replies to
+      mistake is undone with a sealed note `{"unbounce": [e-mails]}` (`agent_outreach.unbounce`). A soft failure (the recipient's server never answered after Gmail's retries: Status 4.4.x, "did not accept our requests to connect", "remote server is misconfigured"; or a full inbox, 5.2.2) keeps the address off every list but doesn't count toward the pause (`gmail_autopilot.soft_bounce`; 2026-11-13: 3 dead servers + 2 full inboxes had tripped it with 5 truly invalid addresses); `{"uncount_bounce": [e-mails]}` takes earlier ones out of the count. The run log says which (`cold_paused`: "bounces" or "gmail_block", no counts). Replies always go. 0 B2B replies to
       25+ first touches in 5 business days = "probably the spam folder: seed test" in the status.
     - **Copy**: every price "plus NJ sales tax" (N.J.S.A. 54:32B-3(b)(12); the operator registers NJ-REG before the
       first invoice); never "worth", "ARV", "equity", "over-assessed", "savings" in an e-mail; never pay tied to a deal,
